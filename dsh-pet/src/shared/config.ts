@@ -5,6 +5,7 @@
  * 条目级字段必须吹进每只实例：多实例共享所属条目的同一份值。
  * @module dsh-pet/src/shared/config
  */
+import type { SoulCard } from './soul';
 import type { Animations, FontConfig, ModelSelection, Pet, PetDisplay, PhysicsParams, Weights } from './types';
 
 /** 显示位置白名单。 */
@@ -35,6 +36,8 @@ export function flattenConfigPets(merged: Record<string, Record<string, unknown>
         workStatusTexts: conf.workStatusTexts as string[][] | undefined,
         whisperModel: conf.whisperModel as ModelSelection | undefined,
         chatModel: conf.chatModel as ModelSelection | undefined,
+        entrySoul: conf.soul as SoulCard | undefined,
+        soulEnabled: conf.chatSoulEnabled !== false,
         assetRoot: entry,
         extra: entry !== 'main',
       });

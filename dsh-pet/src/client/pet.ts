@@ -71,6 +71,7 @@ import {
 import { TOOLTIP_CLASS, TOOLTIP_CSS, TOOLTIP_GAP_RATIO, tooltipPlacement } from '../shared/tooltip';
 // 对话弹窗：与桌面共用组件，记忆由 host 的 /chat 读写。
 import { mountChatDialog } from '../shared/chat';
+import { soulAccentColor } from '../shared/soul';
 import { registerPose } from './pose';
 import { registerProgress } from './progress';
 // 字体换算只在 shared 一处，与桌面端共用，避免两端漂移。
@@ -1916,6 +1917,12 @@ export function makePetUI(rt: {
           onClose: () => {
             chatRef.current = null;
           },
+          // 灵魂色：实例覆盖优先，没写回落条目拍平结果；没有卡 / 全局关闭时不传，
+          // 让弹窗回落到旧版描边与光标（灵魂功能关闭时视觉也逐字回到旧版）。
+          accentColor:
+            cfg.soulEnabled !== false && (cfg.soul || cfg.entrySoul)
+              ? soulAccentColor(cfg.soul ?? cfg.entrySoul)
+              : undefined,
         });
         return;
       }

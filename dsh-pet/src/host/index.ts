@@ -80,6 +80,16 @@ import { profileNameFrom, storageEntries } from './storage-paths';
 import { parseStateWaitQuery, PollStateStore } from './state';
 import { composeSystemPrompt, petPersona } from './persona';
 import {
+  decaySoulState,
+  normalizeSoulState,
+  observeUserText,
+  recordExchange,
+  renderSoulPrompt,
+  soulAccent,
+  soulCardOf,
+} from './soul';
+import type { SoulCard, SoulState } from '../shared/soul';
+import {
   HelperProcess,
   defaultElectronExe,
   dshHomeDir,
@@ -625,6 +635,41 @@ export function apply(ctx: any): void {
     await writeFile(memoryPath, JSON.stringify(mem, null, 2), 'utf8');
   };
 
+  // 动态灵魂状态文件（唯一读写方 = 本进程；与 memory.json 同目录，按宠物 id 分桶）。
+  // 结构：{ version: 1, states: { <petId>: SoulState } }。它只存情绪 / 关系 / 上次聊天这类
+  // 「连续性状态」，不存完整聊天记录；完整记录仍在 memory.json。
+  const soulStatePath = join(userRoot, 'soul-state.json');
+  type SoulStateMap = Record<string, SoulState>;
+
+  /** 读灵魂状态：不存在 → 空；解析失败/根不是对象 → 记日志 + 空状态（不阻塞对话）。 */
+  const readSoulStates = async (): Promise<SoulStateMap> => {
+    let raw: string;
+    try {
+      raw = await readFile(soulStatePath, 'utf8');
+    } catch {
+      return {};
+    }
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not an object');
+      const states = parsed.states;
+      if (!states || typeof states !== 'object' || Array.isArray(states)) return {};
+      return states as SoulStateMap;
+    } catch (e) {
+      log.error(
+        `dsh-pet: 灵魂状态文件无法解析（本次从默认状态开始）：${soulStatePath}（${
+          e instanceof Error ? e.message : String(e)
+        }）`,
+      );
+      return {};
+    }
+  };
+
+  const writeSoulStates = async (states: SoulStateMap): Promise<void> => {
+    await mkdir(userRoot, { recursive: true });
+    await writeFile(soulStatePath, JSON.stringify({ version: 1, states }, null, 2), 'utf8');
+  };
+
   /** 把一次读写封进串行队列（同进程内防交错），返回 fn 的结果 */
   const withMemoryLock = <T>(fn: () => Promise<T>): Promise<T> => {
     const run = chatQueue.then(fn, fn);
@@ -639,13 +684,25 @@ export function apply(ctx: any): void {
    *  拼装在 ./persona（纯函数）：人设正文 + 名字声明 + 一行时间背景，时间每次现算。
    *  收 `findPetInstance` 的命中结果而不是 (petId, cfg)：调用方都已解析过，再查只会多一处
    *  「查不到就兜底 main」的不可达分支。 */
-  const petSystemPrompt = (found: { conf: Record<string, unknown>; pet: Record<string, unknown> }): string =>
+  const petSystemPrompt = (
+    found: { conf: Record<string, unknown>; pet: Record<string, unknown> },
+    soulCard: SoulCard | null = null,
+    soulState: SoulState | null = null,
+  ): string =>
     composeSystemPrompt({
       prompt: petPersona(found.conf, found.pet),
       name: String(found.pet.name ?? ''),
       id: String(found.pet.id ?? ''),
       now: new Date(),
+      soulCard,
+      soulState,
     });
+
+  /** 当前生效的灵魂卡：全局开关关闭时直接 null（不读卡、不写状态、不追加任何段落）。 */
+  const effectiveSoulCard = (found: {
+    conf: Record<string, unknown>;
+    pet: Record<string, unknown>;
+  }): SoulCard | null => (found.conf.chatSoulEnabled === false ? null : soulCardOf(found.conf, found.pet));
 
   /** 对话记忆轮数（1 轮 = 1 问 1 答）：该宠物所属条目的 chatMemoryRounds（合并器已填默认）。
    *  收已解析的条目配置：调用方都已拿到 `findPetInstance` 的结果。 */
@@ -669,7 +726,16 @@ export function apply(ctx: any): void {
     // 宠物可能在「校验那次读」与这里之间被删（配置随时会变，两次读之间就是窗口）：
     // 明确失败、不生成不写 S——写下去就是一只已不存在宠物的幽灵叶子（常驻到进程重启）。
     if (!found) return { ok: false, reason: 'unknown-pet', message: '没有这只桌宠：' + petId };
-    const system = petSystemPrompt(found);
+    // 灵魂：碎碎念只读当前状态（不推进关系/情绪），让闲话也符合它此刻的心情与关系阶段。
+    const soulCard = effectiveSoulCard(found);
+    let soulState: SoulState | null = null;
+    if (soulCard) {
+      const states = await readSoulStates();
+      const now = new Date();
+      soulState = normalizeSoulState(states[petId], soulCard, petId, now);
+      decaySoulState(soulState, soulCard, now);
+    }
+    const system = petSystemPrompt(found, soulCard, soulState);
     // 配图：开关关闭 / 池为空 / 池内图片全缺失 → 纯文本（不报错，只是没有图）
     const meme =
       found.conf.whisperImageEnabled === true
@@ -717,8 +783,18 @@ export function apply(ctx: any): void {
       // 否则会在 memory.json 里永久留下一个已删宠物的分桶，外加一只幽灵叶子。
       if (!found) return { ok: false, reason: 'unknown-pet', message: '没有这只桌宠：' + petId };
       const rounds = memoryRounds(found.conf);
-      // 人设：实例级 whisperPrompt 优先，没写回落所属条目（与碎碎念同一拼装）
-      const system = petSystemPrompt(found);
+      // 灵魂：先读状态 → 按离线时长衰减 → 用这次用户发言推进（只改内存，生成成功后才落盘）。
+      // 全局开关关闭 / 没有灵魂卡 → 不读不写，system 与旧版逐字一致。
+      const soulCard = effectiveSoulCard(found);
+      const soulStates: SoulStateMap = soulCard ? await readSoulStates() : {};
+      const soulState = soulCard ? normalizeSoulState(soulStates[petId], soulCard, petId, new Date()) : null;
+      if (soulCard && soulState) {
+        const soulNow = new Date();
+        decaySoulState(soulState, soulCard, soulNow);
+        observeUserText(soulState, text, soulNow);
+      }
+      // 人设：实例级 whisperPrompt 优先，没写回落所属条目（与碎碎念同一拼装）；灵魂段只在有卡时追加
+      const system = petSystemPrompt(found, soulCard, soulState);
       // 配图：开关关闭 → 空池（指令与解析都不介入）；目录链按所属条目取。
       // 张数上限（chatImageLimit，0 = 不限制）：整张清单每条消息都要附，截断后费用上限可控。
       const pool =
@@ -747,6 +823,21 @@ export function apply(ctx: any): void {
       // 记忆只存正文（配图属展示层，不进上下文——否则下次请求会把标记当历史读回去）
       entry.messages.push({ role: 'assistant', content: generated.text, ts: now });
       await writeMemory(mem);
+      // 灵魂状态：只有生成成功并写入记忆后才推进/落盘。写状态失败不能影响对话本身——
+      // 最多丢一次连续性，下一轮会从磁盘旧状态继续；记忆已经保存，回复照常返回。
+      if (soulCard && soulState) {
+        recordExchange(soulState, text, generated.text, new Date());
+        soulStates[petId] = soulState;
+        try {
+          await writeSoulStates(soulStates);
+        } catch (e) {
+          log.warn(
+            `[dsh-pet] 灵魂状态写入失败 pet=${petId}（对话已成功，本轮状态未落盘）：${
+              e instanceof Error ? e.message : String(e)
+            }`,
+          );
+        }
+      }
       // 回复写进 S（与碎碎念同一个叶子：前端本来就是同一条展示链路）
       state.writePet(
         petId,
@@ -2089,6 +2180,51 @@ export function apply(ctx: any): void {
         }
       } catch (e) {
         // 配置已由 readAllConfig 保证正确（不再有 config-error 分支）；其余（IO/LLM）→ generate-error
+        return {
+          kind: 'json',
+          status: 200,
+          obj: { ok: false, reason: 'generate-error', message: e instanceof Error ? e.message : String(e) },
+        };
+      }
+    }
+
+    // 灵魂卡只读预览：GET /soul?pet=<id> → 归一化后的卡 + 当前状态 + 实际会注入的文本。
+    // 设置页用它展示「这只宠物此刻会收到什么」；只读，不推进状态、不写 soul-state.json。
+    if (rest === 'soul') {
+      if (method !== 'GET') {
+        return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+      }
+      try {
+        const cfg = readAllConfig(configPaths);
+        const who = requirePet(url.searchParams, () => cfg);
+        if (!who.ok) return who.res;
+        const petId = who.petId;
+        const card = soulCardOf(who.conf, who.pet);
+        const enabled = who.conf.chatSoulEnabled !== false;
+        if (!card) {
+          return {
+            kind: 'json',
+            status: 200,
+            obj: { ok: true, enabled, card: null, state: null, render: '', color: null },
+          };
+        }
+        const states = await readSoulStates();
+        const now = new Date();
+        const state = normalizeSoulState(states[petId], card, petId, now);
+        decaySoulState(state, card, now);
+        return {
+          kind: 'json',
+          status: 200,
+          obj: {
+            ok: true,
+            enabled,
+            card,
+            state,
+            render: enabled ? renderSoulPrompt(card, state) : '',
+            color: soulAccent(card),
+          },
+        };
+      } catch (e) {
         return {
           kind: 'json',
           status: 200,
