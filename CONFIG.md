@@ -44,8 +44,71 @@ DSH 设置 → 「桌宠配置」：
 | `animationWeights`     | 动画链播放权重（idle / turn / move）                                                    | 同 `animationWeights` 结构 |
 | `eventsRefreshSec`     | 事件刷新周期（秒）                                                                      | 同 `eventsRefreshSec` 结构 |
 | `notificationsEnabled` | 系统通知总开关（布尔）                                                                  | 同 `notificationsEnabled`  |
+| `soul`                 | 条目级灵魂卡（可选，见下）                                                              | 对象，字段全部可选         |
+| `chatSoulEnabled`      | 灵魂注入总开关（全局默认，布尔，默认 `true`）                                           | 布尔                       |
 
 > 覆盖语义：用户层给出即**整体替换**该字段（如写了 `animations` 就用你的整份动画池，替代默认），没写的字段回落包内默认。校验在插件加载时执行——格式错误会在 DSH 控制台显式报错，不会静默运行残缺配置。
+
+## 人格灵魂色彩（soul）
+
+灵魂卡是比 `whisperPrompt` 更稳定的「内在设定」。配置后，宿主会在碎碎念与对话的 system 提示词里追加两段：
+
+1. **稳定灵魂卡**：身份、在意的东西、说话方式、渴望、害怕、边界、关系起点、灵魂色彩。
+2. **此刻的灵魂状态**：情绪、关系阶段、上次聊天（`chatMemoryRounds: 0` 时也能接上上一轮）。
+
+两段都只在**有卡且 `chatSoulEnabled !== false`** 时出现；没有卡 / 空卡 / 全局关闭时，提示词与旧版逐字一致。碎碎念只读状态，不会推进关系；只有**成功完成并写入记忆的对话**才会推进状态并写入 `$DSH_HOME/dsh-pet/soul-state.json`。
+
+- **条目级**：`main-config.jsonc` 顶层 `soul`（主宠物），或 `pet/<名>-config.json` 顶层 `soul`（该种类）。
+- **实例级**：`pets[].soul`，写了就整张取代所属条目的卡；留空 / `{}` = 跟随条目。
+- **设置页**：「人格灵魂色彩」里可以改全局开关、编辑当前宠物的实例卡 JSON，并「预览当前注入」——预览读的是**已保存**配置，不会写状态。
+- **默认卡**：包内 `assets/config.jsonc` 自带一张蓝毛小女仆卡，可直接改成你的角色；删掉 `soul` 即回到旧人设。
+- **灵魂色**：`soulColor.primary`（缺失时依次回退 `glow` / `secondary`）会用作对话弹窗的描边、聚焦光晕与光标颜色；没有卡或全局关闭时保持旧版样式。
+
+最小示例（所有字段都可选，支持 camelCase 与 snake_case）：
+
+```jsonc
+"soul": {
+  "identity": {
+    "oneLine": "一只住在桌面角落的蓝毛小女仆。",
+    "species": "桌面精灵",
+    "role": "陪伴者",
+    "selfImage": "我会记住你，也会闹别扭。",
+    "coreContradiction": "想被需要，又怕太黏人。"
+  },
+  "values": ["陪伴", "真诚"],
+  "traits": { "温柔": 78, "嘴硬": 62, "好奇": 70 },
+  "voice": {
+    "tone": "亲近、轻微傲娇",
+    "sentenceLength": "通常 1–3 句",
+    "avoid": ["客服腔", "长篇大论"],
+    "examples": ["主人今天也辛苦啦。……我才没有特意等你。"]
+  },
+  "desires": ["被主人需要"],
+  "fears": ["被遗忘"],
+  "boundaries": ["不替主人做重大决定", "不编造没发生过的事"],
+  "relationshipSeed": { "stage": "初识", "trust": 30, "intimacy": 18, "respect": 40, "familiarity": 20 },
+  "temperament": { "baselineMood": "平静", "moodHalfLifeHours": 12, "energy": 70 },
+  "soulColor": { "primary": "#7aa7ff", "glow": "#a9c4ff", "description": "像被雨水洗过的蓝" }
+}
+```
+
+字段说明：
+
+| 字段                | 作用                                                                 | 格式                                      |
+| ------------------- | -------------------------------------------------------------------- | ----------------------------------------- |
+| `identity`          | 一句话灵魂 / 种类 / 角色 / 来处 / 自我认知 / 核心矛盾                | 对象，字符串字段                          |
+| `values`            | 在意的东西                                                           | 字符串数组（或 `{ name, note }`）         |
+| `traits`            | 性格倾向，数值越高越突出（渲染时取前 6 个）                          | 对象：名称 → 0–100                        |
+| `voice`             | 语气 / 节奏 / 句长 / 用词 / 称呼 / 幽默 / 不要项 / 语气示例          | 对象                                      |
+| `desires` / `fears` | 渴望 / 害怕                                                          | 字符串数组（或 `{ name, note }`）         |
+| `boundaries`        | 行为边界                                                             | 字符串数组（或 `{ name, note }`）         |
+| `relationshipSeed`  | 关系起点：`stage`（陌生/初识/熟悉/亲近/默契/羁绊）与信任/亲密/尊重/熟悉/张力 | 对象，数值 0–100                          |
+| `temperament`       | 基线心情 / 情绪半衰期（小时，1–168）/ 精力 / 表达欲                  | 对象                                      |
+| `soulColor`         | 主色 / 辅色 / 光晕 / 阴影 / 描述 / 意象                              | 对象；颜色只接受 `#rgb` 或 `#rrggbb`      |
+| `examples`          | 额外对话示例（只学语气，不照抄）                                     | 字符串数组                                |
+| `notes`             | 补充说明                                                             | 字符串                                    |
+
+> 状态文件按宠物 id 分桶，结构为 `{ "version": 1, "states": { "<petId>": { ... } } }`。删掉它只会重置情绪/关系连续性，不影响 `memory.json` 里的完整聊天记录。
 
 ## 方式四：额外宠物（pet pack）——添加新「种类」
 

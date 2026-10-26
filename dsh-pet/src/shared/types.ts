@@ -4,6 +4,7 @@
  * 纯类型与常量，无 React / DOM 依赖。
  * @module dsh-pet/src/shared/types
  */
+import type { SoulCard } from './soul';
 
 /** 支持的角落。 */
 export type Corner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
@@ -93,6 +94,15 @@ export interface Pet {
    *  写了就取代所属条目顶层那一份（替换而非拼接），没写或空串则回落条目——回落发生在宿主半侧，不是错误。
    *  只写正文：名字与时间背景由宿主无条件追加，不要在这里重复写。 */
   whisperPrompt?: string;
+  /** 实例级灵魂卡（pets[].soul，可选）：写了就取代所属条目的 soul；没写/空卡 = 回落条目。
+   *  归一化与回落发生在宿主半侧（src/host/soul.ts 的 soulCardOf），这里保留用户原对象。 */
+  soul?: SoulCard;
+  /** 条目级灵魂卡的拍平结果（运行时派生，不写回配置）：设置页用它在实例没写覆盖时显示
+   *  「跟随的是什么」；渲染端用 `soul ?? entrySoul` 取当前生效的灵魂色彩。 */
+  entrySoul?: SoulCard;
+  /** 灵魂注入总开关的拍平结果（运行时派生，不写回配置）：false = 渲染端也不要用灵魂色，
+   *  保持旧版描边/光标；设置页保存时会剥掉这个字段。 */
+  soulEnabled?: boolean;
   animations?: Animations;
   animationWeights?: Weights;
   extra?: boolean;

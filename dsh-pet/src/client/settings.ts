@@ -8,6 +8,7 @@
 import { PET_DISPLAYS } from '../shared/config';
 import { DEFAULT_FONT, FONT_PRESETS, FONT_SIZE_MAX, FONT_SIZE_MIN } from '../shared/fonts';
 import { DEFAULT_PHYSICS } from '../shared/physics';
+import { soulAccentColor, type SoulCard } from '../shared/soul';
 import { NOTIFY_ICONS, reloadNotifications, requestNotificationPermission, wireNotificationClick } from './notify';
 import type { Corner, FontConfig, FontFamilyId, ModelSelection, Pet, PetDisplay, PhysicsParams } from '../shared/types';
 import type { ChangeEvent, Dispatch, FunctionComponent, SetStateAction } from 'react';
@@ -93,6 +94,12 @@ const SETTINGS_CSS = [
   '.dsh-pet-cfg__persona{display:flex;flex-direction:column;gap:2px;min-width:0}',
   '.dsh-pet-cfg__area{min-height:66px;resize:vertical;line-height:18px}',
   '.dsh-pet-cfg__count{font-size:11px;color:var(--dsw-alias-label-tertiary);text-align:right}',
+
+  // 灵魂卡 JSON：等宽字体 + 保留缩进；高度独立于人设，避免长卡把整张卡片撑得过高。
+  '.dsh-pet-cfg__json{min-height:180px;resize:vertical;line-height:18px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Courier New",monospace;font-size:12px;white-space:pre-wrap;overflow:auto}',
+  '.dsh-pet-cfg__soulRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}',
+  '.dsh-pet-cfg__swatch{display:inline-block;flex:none;width:12px;height:12px;border:1px solid var(--dsw-alias-border-l2);border-radius:50%;vertical-align:-2px}',
+  '.dsh-pet-cfg__soulPreview{margin:0;max-height:260px;overflow:auto;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-interactive-bg-active);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px;white-space:pre-wrap;word-break:break-word;user-select:text}',
 
   '.dsh-pet-cfg__toggle{display:flex;align-items:center;gap:6px;min-width:0;font-size:13px;color:var(--dsw-alias-label-primary)}',
   '.dsh-pet-cfg__toggle>label{display:inline-flex;align-items:center;gap:6px;cursor:pointer;min-width:0}',
@@ -321,6 +328,28 @@ export const zh = {
   chatImageLimitHint:
     '对话时发给模型的表情包清单最多几张（「前 N 张」= 配置里写在前面的那 N 条，想让哪几张优先被发出去就把顺序往前挪）。整张清单是每条消息都要附的，token 随张数线性增长——张数一多就是纯烧钱，限制成前 N 张，模型只从这几张里挑。0 = 不限制（全部发）。内置默认 10。全局默认，所有宠物共用（pet pack 可在自己种类文件里覆盖）。只影响对话选图：碎碎念只带抽中的那一张。',
   invalidChatImageLimit: '请检查对话配图张数上限：需为 ≥ 0 的数字（0 = 不限制）。',
+  soulTitle: '人格灵魂色彩',
+  soulHint:
+    '灵魂卡是比人设更稳定的「内在设定」：身份、在意的东西、说话方式、渴望、害怕、边界、关系起点与灵魂色彩。配置后，宿主会在碎碎念与对话的 system 里追加「稳定灵魂卡 + 此刻的灵魂状态」；状态（情绪 / 关系 / 上次聊天）由 soul-state.json 跨会话延续。没有卡 / 空卡 = 完全走旧人设。',
+  soulToggle: '灵魂注入',
+  soulToggleHint:
+    '全局默认，所有宠物共用。开启（默认）= 有灵魂卡的宠物在提示词里追加灵魂段，并在成功对话后推进 soul-state.json；关闭 = 不读卡、不写状态、不追加任何段落，行为回到旧版。只影响 AI 提示词，设置页仍可查看灵魂卡。',
+  soulCardLabel: '灵魂卡（JSON，可选）',
+  soulCardHint:
+    '只影响这只宠物。留空 = 跟随所属条目的灵魂卡（输入框里的灰色文字就是那份内容）；填了非空 JSON = 整张取代条目卡。字段见仓库 CONFIG.md（或包内 assets/config.jsonc 的默认卡）；支持 camelCase 与 snake_case。保存前会校验 JSON，格式不对不会写盘。',
+  soulCardPlaceholder: '留空 = 跟随条目灵魂卡；也可以粘贴一张完整 JSON 覆盖这只宠物。',
+  soulPreview: '预览当前注入',
+  soulPreviewNote: '预览读取的是已保存配置；改完灵魂卡请先点「保存」。',
+  soulPreviewBusy: '读取中…',
+  soulPreviewEmpty: '没有可注入的灵魂卡。',
+  soulPreviewDisabled: '灵魂注入已关闭；下面是卡内容，但不会进入提示词。',
+  soulPreviewError: '预览失败，请检查服务连接后重试。',
+  soulFollowEntry: '当前跟随条目灵魂卡',
+  soulOverride: '当前使用这只宠物的覆盖',
+  soulColorLabel: '灵魂色彩',
+  soulInvalid: '灵魂卡 JSON 解析失败：{msg}',
+  soulMustBeObject: '必须是一个 JSON 对象（不能是数组/字符串/数字）。',
+  soulTooLarge: '灵魂卡 JSON 过大（上限 20000 字符）。',
   notifyTest: '测试弹窗',
   notifyTestOk: '测试通知已发送，请查看桌面右下角。',
   notifyDenyUnsupported: '当前环境不支持系统通知（浏览器无 Notification API）。',
@@ -329,9 +358,10 @@ export const zh = {
   notifyDenyError: '申请权限时出错',
   notifyGuide: '引导：点击地址栏左侧 🔒/ⓘ →「网站设置」→「通知」→ 改为「允许」，刷新页面后重试。',
   storageTitle: '卸载与存储',
-  storageHint: '插件在本机落下的全部位置。删缓存不影响使用（会自动重下/重建）；删「插件用户数据」会丢配置与对话记忆。',
+  storageHint:
+    '插件在本机落下的全部位置。删缓存不影响使用（会自动重下/重建）；删「插件用户数据」会丢配置、对话记忆与灵魂状态。',
   'storage.userData':
-    '插件用户数据：自定义配置 main-config.jsonc、对话记忆 memory.json、自定义动画素材 main-animation/、文件宠物 pet/',
+    '插件用户数据：自定义配置 main-config.jsonc、对话记忆 memory.json、灵魂状态 soul-state.json、自定义动画素材 main-animation/、文件宠物 pet/',
   'storage.electron': '桌面宠物用的 Electron 运行时（体积较大；删除后下次启用桌面模式会自动重新下载）',
   'storage.desktopCache': '桌面宠物窗口的缓存与主屏缩放缓存（可删，会自动重建）',
   'storage.electronCache': 'Electron 安装包下载缓存（可删，需要时会重新下载）',
@@ -341,7 +371,7 @@ export const zh = {
   uninstallStep1: '1. 先退出 DSH（桌面宠物随之退出）；不要在桌宠运行时删除上面的文件。',
   uninstallStep2: '2. 卸载插件本体（终端执行，会同时从 profile 的 bundle 层移除）：',
   uninstallStep3:
-    '3. 按需删除上面的位置：缓存类删了无影响；「插件用户数据」删了会丢配置与对话记忆（想保留就先备份其中的 main-config.jsonc）。',
+    '3. 按需删除上面的位置：缓存类删了无影响；「插件用户数据」删了会丢配置、对话记忆与灵魂状态（想保留就先备份其中的 main-config.jsonc）。',
   uninstallCmd: 'dsh plugin --profile {profile} remove dsh-pet',
 };
 
@@ -523,6 +553,28 @@ export const en = {
   chatImageLimitHint:
     'How many memes at most are listed to the model during chat ("first N" = the first N you wrote in the config, so move the ones you want sent to the front). That whole list is attached to every message and tokens grow linearly with the count, so a long list is pure burn; capping it to the first N makes the model pick only among those. 0 = no limit (send everything). Built-in default 10. Global default, shared by every pet (a pet pack may override it in its own kind file). Chat only — a whisper carries just the one meme it drew.',
   invalidChatImageLimit: 'Check the chat image limit: it must be a number ≥ 0 (0 = no limit).',
+  soulTitle: 'Soul & personality color',
+  soulHint:
+    'A soul card is a more stable inner layer than the persona: identity, what it cares about, voice, desires, fears, boundaries, relationship seed and soul color. When configured, the host appends a stable soul card plus the current soul state to every whisper / chat system prompt; the state (mood / relationship / last exchange) persists across sessions in soul-state.json. No card / empty card = the legacy persona only.',
+  soulToggle: 'Soul injection',
+  soulToggleHint:
+    'Global default shared by every pet. On (default) = pets with a soul card get the soul sections and advance soul-state.json after successful chats; off = no card read, no state write, no extra prompt sections (legacy behavior). It only affects AI prompts; the card stays visible here.',
+  soulCardLabel: 'Soul card (JSON, optional)',
+  soulCardHint:
+    'Applies to this pet only. Leave empty to follow the entry soul card (the grey text in the box is exactly that); a non-empty JSON object replaces it entirely. See the repository CONFIG.md (or the default card in assets/config.jsonc) for fields; camelCase and snake_case are both accepted. JSON is validated before saving — malformed input is never written.',
+  soulCardPlaceholder: 'Leave empty to follow the entry soul card, or paste a full JSON object to override this pet.',
+  soulPreview: 'Preview current injection',
+  soulPreviewNote: 'The preview reads the saved config; save your edits first.',
+  soulPreviewBusy: 'Loading…',
+  soulPreviewEmpty: 'No soul card to inject.',
+  soulPreviewDisabled: 'Soul injection is off; the card below is not sent to the model.',
+  soulPreviewError: 'Preview failed. Check the server connection and try again.',
+  soulFollowEntry: 'Following the entry soul card',
+  soulOverride: 'Using this pet’s override',
+  soulColorLabel: 'Soul color',
+  soulInvalid: 'Soul card JSON is invalid: {msg}',
+  soulMustBeObject: 'must be a JSON object (not an array, string or number).',
+  soulTooLarge: 'Soul card JSON is too large (limit: 20000 chars).',
   notifyTest: 'Test notification',
   notifyTestOk: 'Test notification sent — check the bottom-right of your desktop.',
   notifyDenyUnsupported: 'System notifications are not supported in this environment (no Notification API).',
@@ -533,9 +585,9 @@ export const en = {
     'Guide: click the 🔒/ⓘ icon next to the address bar → Site settings → Notifications → set to "Allow", then refresh and retry.',
   storageTitle: 'Uninstall & storage',
   storageHint:
-    'Every location this plugin writes to. Deleting cache folders is harmless (they re-download / rebuild); deleting "plugin user data" loses your config and chat memory.',
+    'Every location this plugin writes to. Deleting cache folders is harmless (they re-download / rebuild); deleting "plugin user data" loses your config, chat memory and soul state.',
   'storage.userData':
-    'Plugin user data: custom config main-config.jsonc, chat memory memory.json, custom animation assets main-animation/, file pets pet/',
+    'Plugin user data: custom config main-config.jsonc, chat memory memory.json, soul state soul-state.json, custom animation assets main-animation/, file pets pet/',
   'storage.electron':
     'Electron runtime used by the desktop pet (large; re-downloaded automatically the next time desktop mode starts)',
   'storage.desktopCache':
@@ -548,7 +600,7 @@ export const en = {
     '1. Quit DSH first (the desktop pet exits with it); do not delete these files while the pet is running.',
   uninstallStep2: '2. Remove the plugin itself (run in a terminal; this also drops it from the profile bundle layer):',
   uninstallStep3:
-    '3. Delete the locations above as needed: cache folders are harmless; deleting "plugin user data" loses your config and chat memory (back up main-config.jsonc first if you want to keep it).',
+    '3. Delete the locations above as needed: cache folders are harmless; deleting "plugin user data" loses your config, chat memory and soul state (back up main-config.jsonc first if you want to keep it).',
   uninstallCmd: 'dsh plugin --profile {profile} remove dsh-pet',
 };
 
@@ -987,6 +1039,22 @@ export function makePetConfigSection(rt: {
     const [chatImageLimit, setChatImageLimit] = useState(10);
     // 条目级人设：设置页只编辑实例级覆盖（pets[].whisperPrompt）；这个值只用于「留空时跟随什么」的预览，不参与提交。
     const [entryPrompt, setEntryPrompt] = useState('');
+    // 条目级灵魂卡：同 entryPrompt，只用于「留空时跟随什么」的预览与占位；不参与提交。
+    const [entrySoul, setEntrySoul] = useState<SoulCard | undefined>(undefined);
+    // 灵魂注入总开关（全局默认）：随「保存」一起提交，不做即时写入。
+    const [soulEnabled, setSoulEnabled] = useState(true);
+    // 每只宠物的灵魂卡 JSON 草稿（键 = 宠物 id）：编辑中的非法 JSON 不能塞进 Pet.soul，
+    // 所以先存字符串，保存时统一解析；留空 = 跟随条目。applyConfig 重新加载时清空。
+    const [soulDrafts, setSoulDrafts] = useState<Record<string, string>>({});
+    // 只读预览：宿主按「此刻真实会注入的文本」返回，包含动态状态；不写状态、不推进关系。
+    const [soulPreview, setSoulPreview] = useState<null | {
+      petId: string;
+      text: string;
+      enabled: boolean;
+      color: string | null;
+    }>(null);
+    const [soulPreviewBusy, setSoulPreviewBusy] = useState(false);
+    const [soulPreviewErr, setSoulPreviewErr] = useState(false);
     // 候选清单：宿主半侧 llm 服务的实时服务商与模型；null = 还没拉到，拉失败置 catalogErr 显示一行提示。
     const [catalog, setCatalog] = useState<ModelCatalogGroup[] | null>(null);
     const [catalogErr, setCatalogErr] = useState(false);
@@ -1000,11 +1068,18 @@ export function makePetConfigSection(rt: {
       setPets(loadedPets.map((p) => ({ ...p, position: { ...p.position } })));
       // 条目人设：实例级没写的宠物就是用它（合并器保证 main 条目一定有非空字符串）
       setEntryPrompt(typeof m.whisperPrompt === 'string' ? m.whisperPrompt : '');
+      // 条目灵魂卡：与条目人设同口径；只有对象才认（数组/标量按没有卡处理）
+      setEntrySoul(m.soul && typeof m.soul === 'object' && !Array.isArray(m.soul) ? (m.soul as SoulCard) : undefined);
+      // 重新加载成品后丢弃编辑草稿与旧预览：草稿可能属于已被删除的宠物，预览也已过期。
+      setSoulDrafts({});
+      setSoulPreview(null);
+      setSoulPreviewErr(false);
       setSelId((id) => (loadedPets.some((p) => p.id === id) ? id : (loadedPets[0]?.id ?? '')));
       if (typeof m.notificationsEnabled === 'boolean') setNotifyEnabled(m.notificationsEnabled);
       if (typeof m.clickSoundEnabled === 'boolean') setClickSound(m.clickSoundEnabled);
       if (typeof m.whisperImageEnabled === 'boolean') setWhisperImage(m.whisperImageEnabled);
       if (typeof m.chatImageEnabled === 'boolean') setChatImage(m.chatImageEnabled);
+      if (typeof m.chatSoulEnabled === 'boolean') setSoulEnabled(m.chatSoulEnabled);
       if (typeof m.confineToScreen === 'boolean') setConfineScreen(m.confineToScreen);
       if (typeof m.trayEnabled === 'boolean') setTrayEnabled(m.trayEnabled);
       // physics 段：成品已按「内置默认 ← 用户层」整段填满，直接取用（缺子键再用默认兜底一次）
@@ -1124,6 +1199,84 @@ export function makePetConfigSection(rt: {
         }),
       );
 
+    /** 某只宠物输入框里的灵魂卡 JSON：没改过 → 显示实例覆盖（没有就留空，占位显示条目卡）。 */
+    const soulDraftOf = (p: Pet): string => soulDrafts[p.id] ?? (p.soul ? JSON.stringify(p.soul, null, 2) : '');
+    const setSoulDraft = (id: string, value: string): void => {
+      setSoulDrafts((drafts) => ({ ...drafts, [id]: value }));
+      setSoulPreview(null);
+      setSoulPreviewErr(false);
+    };
+
+    /** 当前编辑中的有效灵魂卡（用于色块预览）：草稿非法时回落到实例卡 / 条目卡，不让 UI 闪空白。 */
+    const editedSoulCard = (p: Pet): SoulCard | undefined => {
+      const raw = soulDraftOf(p).trim();
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as unknown;
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as SoulCard;
+        } catch {
+          /* 非法 JSON：保存前会拦；这里只用于色块，回落到当前生效卡。 */
+        }
+      }
+      return p.soul ?? entrySoul;
+    };
+
+    /** 只读预览：读宿主「此刻真实会注入的文本」。读的是已保存配置，未保存的草稿不会出现在这里。 */
+    const previewSoul = async (): Promise<void> => {
+      if (!cur) return;
+      setSoulPreviewBusy(true);
+      setSoulPreviewErr(false);
+      try {
+        const res = await fetch('/dsh-pet-7340/soul?pet=' + encodeURIComponent(cur.id));
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = (await res.json()) as {
+          ok?: unknown;
+          enabled?: unknown;
+          render?: unknown;
+          color?: unknown;
+        };
+        if (!data || data.ok !== true) throw new Error('bad response');
+        setSoulPreview({
+          petId: cur.id,
+          text: typeof data.render === 'string' ? data.render : '',
+          enabled: data.enabled !== false,
+          color: typeof data.color === 'string' ? data.color : null,
+        });
+      } catch {
+        setSoulPreview(null);
+        setSoulPreviewErr(true);
+      } finally {
+        setSoulPreviewBusy(false);
+      }
+    };
+
+    useEffect(() => {
+      // 切换宠物时旧预览已不属于当前编辑对象；清掉，避免误以为新宠物是这个状态。
+      setSoulPreview(null);
+      setSoulPreviewErr(false);
+    }, [selId]);
+
+    /** 解析一只宠物的灵魂卡草稿：留空/空对象 = 删除覆盖（跟随条目）；非对象或坏 JSON = 明确错误。 */
+    const parseSoulDraft = (p: Pet): { ok: true; card: SoulCard | null } | { ok: false; message: string } => {
+      const draft = soulDrafts[p.id];
+      if (draft === undefined) return { ok: true, card: p.soul ?? null };
+      const raw = draft.trim();
+      if (!raw) return { ok: true, card: null };
+      if (raw.length > 20000) return { ok: false, message: t('soulTooLarge') };
+      try {
+        const parsed = JSON.parse(raw) as unknown;
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return { ok: false, message: t('soulInvalid').replace('{msg}', t('soulMustBeObject')) };
+        }
+        return { ok: true, card: Object.keys(parsed).length ? (parsed as SoulCard) : null };
+      } catch (e) {
+        return {
+          ok: false,
+          message: t('soulInvalid').replace('{msg}', e instanceof Error ? e.message : String(e)),
+        };
+      }
+    };
+
     const validated = (): boolean => {
       for (const p of pets) {
         if (
@@ -1166,6 +1319,15 @@ export function makePetConfigSection(rt: {
         setMsg({ kind: 'err', text: t('invalidChatImageLimit') });
         return false;
       }
+      // 灵魂卡：草稿必须是合法 JSON 对象（留空 / {} = 删除实例覆盖，跟随条目）；
+      // 宿主也会校验，但这里先就地给红字，避免整包请求被 400 后用户还要自己找是哪只宠物。
+      for (const p of pets) {
+        const parsed = parseSoulDraft(p);
+        if (!parsed.ok) {
+          setMsg({ kind: 'err', text: t('soulCardLabel') + ' · ' + p.id + '：' + parsed.message });
+          return false;
+        }
+      }
       // 字体：与宿主 fontValid 同一套规则（family 必须在预设白名单内、size 4~200、followPet 为布尔）
       if (
         !FONT_PRESETS.some((p) => p.id === font.family) ||
@@ -1188,13 +1350,25 @@ export function makePetConfigSection(rt: {
       setBusy(true);
       setMsg({ kind: '', text: '' });
       try {
+        // 把灵魂卡草稿解析成实例覆盖：留空 / {} → 删除 soul 键（回落条目）；非空对象 → 写入。
+        // 其余字段原样带上；entrySoul 是拍平派生值，永远不写回配置。
+        const petsPayload = pets.map((p) => {
+          const parsed = parseSoulDraft(p);
+          const next: Pet = { ...p };
+          delete next.soul;
+          delete next.entrySoul;
+          delete next.soulEnabled;
+          if (parsed.ok && parsed.card) next.soul = parsed.card;
+          return next;
+        });
         // 通知总开关随保存一起写；初值来自成品 main 条目，不会静默覆盖用户手写值。
         const body: Record<string, unknown> = {
-          pets: pets,
+          pets: petsPayload,
           notificationsEnabled: notifyEnabled,
           clickSoundEnabled: clickSound,
           whisperImageEnabled: whisperImage,
           chatImageEnabled: chatImage,
+          chatSoulEnabled: soulEnabled,
           confineToScreen: confineScreen,
           trayEnabled: trayEnabled,
           physics: physics,
@@ -1228,6 +1402,7 @@ export function makePetConfigSection(rt: {
         // 同上：PUT 响应即成品聚合，容器据此重新拍平（新增/删除宠物、改大小位置都走这条路）
         petBridge.reload((await res.json()) as Record<string, Record<string, unknown>>);
         void reloadNotifications(); // 保存后即时生效，无需刷新。
+        setSoulPreview(null); // 旧预览可能对应保存前的卡，清掉避免误读。
         setMsg({ kind: 'ok', text: t('saved') });
       } catch {
         setMsg({ kind: 'err', text: t('saveError') });
@@ -1384,6 +1559,10 @@ export function makePetConfigSection(rt: {
         end,
       );
     };
+
+    // 当前编辑中的灵魂色（用于色块）：草稿非法时 editedSoulCard 已回落到当前生效卡。
+    const curSoul = cur ? editedSoulCard(cur) : undefined;
+    const curSoulColor = curSoul ? soulAccentColor(curSoul) : '';
 
     return h('section', {
       ref: rootRef,
@@ -1610,6 +1789,92 @@ export function makePetConfigSection(rt: {
               className: 'dsh-pet-cfg__note',
               children: t('emptyPets'),
             }),
+
+        // 人格灵魂色彩卡：全局总开关 + 当前宠物实例覆盖（JSON）+ 只读预览。
+        // 灵魂卡是条目级/实例级的「稳定设定」，与全局开关分开：开关只决定要不要把卡注入提示词。
+        h('div', {
+          className: 'dsh-pet-cfg__card',
+          children: [
+            cardHead(t('soulTitle'), t('soulHint')),
+            h('div', {
+              className: 'dsh-pet-cfg__grid2',
+              children: [toggleCell('soulToggle', soulEnabled, busy, setSoulEnabled, true)],
+            }),
+            cur
+              ? field(
+                  t('soulCardLabel'),
+                  h('div', {
+                    className: 'dsh-pet-cfg__persona',
+                    children: [
+                      h('textarea', {
+                        className: inputClass + ' dsh-pet-cfg__area dsh-pet-cfg__json',
+                        rows: 10,
+                        value: soulDraftOf(cur),
+                        disabled: busy,
+                        placeholder: entrySoul ? JSON.stringify(entrySoul, null, 2) : t('soulCardPlaceholder'),
+                        onChange: (e: ChangeEvent<HTMLTextAreaElement>) => setSoulDraft(cur.id, e.target.value),
+                      }),
+                      h('div', {
+                        className: 'dsh-pet-cfg__soulRow',
+                        children: [
+                          curSoulColor
+                            ? h('span', {
+                                key: 'sw',
+                                className: 'dsh-pet-cfg__swatch',
+                                style: { background: curSoulColor },
+                                ...tip(t('soulColorLabel') + '：' + curSoulColor),
+                              })
+                            : null,
+                          h('span', {
+                            key: 'status',
+                            className: 'dsh-pet-cfg__count',
+                            style: { textAlign: 'left' },
+                            children: cur.soul ? t('soulOverride') : t('soulFollowEntry'),
+                          }),
+                        ],
+                      }),
+                    ],
+                  }),
+                  t('soulCardHint'),
+                )
+              : h('p', { className: 'dsh-pet-cfg__note', children: t('emptyPets') }),
+            cur
+              ? h('div', {
+                  className: 'dsh-pet-cfg__soulRow',
+                  children: [
+                    h('button', {
+                      type: 'button',
+                      className: 'dsh-pet-cfg__btn is-sm',
+                      disabled: busy || soulPreviewBusy,
+                      onClick: () => void previewSoul(),
+                      children: soulPreviewBusy ? t('soulPreviewBusy') : t('soulPreview'),
+                    }),
+                    h('span', { className: 'dsh-pet-cfg__note', children: t('soulPreviewNote') }),
+                  ],
+                })
+              : null,
+            cur && soulPreviewErr
+              ? h('p', {
+                  className: 'dsh-pet-cfg__note',
+                  style: { color: 'var(--dsw-alias-state-error-primary)' },
+                  children: t('soulPreviewError'),
+                })
+              : null,
+            cur && soulPreview && soulPreview.petId === cur.id
+              ? h('div', {
+                  className: 'dsh-pet-cfg__field',
+                  children: [
+                    !soulPreview.enabled
+                      ? h('p', { className: 'dsh-pet-cfg__note', children: t('soulPreviewDisabled') })
+                      : null,
+                    soulPreview.text
+                      ? h('pre', { className: 'dsh-pet-cfg__soulPreview', children: soulPreview.text })
+                      : h('p', { className: 'dsh-pet-cfg__note', children: t('soulPreviewEmpty') }),
+                  ],
+                })
+              : null,
+          ],
+        }),
 
         // 全局开关卡：切换只改本地状态，随「保存」整包写入——即时写盘会重启桌面 Helper、重建全部桌面宠物窗口。
         // 系统通知额外在保存后由 save() 调 reloadNotifications() 重读；「测试弹窗」是动作，跟「保存 / 同步」同一行。

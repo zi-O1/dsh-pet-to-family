@@ -44,13 +44,16 @@ export async function sendChat(baseUrl: string, text: string): Promise<ChatSendS
  *  回车发送，Esc 或点外关闭。宽度由 JS 按文本测量覆盖根元素宽度。 */
 export const CHAT_CSS = [
   '.dsh-pet-chat{position:fixed;z-index:2147483001;width:160px;max-width:80vw;',
-  'background:rgba(255,255,255,.98);border:1px solid rgba(0,0,0,.12);border-radius:10px;',
+  'background:rgba(255,255,255,.98);border:1px solid var(--dsh-pet-chat-accent,rgba(0,0,0,.12));border-radius:10px;',
   'box-shadow:0 10px 32px rgba(0,0,0,.22);color:#2b2b2b;font-size:14px;line-height:1.5;',
   // 字体与桌宠气泡同款（上首软糖体，两端均已注入 @font-face），风格一致不显正式。
   // 字体族走全局配置变量 --dsh-pet-font-family：弹窗挂在 body 下、继承不到宠物根容器，由两端注入在 documentElement。
   // 字号保持固定 14px：配置里的 font.size 只作用于气泡与悬浮提示。
   "font-family:var(--dsh-pet-font-family,'ShangshouSoftCandy','Yuanti SC','YouYuan','幼圆','Comic Sans MS','PingFang SC','Microsoft YaHei',sans-serif);",
   'user-select:none}',
+  // 灵魂色只做一层很轻的描边与聚焦光晕：没有配置灵魂卡时变量不设置，回落到原来的黑色半透明描边。
+  // color-mix 不支持时整条 box-shadow 声明会被忽略，原阴影仍在（不依赖它才能看清弹窗）。
+  '.dsh-pet-chat:focus-within{box-shadow:0 10px 32px rgba(0,0,0,.22),0 0 0 3px color-mix(in srgb,var(--dsh-pet-chat-accent,transparent) 22%,transparent)}',
   '.dsh-pet-chat *{box-sizing:border-box}',
   '.dsh-pet-chat-input{display:block;width:100%;border:none;outline:none;background:transparent;',
   'padding:8px 11px 9px;font-size:14px;line-height:1.45;color:#2b2b2b;font-family:inherit;',
@@ -102,9 +105,11 @@ export function mountChatDialog(opts: {
   onClose?: () => void;
   /** 弹窗允许占用的矩形（视口局部坐标）；缺省 = 整个视口 */
   clamp?: { x: number; y: number; w: number; h: number };
+  /** 灵魂色彩主色（hex）：只影响描边/聚焦光晕/光标，不改变布局与交互。 */
+  accentColor?: string;
 }): ChatDialogMount {
   injectChatCss();
-  const { petId, surface, x, y, onSent, onClose, clamp } = opts;
+  const { petId, surface, x, y, onSent, onClose, clamp, accentColor } = opts;
   const baseUrl = opts.baseUrl ?? '/dsh-pet-7340/chat';
   // `surface` 必填（宿主校验）；这个 URL 只用于 POST 发送——GET 读记忆那条路不需要它
   const withPet = baseUrl + '?pet=' + encodeURIComponent(petId) + '&surface=' + surface;
@@ -115,10 +120,14 @@ export function mountChatDialog(opts: {
 
   const root = document.createElement('div');
   root.className = 'dsh-pet-chat';
+  // 只接受 hex：accentColor 来自配置里的 soulColor.primary，避免任意 CSS 值进入样式属性。
+  const accent = accentColor && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(accentColor) ? accentColor : '';
+  if (accent) root.style.setProperty('--dsh-pet-chat-accent', accent);
 
   const input = document.createElement('textarea');
   input.className = 'dsh-pet-chat-input';
   input.placeholder = '说点什么…';
+  if (accent) input.style.caretColor = accent;
   input.maxLength = 2000;
   input.rows = 1;
 

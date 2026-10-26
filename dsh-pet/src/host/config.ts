@@ -45,7 +45,7 @@ export const ID_FORBIDDEN = /[\\/:\x00-\x1f]/;
 
 /**
  * 「全局默认 + 种类可覆盖」的顶层字段白名单：这些是用户级成本 / 偏好 / 环境 / 节奏参数
- * （chatMemoryRounds、两个模型、两个配图开关与张数上限、eventsRefreshSec、physics、confineToScreen、font），
+ * （chatMemoryRounds、chatSoulEnabled、两个模型、两个配图开关与张数上限、eventsRefreshSec、physics、confineToScreen、font），
  * 不是「这个种类长什么样」，所以用户层写一次应对所有条目生效；种类文件仍可在自己顶层覆盖。
  * 人设是例外：实例级 pets[].whisperPrompt 优先，回落由消费端做（./persona 的 petPersona）。
  */
@@ -57,6 +57,7 @@ const GLOBAL_DEFAULT_KEYS = [
   'chatImageEnabled',
   'chatImageLimit',
   'chatMemoryRounds',
+  'chatSoulEnabled',
   'whisperModel',
   'chatModel',
   'eventsRefreshSec',
@@ -340,6 +341,12 @@ function topFieldValid(key: string, value: unknown): boolean {
       return typeof value === 'boolean';
     case 'chatImageEnabled':
       return typeof value === 'boolean';
+    case 'chatSoulEnabled':
+      // 灵魂注入总开关（全局默认，所有宠物共用）：关掉后不读卡、不写状态、不追加任何灵魂段
+      return typeof value === 'boolean';
+    case 'soul':
+      // 条目级灵魂卡：只认对象；{} = 显式关闭该条目的灵魂卡（覆盖内置默认），数组/标量/null 非法。
+      return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
     case 'confineToScreen':
       return typeof value === 'boolean';
     case 'trayEnabled':
@@ -379,7 +386,7 @@ function eventsRefreshSecValid(value: unknown): boolean {
 }
 
 /**
- * 文件宠物条目的合并基座：内置默认 + 白名单字段改用用户层的值。那 9 个字段是用户级成本/偏好/
+ * 文件宠物条目的合并基座：内置默认 + 白名单字段改用用户层的值。这些字段是用户级成本/偏好/
  * 环境/节奏参数，不是种类属性，用户在设置页改一次应让所有宠物（含 pet pack）都生效。
  * 语义仍是「种类可覆盖」：种类文件顶层写了自己的值就走 overlay 覆盖；用户层写了但非法的值直接跳过。
  */
@@ -531,6 +538,8 @@ function mergePet(
     // 这里刻意不填生效值：人设的默认值是所属条目那一份，一旦填进每只实例，/pet-display 写回就会把
     // 「跟随条目」固化成显式覆盖——之后用户改条目人设，这些实例不再跟着变。
     ...petPersonaField(p.whisperPrompt, label, id),
+    // 实例级灵魂卡同理：只带出用户真的写在这只宠物上的对象，不填条目生效值（回落由 host/soul 做）。
+    ...petSoulField(p.soul, label, id),
   };
 }
 
@@ -545,6 +554,20 @@ function petPersonaField(own: unknown, label: string, id: string): { whisperProm
   }
   if (own !== undefined && own !== null) {
     warnOnce(`${label}:whisperPrompt:${id}`, `宠物「${id}」的 whisperPrompt 非法，已忽略（回落所属条目人设）`);
+  }
+  return {};
+}
+
+/**
+ * 实例级 soul 的合并：只放行非空对象（数组/标量视为配置错误，告警后忽略，回落条目）。
+ * 与 whisperPrompt 一样**不填条目生效值**——否则设置页保存会把「跟随条目」固化成实例覆盖。
+ */
+function petSoulField(own: unknown, label: string, id: string): { soul?: Record<string, unknown> } {
+  if (own && typeof own === 'object' && !Array.isArray(own)) {
+    return Object.keys(own as Record<string, unknown>).length ? { soul: own as Record<string, unknown> } : {};
+  }
+  if (own !== undefined && own !== null) {
+    warnOnce(`${label}:soul:${id}`, `宠物「${id}」的 soul 非法，已忽略（回落所属条目灵魂卡）`);
   }
   return {};
 }
@@ -662,6 +685,13 @@ export function saveUserConfig(
     const rawPersona = pp.whisperPrompt;
     if (rawPersona !== undefined && rawPersona !== null && typeof rawPersona !== 'string') return null;
     const persona = typeof rawPersona === 'string' ? rawPersona.trim() : '';
+    // 实例级灵魂卡（可选）：只接非空对象；数组/标量/超大对象整包 400，不静默丢用户输入。
+    // 空对象 = 删除覆盖（读取侧回落条目），与清空人设输入框同语义。
+    const rawSoul = pp.soul;
+    if (rawSoul !== undefined && rawSoul !== null) {
+      if (typeof rawSoul !== 'object' || Array.isArray(rawSoul)) return null;
+      if (JSON.stringify(rawSoul).length > 20000) return null;
+    }
     const pet: Record<string, unknown> = {
       id,
       name,
@@ -674,6 +704,9 @@ export function saveUserConfig(
       position: { corner, marginX, marginY },
     };
     if (persona) pet.whisperPrompt = persona;
+    if (rawSoul && typeof rawSoul === 'object' && !Array.isArray(rawSoul) && Object.keys(rawSoul).length > 0) {
+      pet.soul = rawSoul;
+    }
     out.push(pet);
   }
   const ne = o.notificationsEnabled;
@@ -690,6 +723,9 @@ export function saveUserConfig(
   // 系统托盘开关（全局，仅桌面模式）：与上面几个全局布尔同语义——传了必须是布尔，没传走透传保留。
   const te = o.trayEnabled;
   if (te !== undefined && typeof te !== 'boolean') return null;
+  // 灵魂注入总开关（全局默认，所有宠物共用）：与 chatImageEnabled 同语义。
+  const cseSoul = o.chatSoulEnabled;
+  if (cseSoul !== undefined && typeof cseSoul !== 'boolean') return null;
   // physics（拖拽抛掷手感，设置页「物理」区可图形化编辑）：整段校验——physicsValid 与读取侧
   // 是同一份规则（gravity/groundFriction ≥ 0、restitution ∈ [0,1]、throwPower > 0、两个布尔）。
   // 传了就按白名单写入；没传则走下面的透传保留（用户手改的值原样不动）。
@@ -727,6 +763,7 @@ export function saveUserConfig(
   if (cse !== undefined) outConfig.clickSoundEnabled = cse;
   if (wie !== undefined) outConfig.whisperImageEnabled = wie;
   if (cie !== undefined) outConfig.chatImageEnabled = cie;
+  if (cseSoul !== undefined) outConfig.chatSoulEnabled = cseSoul;
   if (cts !== undefined) outConfig.confineToScreen = cts;
   if (te !== undefined) outConfig.trayEnabled = te;
   if (ph !== undefined) outConfig.physics = ph;
@@ -745,6 +782,7 @@ export function saveUserConfig(
   if (cse !== undefined) bodyOwned.add('clickSoundEnabled');
   if (wie !== undefined) bodyOwned.add('whisperImageEnabled');
   if (cie !== undefined) bodyOwned.add('chatImageEnabled');
+  if (cseSoul !== undefined) bodyOwned.add('chatSoulEnabled');
   if (cts !== undefined) bodyOwned.add('confineToScreen');
   if (te !== undefined) bodyOwned.add('trayEnabled');
   if (ph !== undefined) bodyOwned.add('physics');

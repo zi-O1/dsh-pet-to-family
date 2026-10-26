@@ -1,12 +1,16 @@
 /**
  * 人设拼装（宿主半侧，纯逻辑）：碎碎念与对话共用的 system 提示词只在这一处拼好。
  *
- * 三段，顺序固定：人设正文（实例 whisperPrompt → 条目 whisperPrompt → 空串）、名字声明、
- * 时间背景（timeContextOf 现算，不缓存）。不碰 IO、不读时钟，Date 由调用方传入；也不负责取字段与
- * 发起生成（index.ts 的 petSystemPrompt 只做「取字段 → 调这里」）。
+ * 基础三段，顺序固定：人设正文（实例 whisperPrompt → 条目 whisperPrompt → 空串）、名字声明、
+ * 时间背景（timeContextOf 现算，不缓存）。配置了灵魂卡时，在「人设正文」与「名字声明」之间
+ * 追加「稳定灵魂卡」与「此刻的灵魂状态」两段；没有卡时输出与旧版逐字一致。
+ * 不碰 IO、不读时钟，Date 由调用方传入；也不负责取字段与发起生成（index.ts 的 petSystemPrompt
+ * 只做「取字段 → 调这里」）。
  * 必须始终成立：拼装点唯一——不给名字与时间开占位符配置，否则等于出现第二个拼装点。
  * @module dsh-pet/src/host/persona
  */
+import type { SoulCard, SoulState } from '../shared/soul';
+import { renderSoulCard, renderSoulState } from './soul';
 import { timeContextOf } from './time-context';
 
 /**
@@ -32,6 +36,10 @@ export interface SystemPromptParts {
   id: string;
   /** 生成这一刻（生产传 new Date()，测试传固定日期） */
   now: Date;
+  /** 稳定灵魂卡（可选）：没有 / 空卡时完全不注入，旧人设输出逐字不变 */
+  soulCard?: SoulCard | null;
+  /** 此刻的动态灵魂状态（可选）：只在有灵魂卡时注入 */
+  soulState?: SoulState | null;
 }
 
 /**
@@ -43,7 +51,12 @@ export interface SystemPromptParts {
 export function composeSystemPrompt(parts: SystemPromptParts): string {
   const name = String(parts.name || parts.id);
   const nameLine = name ? '你的名字是“' + name + '”。' : '';
-  const lines = [parts.prompt, nameLine].filter((line) => line !== '');
+  // 灵魂段只在配置了灵魂卡时出现：没有卡 → renderSoulCard / renderSoulState 返回空串，
+  // 下面的 filter 会保持旧行为（人设 + 名字 + 时间三段，逐字不变）。
+  const soulCard = renderSoulCard(parts.soulCard);
+  // 状态必须依附于卡：没有卡时即使调用方误传了状态，也不额外注入。
+  const soulState = parts.soulCard ? renderSoulState(parts.soulState, parts.soulCard) : '';
+  const lines = [parts.prompt, soulCard, soulState, nameLine].filter((line) => line !== '');
   const time = timeContextOf(parts.now);
   if (time) lines.push(time);
   return lines.join('\n');
