@@ -307,7 +307,19 @@ npm run build && npm run standalone   # 仓库里（先构建）
 - `main-animation/`、`pet/*-animation/`、表情包图片等自定义媒体素材
 - 日志、Electron 缓存、插件本体
 
-因此，「记忆与偏好」可以一键搬家；如果你还自定义了动画/表情包素材，请把对应素材目录一起复制到新电脑的 `$DSH_HOME/dsh-pet/` 下。搬家包使用带版本号的 JSON 格式，导入时会校验格式和文件名，未知字段/路径会被拒绝。
+因此，「记忆与偏好」可以一键搬家；如果你还自定义了动画/表情包素材，请把对应素材目录一起复制到新电脑的 `$DSH_HOME/dsh-pet/` 下。
+
+搬家包是一个带版本号的 JSON 文件（不是 zip），字段如下：
+
+| 字段 | 作用 | 规则 |
+| --- | --- | --- |
+| `format` | 包类型 | 固定 `dsh-pet-move` |
+| `version` | 包版本 | 当前固定 `1` |
+| `exportedAt` | 导出时间 | ISO 时间 |
+| `appVersion` | 导出时的插件版本 | 只作展示 |
+| `files` | 文件名 → 文本内容 | 只允许 `main-config.jsonc`、`main-config.json`、`memory.json`、`soul-state.json`、`pet/<名称>.json` / `.jsonc` |
+
+导入接口是 `POST /dsh-pet-7340/move/import`，请求体就是上面的 JSON；请求体上限 16 MB，单个文件上限 8 MB。导入会先备份旧文件到 `$DSH_HOME/dsh-pet/move-backup-<时间>/`，再覆盖白名单内的文件；`memory.json` / `soul-state.json` 必须是合法 JSON 对象，未知文件名或路径会被拒绝。
 
 ## ⚙️ 工作状态联动（Work Status）
 
