@@ -7,18 +7,26 @@
  */
 import type { Animations, Category, PetDisplay } from './types';
 
+/** 设置页手风琴分组 id：右键「桌宠设置」子菜单与独立设置页共用同一套值。 */
+export const SETTINGS_SECTIONS = ['pets', 'soul', 'global', 'font', 'model', 'physics', 'config', 'storage'] as const;
+export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
+
 /** 叶子：可点击的菜单项。 */
 export interface MenuLeaf {
   label: string;
   /** 播放的动画名（点播动作）；action 优先于 anim */
   anim?: string;
   /** 自定义动作：打开网站 / 查看余额 / 立即碎碎念 / 打开对话弹窗 / 回到初始位置 /
-   *  重载配置（桌面端专属，重启桌面 Helper 并按最新配置重建窗口）/ 改显示位置（目标值见 display，
-   *  两端都注入）/ 第三方菜单项（只把 owner 与 label 上报给注册方，具体做什么由它决定）。
+   *  打开独立设置小窗（section 指定要展开的设置分组）/ 重载配置（桌面端专属，重启桌面 Helper
+   *  并按最新配置重建窗口）/ 改显示位置（目标值见 display，两端都注入）/ 第三方菜单项
+   *  （只把 owner 与 label 上报给注册方，具体做什么由它决定）。
    *  手动触发均不受 whisperEnabled 影响——那个字段只关自动轮询。 */
-  action?: 'open-site' | 'show-balance' | 'whisper' | 'chat' | 'home' | 'reload' | 'set-display' | 'third-party';
+  action?:
+    'open-site' | 'show-balance' | 'whisper' | 'chat' | 'home' | 'settings' | 'reload' | 'set-display' | 'third-party';
   /** set-display 的目标显示位置（与设置页的下拉框同一套取值） */
   display?: PetDisplay;
+  /** settings：设置页手风琴分组 id；缺省 pets。 */
+  section?: SettingsSection;
   /** third-party：注册它的 owner（身份键，只用于回传，不显示）；同一个 owner 的项收在同一分组下，
    *  只有一项时跳过这层直接平铺。 */
   owner?: string;
@@ -44,6 +52,22 @@ export const displayMenuBranch = (): MenuBranch => ({
     { label: '仅桌面', action: 'set-display', display: 'desktop' },
     { label: '两者', action: 'set-display', display: 'both' },
     { label: '都不', action: 'set-display', display: 'none' },
+  ],
+});
+
+/** 「桌宠设置」子菜单：每一项都打开独立设置小窗，并展开对应的手风琴分组。
+ *  与设置页共用 SETTINGS_SECTIONS；菜单只负责把 section 传过去，不在这里复制表单。 */
+export const settingsMenuBranch = (): MenuBranch => ({
+  label: '桌宠设置',
+  children: [
+    { label: '宠物配置', action: 'settings', section: 'pets' },
+    { label: '人格灵魂色彩', action: 'settings', section: 'soul' },
+    { label: '全局开关', action: 'settings', section: 'global' },
+    { label: '外观与字体', action: 'settings', section: 'font' },
+    { label: 'AI 模型与对话上下文', action: 'settings', section: 'model' },
+    { label: '物理（拖拽抛掷手感）', action: 'settings', section: 'physics' },
+    { label: '高级配置（文件）', action: 'settings', section: 'config' },
+    { label: '卸载与存储', action: 'settings', section: 'storage' },
   ],
 });
 

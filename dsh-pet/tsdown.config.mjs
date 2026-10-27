@@ -3,16 +3,19 @@
 //       window.__ModuleLoader__.load({ id, factory }) 单文件形态；
 //       react / react/jsx-runtime / @deepseek-ai/* 保持外部 require（不打包）。
 //
-// 三份配置：
+// 五份配置：
 //   1) 浏览器半侧（client → lib/client.js）—— 与 DSH 内运行一致，@deepseek-ai/* 全部
 //      外部化（那些包由 DSH 宿主提供）；产物额外包一层 IIFE，理由见该份配置里的注释。
 //   2) 宿主半侧（index → lib/index.js）—— 保持 ESM，由 DSH 的 Loader import。
-//   3) 独立模式入口（standalone → lib/standalone.js）—— 它要跑在**没有 DSH** 的环境里
+//   3) 独立设置小窗（settings-window → lib/settings-window.js）—— 由宿主 HTML 以经典脚本
+//      加载，不经过 DSH 的 __ModuleLoader__，所以 React 必须打进 IIFE。
+//   4) 独立模式入口（standalone → lib/standalone.js）—— 它要跑在**没有 DSH** 的环境里
 //      （插件装进 profile 后直接 `node node_modules/dsh-pet/lib/standalone.js`），
 //      而宿主半边的模块图静态 import 了三个只在 DSH 里存在的包，那里解析不到。
 //      因此用 alias 把它们换成本地替身（src/standalone/shims/*）：替身只做
 //      "转调插件自己的同口径实现" 或 "明确降级"，没有任何生成/网络逻辑（细节见各文件头）。
 //      其余 @deepseek-ai/* 仍按外部处理（负向断言），避免哪天误把 DSH 代码打进产物。
+//   5) 独立应用入口（app → lib/app.js）—— Electron 进程里跑本机服务 + 插件宿主半边 + 桌面窗口。
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'tsdown';
@@ -23,7 +26,7 @@ const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)));
 /** 替换包名用的绝对路径（rolldown 的 alias 收绝对路径最稳） */
 const shim = (name) => join(packageRoot, 'src', 'standalone', 'shims', `${name}.ts`);
 
-/** 两份配置共用的编译口径 */
+/** 宿主 / 独立模式 / 独立应用共用的编译口径 */
 const shared = {
   format: ['esm'],
   platform: 'node',
@@ -79,6 +82,22 @@ export default defineConfig([
       '@deepseek-ai/dsh-credentials': shim('dsh-credentials'),
       '@deepseek-ai/dsh-llm': shim('dsh-llm'),
     },
+  },
+  {
+    // 独立设置小窗（`lib/settings-window.js`）：由宿主 HTML 以经典脚本加载，React 必须打进包，
+    // 因为该页面不经过 DSH 的 __ModuleLoader__。只复用设置组件，不碰 DSH 外壳。
+    format: ['iife'],
+    platform: 'browser',
+    target: 'es2020',
+    dts: false,
+    outDir: 'lib',
+    clean: false,
+    entry: {
+      'settings-window': 'src/settings-window/index.ts',
+    },
+    noExternal: [/^react$/, /^react\//, /^react-dom$/, /^react-dom\//, /^scheduler$/],
+    external: [/^@deepseek-ai\//, /^@electron\//, /^node:/],
+    define: { 'process.env.NODE_ENV': '"production"' },
   },
   {
     ...shared,

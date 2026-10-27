@@ -13,6 +13,7 @@ export * from './motion';
 export * from './balance';
 export * from './whisper';
 export * from './config';
+export * from './soul';
 export * from './fonts';
 export * from './notify';
 export * from './menu';

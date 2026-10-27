@@ -57,6 +57,7 @@ const stripJsonc = (s) => {
 const required = [
   'lib/index.js', // 宿主半侧
   'lib/client.js', // 浏览器半侧
+  'lib/settings-window.js', // 独立设置小窗 bundle（React IIFE）
   'lib/types/index.d.ts', // 宿主类型声明
   'lib/types/client/index.d.ts', // 客户端类型声明
   'cordis.patch.yml', // bundle patch（挂载声明）
@@ -66,11 +67,14 @@ const required = [
   'runtime/electron-helper/topmost-watchdog.js', // 桌面模式置顶看门狗判定（main.js require，缺了会启动即崩）
   'runtime/electron-helper/dpi-linearization.js', // 桌面模式 DPI 线性化判定与换算（main.js require，缺了会启动即崩）
   'runtime/electron-helper/tray-platform.js', // 桌面模式托盘平台差异判定（main.js require，缺了会启动即崩）
+  'runtime/electron-helper/x11-pointer.js', // Linux 指针直查（main.js require，缺了会启动即崩）
   'runtime/electron-helper/desktop-geometry.js', // 活动边界与菜单工作区分离
   'runtime/electron-helper/preload.js', // 桌面模式 preload 桥
   'runtime/electron-helper/renderer.js', // 桌面模式渲染端（宠物本体）
   'runtime/electron-helper/shared-core.js', // 桌面模式共享纯逻辑（src/shared 构建产物，window.PetShared）
   'runtime/electron-helper/index.html', // 桌面模式页面壳
+  'runtime/electron-helper/settings-window-main.js', // 独立设置小窗 Electron 主进程
+  'runtime/electron-helper/settings-window.html', // 独立设置小窗页面壳
 ];
 for (const f of required) {
   existsSync(join(ROOT, f)) ? ok(`exists ${f}`) : fail(`missing ${f}`);

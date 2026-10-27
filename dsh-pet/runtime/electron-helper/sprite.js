@@ -1510,10 +1510,28 @@ class PetSprite {
     // 更新——setTip 变显隐时会立刻渲染一次，晚一步就会用上一次的光标摆位。
     if (inBody) this.tipCursor = { x: this.pos.x - this.margin.l + wx, y: this.pos.y - this.margin.t + wy };
     this.setInteractive(inBody);
-    // 悬浮提示与可交互判定同源（同一个 inBody）：进身体出现，离开收起
     this.setTip(inBody);
     // 跟随光标：位置依赖光标，每次移动都要重摆（setTip 只在显隐变化时渲染）
     if (this.tipOn) this.renderTip();
+  }
+
+  /**
+   * 右键「桌宠设置」：打开独立设置小窗。
+   *
+   * 桌面端由 Helper 主进程拉起单独的 Electron 设置进程（不经过 DSH 主设置页）；
+   * 没有 preload 桥时退回系统浏览器打开同一独立页面，至少不弹 DSH 主界面。
+   * section 对应设置页里的手风琴分组。
+   */
+  openSettingsWindow(section) {
+    this.closeMenu();
+    if (window.petBridge && typeof window.petBridge.openSettingsWindow === 'function') {
+      window.petBridge.openSettingsWindow(section);
+      return;
+    }
+    if (window.petBridge && typeof window.petBridge.openDshSite === 'function') {
+      const q = section ? '?section=' + encodeURIComponent(section) : '';
+      window.petBridge.openDshSite(ORIGIN + '/dsh-pet-7340/settings-window' + q);
+    }
   }
 
   onClick(e) {
@@ -1588,6 +1606,8 @@ class PetSprite {
     tools.push(
       { label: '碎碎念', action: 'whisper' },
       { label: '对话', action: 'chat' },
+      // 设置列表：每项打开独立设置小窗并展开对应分组，不在主界面里改设置。
+      S.settingsMenuBranch(),
       { label: '回到初始位置', action: 'home' },
       // 显示位置（仅网页/仅桌面/两者/都不）：改这只宠物的 display 配置，由宿主重载生效。
       // 与浏览器端注入同一份子菜单，两端文案与取值不会漂移。不就地开关窗：窗口是进程启动时按
@@ -1656,6 +1676,10 @@ class PetSprite {
     }
     if (leaf.action === 'home') {
       this.goHome(); // 停漫游/移动，清会话位置，回配置角落
+      return;
+    }
+    if (leaf.action === 'settings') {
+      this.openSettingsWindow(leaf.section); // 独立设置小窗；section 决定展开哪一组
       return;
     }
     if (leaf.action === 'set-display') {
@@ -1739,6 +1763,12 @@ class PetSprite {
       y: Math.max(4, this.hit.getBoundingClientRect().top + 6),
       // 弹窗同菜单：只允许在「窗口 ∩ 工作区」内显示，贴边时不被屏幕裁掉
       clamp: this.visibleClampRect(),
+      // 灵魂色：与浏览器端同一口径。实例覆盖优先，没写回落条目拍平结果；
+      // 全局关闭 / 没有灵魂卡时不传，让弹窗回落到旧版描边与光标。
+      accentColor:
+        this.pet.soulEnabled !== false && (this.pet.soul || this.pet.entrySoul)
+          ? S.soulAccentColor(this.pet.soul ?? this.pet.entrySoul)
+          : undefined,
       onSent: () => {
         // 发送成功：回复已写进 S → 版本号变 → 挂着的长轮询立刻返回并弹气泡
         console.info('[dsh-pet] 对话已发送 pet=' + this.pet.id);

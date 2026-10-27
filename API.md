@@ -18,6 +18,7 @@ dsh-pet 的宿主半侧向 DSH 自己的 Web 服务注册了**一条前缀路由
 | `GET /dsh-pet-7340/config/meta` | 配置文件路径、日志文件路径、各类数据落盘位置、卸载该用哪个 profile |
 | `GET /dsh-pet-7340/models` | 可用服务商与模型清单（与 DSH 自己的模型选择器同源） |
 | `GET /dsh-pet-7340/chat?pet=` | 读某只桌宠最近的对话记忆窗口；带 `?rounds=` 可指定本次读取的轮数（0–200，不传用配置的 `chatMemoryRounds`） |
+| `GET /dsh-pet-7340/soul?pet=` | 读灵魂卡与动态状态预览（只读，不推进关系、不写状态；无卡或全局关闭时为空） |
 | `GET /dsh-pet-7340/pose?pet=` | 读**桌面端**宠物的实况（位置 + 朝向）；网页端用客户端服务 `petApi7340`，不走这条路 |
 
 ## 二、占用锁
@@ -95,6 +96,17 @@ dsh-pet 的宿主半侧向 DSH 自己的 Web 服务注册了**一条前缀路由
 | --- | --- |
 | `POST /dsh-pet-7340/work-status` | **外部写入工作状态**：`{ state, task? }`，固定外部槽，最后写入者生效 |
 | `DELETE /dsh-pet-7340/work-status` | **清空外部槽**回空闲（幂等，204） |
+
+## 九、独立设置小窗
+
+| 接口 | 功能 |
+| --- | --- |
+| `GET /dsh-pet-7340/settings-window` | 独立设置小窗 HTML 壳（不缓存，自动替换脚本版本号） |
+| `GET /dsh-pet-7340/settings-window.js` | 独立设置小窗 React bundle（IIFE，React 已打进包） |
+| `POST /dsh-pet-7340/settings-window/open` | overlay popup 被桌面外壳拦截时，由宿主拉起独立设置进程；body 可带 `section` / `lang` |
+
+桌面端**右键宠物 →「桌宠设置」**选择分组，由 Helper 拉起单独的 Electron 设置进程；普通浏览器用同源 popup 打开同一页面。
+页面只复用「桌宠配置」设置组件，不打开 DSH 主设置页或主界面。
 
 ---
 

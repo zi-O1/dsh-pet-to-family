@@ -10,6 +10,7 @@
  *
  * @module dsh-pet/src/host/index
  */
+import { spawn } from 'node:child_process';
 import { createReadStream, existsSync, fstatSync, readFileSync } from 'node:fs';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -89,6 +90,7 @@ import {
   soulCardOf,
 } from './soul';
 import type { SoulCard, SoulState } from '../shared/soul';
+import { SETTINGS_SECTIONS } from '../shared/menu';
 import {
   HelperProcess,
   defaultElectronExe,
@@ -210,10 +212,21 @@ function sendText(res: ServerResponse, status: number, body: string): void {
   res.end(body);
 }
 
+/** 发送 HTML（设置小窗壳）：不缓存，保证窗口每次打开都拿到最新脚本版本。 */
+function sendHtml(res: ServerResponse, status: number, body: string): void {
+  res.writeHead(status, {
+    'content-type': 'text/html; charset=utf-8',
+    'content-length': Buffer.byteLength(body),
+    'cache-control': 'no-store',
+  });
+  res.end(body);
+}
+
 /** 单次业务路由的应答（WebServer 注册与桌面 Helper 管道共用的同一契约；消费方各自落盘） */
 type RouteResult =
   | { kind: 'json'; status: number; obj: unknown; headers?: Record<string, string> }
   | { kind: 'text'; status: number; body: string }
+  | { kind: 'html'; status: number; body: string }
   | { kind: 'file'; file: string; contentType: string }
   /** 无需应答：调用方在挂起等待期间已断开（见 /playback 的等待分支）——消费方直接收尾，不写 */
   | { kind: 'none' };
@@ -1081,6 +1094,9 @@ export function apply(ctx: any): void {
           if (result.kind === 'text') {
             return { id: req.id, status: result.status, contentType: 'text/plain; charset=utf-8', body: result.body };
           }
+          if (result.kind === 'html') {
+            return { id: req.id, status: result.status, contentType: 'text/html; charset=utf-8', body: result.body };
+          }
           if (result.kind === 'none') {
             // 无需应答：管道侧不传 abort signal，正常到不了这里；保底给个空 204
             return { id: req.id, status: 204, contentType: 'text/plain; charset=utf-8', body: '' };
@@ -1581,6 +1597,83 @@ export function apply(ctx: any): void {
       } catch (e) {
         return { kind: 'json', status: 500, obj: { error: e instanceof Error ? e.message : String(e) } };
       }
+    }
+
+    // 浏览器 overlay 的「桌宠设置」：DSH 桌面外壳会拦截 window.open，改由宿主 spawn 独立设置进程。
+    // 普通浏览器仍走同源 popup；只有被拦截时才到这里，所以这个路由不参与常规打开流程。
+    if (rest === 'settings-window/open') {
+      if (method !== 'POST') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = (JSON.parse(body ?? 'null') as Record<string, unknown> | null) ?? {};
+      } catch {
+        return { kind: 'json', status: 200, obj: { ok: false, reason: 'bad-request' } };
+      }
+      const rawSection = typeof parsed.section === 'string' ? parsed.section : '';
+      const section = (SETTINGS_SECTIONS as readonly string[]).includes(rawSection) ? rawSection : 'pets';
+      const lang = parsed.lang === 'en' ? 'en' : 'zh';
+      const port = typeof ctx.webServer?.port === 'number' ? ctx.webServer.port : 0;
+      if (!port) return { kind: 'json', status: 200, obj: { ok: false, reason: 'server-not-ready' } };
+      const electronPath = resolveElectronPath() ?? (inProcessHost ? process.execPath : undefined);
+      if (!electronPath) return { kind: 'json', status: 200, obj: { ok: false, reason: 'electron-missing' } };
+      const script = join(PACKAGE_ROOT, 'runtime/electron-helper/settings-window-main.js');
+      if (!existsSync(script)) {
+        return { kind: 'json', status: 200, obj: { ok: false, reason: 'bundle-missing' } };
+      }
+      const origin = `http://127.0.0.1:${port}`;
+      let siteUrl: string;
+      try {
+        siteUrl = ctx.connection.authenticatedUrl(origin);
+      } catch {
+        return { kind: 'json', status: 200, obj: { ok: false, reason: 'auth-unavailable' } };
+      }
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        DSH_PET_SETTINGS_URL: `${origin}${ROUTE_PREFIX}/settings-window?lang=${lang}&section=${section}`,
+        DSH_PET_SITE_URL: siteUrl,
+      };
+      delete env.ELECTRON_RUN_AS_NODE;
+      try {
+        const child = spawn(electronPath, [script], { detached: true, stdio: 'ignore', env });
+        child.unref();
+        return { kind: 'json', status: 200, obj: { ok: true } };
+      } catch (e) {
+        return {
+          kind: 'json',
+          status: 200,
+          obj: { ok: false, reason: 'spawn-failed', message: e instanceof Error ? e.message : String(e) },
+        };
+      }
+    }
+
+    // 独立设置小窗：HTML 壳 + React 设置 bundle。桌面 Helper 的独立设置进程先访问已鉴权站点
+    // 换 Cookie，再加载这里；浏览器 overlay 用同源 popup，Cookie 同样生效。
+    // 页面只复用设置组件，不打开 DSH 主设置外壳或主界面。
+    if (rest === 'settings-window') {
+      if (method !== 'GET') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+      try {
+        const html = readFileSync(join(PACKAGE_ROOT, 'runtime/electron-helper/settings-window.html'), 'utf8');
+        // 每次打开换脚本版本，避免 Electron / 浏览器缓存住旧 bundle。
+        return {
+          kind: 'html',
+          status: 200,
+          body: html.replace(/__SETTINGS_JS_VERSION__/g, String(Date.now())),
+        };
+      } catch (e) {
+        return {
+          kind: 'text',
+          status: 500,
+          body: `settings window shell missing: ${e instanceof Error ? e.message : String(e)}`,
+        };
+      }
+    }
+    if (rest === 'settings-window.js') {
+      if (method !== 'GET') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+      const file = join(PACKAGE_ROOT, 'lib', 'settings-window.js');
+      if (!existsSync(file)) {
+        return { kind: 'text', status: 404, body: 'settings window bundle not built (run npm run bundle)' };
+      }
+      return { kind: 'file', file, contentType: 'text/javascript; charset=utf-8' };
     }
 
     // 轮询状态（/state，GET，no-cache）是前端轮询的唯一数据源：只读、纯内存、零副作用——
@@ -2353,6 +2446,7 @@ export function apply(ctx: any): void {
             res.off('close', onClose);
             if (result.kind === 'json') sendJson(res, result.status, result.obj, result.headers);
             else if (result.kind === 'text') sendText(res, result.status, result.body);
+            else if (result.kind === 'html') sendHtml(res, result.status, result.body);
             else if (result.kind === 'none') {
               /* 调用方已断开：不再写（写了会抛） */
             } else sendFile(res, result.file, result.contentType); // 非 async：流在 open 后自己 pipe，错误内部收口

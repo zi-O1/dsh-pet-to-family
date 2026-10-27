@@ -22,10 +22,9 @@ try {
   );
   process.exit(3);
 }
-const { app, BrowserWindow, ipcMain, screen, shell, protocol, Tray, Menu, nativeImage, powerMonitor } =
-  electronApi;
+const { app, BrowserWindow, ipcMain, screen, shell, protocol, Tray, Menu, nativeImage, powerMonitor } = electronApi;
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawn } = require('node:child_process');
 const { readFileSync, writeFileSync } = require('node:fs');
 const fsPromises = require('node:fs/promises');
 // 点击穿透兜底通道的纯判定（不依赖 Electron 的 forward 鼠标钩子；见文件头）
@@ -50,6 +49,9 @@ const { buildDeskGeometry } = require('./desktop-geometry.js');
 
 /** Linux 指针提供者：仅在 Linux 创建；查询失败时 get() 返回 null（调用方回退 Electron 原生 API） */
 const linuxPointer = process.platform === 'linux' ? createLinuxPointer() : null;
+
+/** 设置页手风琴分组 id 白名单：只允许右键菜单里的这几项，避免把任意 query 传进设置页。 */
+const SETTINGS_SECTIONS = new Set(['pets', 'soul', 'global', 'font', 'model', 'physics', 'config', 'storage']);
 
 /**
  * 当前光标位置（DIP）。
@@ -943,6 +945,33 @@ app.whenReady().then(() => {
       return;
     }
     openSite(url);
+  });
+
+  // 右键「桌宠设置」：拉起独立设置小窗。它必须是单独的 Electron 进程——宿主保存配置会重启本 Helper，
+  // 若设置窗长在本进程里，用户一点保存窗口就没了。设置进程加载的是同一套独立设置页，
+  // 先访问已鉴权站点换 Cookie，再进 /dsh-pet-7340/settings-window。
+  ipcMain.on('pet:open-settings-window', (_event, section) => {
+    const script = path.join(__dirname, 'settings-window-main.js');
+    const safeSection = typeof section === 'string' && SETTINGS_SECTIONS.has(section) ? section : 'pets';
+    const settingsUrl =
+      ORIGIN +
+      PET_ROUTE +
+      '/settings-window?lang=' +
+      (app.getLocale().toLowerCase().startsWith('zh') ? 'zh' : 'en') +
+      '&section=' +
+      encodeURIComponent(safeSection);
+    const env = {
+      ...process.env,
+      DSH_PET_SETTINGS_URL: settingsUrl,
+      DSH_PET_SITE_URL: process.env.DSH_PET_SITE_URL || '',
+    };
+    delete env.ELECTRON_RUN_AS_NODE;
+    try {
+      const child = spawn(process.execPath, [script], { detached: true, stdio: 'ignore', env });
+      child.unref();
+    } catch (error) {
+      console.error('[dsh-pet-desktop-helper] open settings window failed:', error);
+    }
   });
 
   // 显示器热更新：分辨率/缩放变化、插拔屏、旋转都会让桌面几何失效（原先只在建窗时经 query 注入

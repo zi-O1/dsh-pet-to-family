@@ -82,6 +82,10 @@ tags:
     description: 动作端点——触发一次宿主行为，写进 State，只回 `{ ok }`
   - name: Config
     description: 配置的读取、保存与元信息
+  - name: Soul
+    description: 人格灵魂卡的只读预览与动态状态
+  - name: Settings
+    description: 独立设置小窗页面与脚本（宿主 UI 资源，不是第三方业务 API）
   - name: Assets
     description: 字体、通知图标、表情包、动画素材
 
@@ -1532,6 +1536,33 @@ paths:
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
 
+  /dsh-pet-7340/soul:
+    get:
+      tags: [Soul]
+      operationId: getSoulPreview
+      summary: 读取灵魂卡与动态状态预览
+      description: |
+        设置页「人格灵魂色彩」的只读预览：返回归一化后的灵魂卡、当前动态状态，以及此刻
+        真正会注入 system prompt 的文本。**只读**，不推进关系、不写 `soul-state.json`。
+
+        全局关闭（`chatSoulEnabled: false`）时 `enabled` 为 `false`；该宠物没有灵魂卡时
+        `card` / `state` / `color` 为 `null`，`render` 为空串。两种情况下提示词都与旧版逐字一致。
+      parameters:
+        - $ref: "#/components/parameters/PetIdQuery"
+      responses:
+        "200":
+          description: |
+            恒为 200（除 405）。失败也是 200（`{ ok: false, reason }`）：
+            `pet-required`（没给 pet）、`unknown-pet`（没有这只宠物）、`generate-error`（读配置 / 状态失败）。
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/SoulPreview"
+                  - $ref: "#/components/schemas/FailureResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+
   /dsh-pet-7340/config:
     get:
       tags: [Config]
@@ -1848,6 +1879,116 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /dsh-pet-7340/settings-window:
+    get:
+      tags: [Settings]
+      operationId: getSettingsWindow
+      summary: 独立设置小窗 HTML 壳
+      description: |
+        桌宠设置页的独立小窗页面。桌面端由 Helper 拉起单独的 Electron 进程加载；普通浏览器
+        用同源 popup 加载。页面只复用「桌宠配置」设置组件，不打开 DSH 主设置页或主界面。
+
+        HTML 带 `cache-control: no-store`，并把内联脚本地址替换成一次性版本号，避免缓存旧 bundle。
+      responses:
+        "200":
+          description: 设置小窗 HTML
+          content:
+            text/html:
+              schema:
+                type: string
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          description: 设置小窗页面壳缺失（安装不完整）
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /dsh-pet-7340/settings-window/open:
+    post:
+      tags: [Settings]
+      operationId: openSettingsWindow
+      summary: 在桌面外壳拦截 window.open 时拉起独立设置进程
+      description: |
+        浏览器 overlay 先尝试同源 `window.open`；被 DSH 桌面外壳拦截时调用本接口，由宿主 spawn
+        单独的 Electron 设置进程（与 Helper 同一条 `settings-window-main.js` 路径）。
+        普通浏览器不会走到这里。
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                section:
+                  type: string
+                  enum: [pets, soul, global, font, model, physics, config, storage]
+                  description: 要展开的设置分组，非法值回落 pets。
+                lang:
+                  type: string
+                  enum: [zh, en]
+                  description: 设置页语言，缺省 zh。
+      responses:
+        "200":
+          description: |
+            恒为 200（除 405）。失败也是 200（`{ ok: false, reason }`）：
+            `electron-missing`（本机没有 Electron 运行时）、`server-not-ready`、
+            `auth-unavailable`、`bundle-missing`、`spawn-failed`。
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [ok]
+                    properties:
+                      ok:
+                        type: boolean
+                        const: true
+                  - type: object
+                    required: [ok, reason]
+                    properties:
+                      ok:
+                        type: boolean
+                        const: false
+                      reason:
+                        type: string
+                      message:
+                        type: string
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+
+  /dsh-pet-7340/settings-window.js:
+    get:
+      tags: [Settings]
+      operationId: getSettingsWindowScript
+      summary: 独立设置小窗 React bundle
+      description: |
+        设置小窗的 React IIFE 产物（`lib/settings-window.js`）。由 HTML 以经典脚本加载，
+        不经过 DSH 的模块加载器，因此 React 已打进 bundle。
+      parameters:
+        - name: v
+          in: query
+          required: false
+          description: HTML 每次打开生成的一次性版本号，仅用于绕过缓存。
+          schema:
+            type: string
+      responses:
+        "200":
+          description: JavaScript bundle
+          content:
+            text/javascript:
+              schema:
+                type: string
+        "404":
+          description: 安装包未包含设置小窗 bundle（未构建）
+          content:
+            text/plain:
+              schema:
+                type: string
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /dsh-pet-7340/reload:
     post:
@@ -3252,6 +3393,11 @@ components:
           description: 显示在哪：仅浏览器 / 仅桌面 / 两者 / 都不显示
         position:
           $ref: "#/components/schemas/Position"
+        soul:
+          $ref: "#/components/schemas/SoulCard"
+          description: |
+            实例级灵魂卡（可选）。写了就整张取代所属条目的卡；留空 / `{}` = 跟随条目。
+            不写 / 空卡时该宠物没有灵魂注入。
 
     SaveConfigRequest:
       type: object
@@ -3286,6 +3432,11 @@ components:
             **0 = 不限制（全部发）**。
             为什么要它：整张清单每条消息都要附，token 随张数线性增长，限制后配图开销上限可控。
             设置页「AI 模型与对话上下文」区的数字输入框写的就是它。缺失默认 10。
+        chatSoulEnabled:
+          type: boolean
+          description: |
+            灵魂注入总开关（全局默认，默认 `true`）。关闭后不读灵魂卡、不写动态状态，
+            提示词与旧版逐字一致；单只宠物仍可通过实例级 `soul` 覆盖卡片内容。
 
     PetConfigEntry:
       type: object
@@ -3315,6 +3466,9 @@ components:
           enum: [web, desktop, both, none]
         position:
           $ref: "#/components/schemas/Position"
+        soul:
+          $ref: "#/components/schemas/SoulCard"
+          description: 该宠物当前生效的实例级灵魂卡（没有时为省略）
         whisperPrompt:
           type: string
           description: 该宠物的人设提示词（碎碎念与对话共用）
@@ -3356,3 +3510,155 @@ components:
               default: 300
               description: 周期碎碎念间隔
       additionalProperties: true
+
+    SoulPreview:
+      type: object
+      description: |
+        `GET /soul` 的只读预览。`card` 是归一化后的灵魂卡，`state` 是按当前时间衰减后的动态状态，
+        `render` 是此刻真正会注入 system prompt 的文本（关闭或没有卡时为空串）。
+      required: [ok, enabled, card, state, render, color]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        enabled:
+          type: boolean
+          description: 全局灵魂注入开关（`chatSoulEnabled !== false`）；没有卡时仍可为 `true`
+        card:
+          oneOf:
+            - $ref: "#/components/schemas/SoulCard"
+            - type: "null"
+        state:
+          oneOf:
+            - $ref: "#/components/schemas/SoulState"
+            - type: "null"
+        render:
+          type: string
+          description: 实际注入文本；没有卡或全局关闭时为空串
+        color:
+          oneOf:
+            - type: string
+              pattern: "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+            - type: "null"
+          description: 对话窗描边 / 光晕 / 光标用的主色；没有卡时为 null
+
+    SoulCard:
+      type: object
+      description: |
+        一只宠物的灵魂卡（配置项 `soul`）。所有字段都可选，但至少要有一项有内容才会生效。
+        完整字段与示例见 `CONFIG.md` 的「人格灵魂色彩」。
+      additionalProperties: true
+      properties:
+        version:
+          type: integer
+        identity:
+          type: object
+          additionalProperties: true
+          description: 一句话灵魂、种类、角色、来处、自我认知、核心矛盾
+        values:
+          type: array
+          items:
+            oneOf:
+              - type: string
+              - type: object
+                additionalProperties: true
+        traits:
+          type: object
+          description: 性格倾向：名称 → 0–100 的强度
+          additionalProperties:
+            type: number
+        voice:
+          type: object
+          additionalProperties: true
+          description: 语气、节奏、句长、词汇、称呼、幽默、避免项与语气示例
+        desires:
+          type: array
+          items:
+            oneOf:
+              - type: string
+              - type: object
+                additionalProperties: true
+        fears:
+          type: array
+          items:
+            oneOf:
+              - type: string
+              - type: object
+                additionalProperties: true
+        boundaries:
+          type: array
+          items:
+            type: string
+        relationshipSeed:
+          type: object
+          additionalProperties: true
+          description: 关系起点（阶段 / 信任 / 亲密 / 尊重 / 张力 / 熟悉）
+        temperament:
+          type: object
+          additionalProperties: true
+          description: 基线心情、情绪半衰期、精力与表达欲
+        soulColor:
+          type: object
+          additionalProperties: true
+          description: 主色 / 辅色 / 光晕 / 阴影 / 描述 / 意象；颜色只接受 `#rgb` 或 `#rrggbb`
+          properties:
+            primary:
+              type: string
+              pattern: "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+            secondary:
+              type: string
+              pattern: "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+            glow:
+              type: string
+              pattern: "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+            shadow:
+              type: string
+              pattern: "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+            description:
+              type: string
+            motifs:
+              type: string
+        examples:
+          type: array
+          maxItems: 4
+          items:
+            type: string
+        notes:
+          type: string
+
+    SoulState:
+      type: object
+      description: 宿主写回的动态灵魂状态（`soul-state.json` 的单个宠物分桶）
+      required: [version, petId, mood, relationship, updatedAt]
+      additionalProperties: true
+      properties:
+        version:
+          type: integer
+          const: 1
+        petId:
+          type: string
+        mood:
+          type: object
+          additionalProperties: true
+          description: 此刻情绪（label / valence / arousal / energy / cause / updatedAt）
+        relationship:
+          type: object
+          additionalProperties: true
+          description: 关系阶段与信任 / 亲密 / 尊重 / 张力 / 熟悉 / 互动次数
+        lastExchange:
+          type: object
+          additionalProperties: true
+          description: |
+            最近一次对话（user / assistant / at），用于 `chatMemoryRounds: 0` 时的连续性。
+        activeGoals:
+          type: array
+          items:
+            type: string
+        selfNarrative:
+          type: string
+        lastReflectionAt:
+          oneOf:
+            - type: string
+            - type: "null"
+        updatedAt:
+          type: string

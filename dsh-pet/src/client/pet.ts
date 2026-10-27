@@ -59,12 +59,14 @@ import {
   buildMenuTree,
   buildMoreBranch,
   displayMenuBranch,
+  settingsMenuBranch,
   mountContextMenu,
   isNoMirrorAnimation,
   readMenuItems,
   MENU_CSS,
   type MenuLeaf,
   type MenuMoreItem,
+  type SettingsSection,
   type MenuNode,
 } from '../shared/menu';
 // 悬浮提示：与桌面共用样式与摆位判据。
@@ -204,6 +206,27 @@ function injectCss(): void {
     tag.textContent = css;
     document.head.appendChild(tag);
   }
+}
+
+/** 独立设置小窗：同源 popup 加载桌宠设置页，不打开 DSH 主设置外壳。
+ *  DSH 桌面外壳会拦截 window.open；被拦时请宿主拉起独立 Electron 设置进程（普通浏览器仍用 popup）。
+ *  section 对应设置页里的手风琴分组，右键「桌宠设置」菜单直接定位过去。 */
+function openSettingsWindow(section?: SettingsSection): void {
+  const lang = (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+  const params = new URLSearchParams({ lang });
+  if (section) params.set('section', section);
+  const url = '/dsh-pet-7340/settings-window?' + params.toString();
+  const opened = window.open(url, 'dsh-pet-settings', 'popup=yes,width=560,height=780,resizable=yes,scrollbars=yes');
+  if (opened) {
+    opened.focus();
+    return;
+  }
+  // DSH 桌面外壳会拦截 window.open：改由宿主 spawn 独立设置进程，而不是退回主设置页。
+  void postAction('/dsh-pet-7340/settings-window/open', { section: section ?? 'pets', lang })
+    .then((ok: boolean) => {
+      if (!ok) console.warn('[dsh-pet] 独立设置小窗打开失败；请确认桌面 Electron 已安装');
+    })
+    .catch((e: unknown) => console.warn('[dsh-pet] 独立设置小窗打开异常', e));
 }
 
 /** 制造宠物页面组件（工厂），返回多开容器 PetMulti。
@@ -1926,6 +1949,10 @@ export function makePetUI(rt: {
         });
         return;
       }
+      if (leaf.action === 'settings') {
+        openSettingsWindow(leaf.section);
+        return;
+      }
       if (leaf.action === 'set-display') {
         // 显示位置：写配置后重新拉取成品配置；改成不含 web 的值后宠物会从页面消失。
         const display = leaf.display;
@@ -1988,6 +2015,8 @@ export function makePetUI(rt: {
         { label: '查看余额', action: 'show-balance' },
         { label: '碎碎念', action: 'whisper' },
         { label: '对话', action: 'chat' },
+        // 设置列表：与桌面端同一份；每项打开独立设置小窗并展开对应分组。
+        settingsMenuBranch(),
         { label: '回到初始位置', action: 'home' },
         // 显示位置子菜单与桌面端同一份；改成不含 web 的值后本宠物会从页面消失。
         displayMenuBranch(),

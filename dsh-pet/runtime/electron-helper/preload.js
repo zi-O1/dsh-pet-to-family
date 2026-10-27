@@ -48,6 +48,10 @@ contextBridge.exposeInMainWorld('petBridge', {
   openDshSite(url) {
     ipcRenderer.send('pet:open-site', { url });
   },
+  // 右键「桌宠设置」：由 Helper 主进程拉起独立的设置小窗（不打开 DSH 主设置页/主界面）。
+  openSettingsWindow(section) {
+    ipcRenderer.send('pet:open-settings-window', section);
+  },
   // 宠物间碰撞（跨窗 broker）：飞行方上报状态，主进程汇聚广播；被撞方收 pet:hit 后按新初速抛出。
   reportFlight(state) {
     ipcRenderer.send('pet:report-flight', state);

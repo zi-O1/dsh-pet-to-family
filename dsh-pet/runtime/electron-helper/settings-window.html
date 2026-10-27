@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>桌宠设置</title>
+    <style>
+      /* 独立设置页没有 DSH 外壳，补一套设置组件用到的语义 token 回退值。
+         颜色尽量贴近 DSH 浅色设置页，窗口缩小时仍保持足够对比度。 */
+      :root {
+        --dsw-alias-bg-layer-1: #ffffff;
+        --dsw-alias-border-l1: #e3e5e8;
+        --dsw-alias-border-l2: #c9ccd1;
+        --dsw-alias-button-info-fill: #2563eb;
+        --dsw-alias-button-info-hover: #1d4ed8;
+        --dsw-alias-interactive-bg-active: #eef2ff;
+        --dsw-alias-interactive-bg-hover: #f3f5f8;
+        --dsw-alias-label-caption: #777b82;
+        --dsw-alias-label-dimmed: #9aa0a6;
+        --dsw-alias-label-primary: #1f2328;
+        --dsw-alias-label-secondary: #4b5057;
+        --dsw-alias-label-tertiary: #6b7078;
+        --dsw-alias-state-business-primary: #2563eb;
+        --dsw-alias-state-error-primary: #c62828;
+        --dsw-alias-state-error-secondary: #e5484d;
+        --dsw-alias-state-success-primary: #16803c;
+        --dsw-alias-tooltip-bg: #1f2937;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        min-height: 100%;
+      }
+      body {
+        margin: 0;
+        padding: 18px 18px 28px;
+        background: #f7f8fa;
+        color: var(--dsw-alias-label-primary);
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      #root {
+        width: 100%;
+        max-width: 720px;
+        margin: 0 auto;
+      }
+      /* 小窗滚动条收窄，避免在 560px 窗口里吃掉内容宽度。 */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-thumb {
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.18);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="/dsh-pet-7340/settings-window.js?v=__SETTINGS_JS_VERSION__"></script>
+  </body>
+</html>
