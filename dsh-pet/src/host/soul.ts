@@ -489,6 +489,7 @@ export function defaultSoulState(card: SoulCard | null | undefined, petId: strin
     activeGoals: [],
     selfNarrative: '',
     lastReflectionAt: null,
+    lastAnniversaryReminder: '',
     updatedAt: now.toISOString(),
   };
 }
@@ -556,6 +557,7 @@ export function normalizeSoulState(
     activeGoals: textList(pick(raw, 'activeGoals', 'active_goals'), 5, 200) ?? [],
     selfNarrative: text(pick(raw, 'selfNarrative', 'self_narrative'), 600) ?? '',
     lastReflectionAt: isoOrNull(pick(raw, 'lastReflectionAt', 'last_reflection_at')),
+    lastAnniversaryReminder: text(pick(raw, 'lastAnniversaryReminder', 'last_anniversary_reminder'), 400) ?? '',
     updatedAt: isoOr(pick(raw, 'updatedAt', 'updated_at'), now.toISOString()),
   };
   const exchangeRaw = pick(raw, 'lastExchange', 'last_exchange');

@@ -51,7 +51,12 @@ function text(value: unknown, max = MAX_SOUL_EVENT_CHARS): string | undefined {
 
 function isoOr(value: unknown, fallback: Date): string {
   if (typeof value === 'string') {
-    const d = new Date(value);
+    // 纯日期按本地中午解释：直接 new Date('YYYY-MM-DD') 是 UTC 零点，
+    // 在负时区会落到前一天，纪念日会提前/延后一天。
+    const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const d = dateOnly
+      ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]), 12)
+      : new Date(value);
     if (!Number.isNaN(d.getTime())) return d.toISOString();
   }
   return fallback.toISOString();
@@ -125,6 +130,41 @@ export function mergeSoulEvents(
     });
   }
   return [...byKey.values()].slice(-MAX_SOUL_EVENTS);
+}
+
+/** 今天是否是这个日期事件的周年：按月/日匹配；尚未发生的未来日期不提醒。 */
+export function isAnniversaryDue(event: SoulRelationshipEvent, now: Date): boolean {
+  if (event.kind !== 'date') return false;
+  const date = new Date(event.at);
+  if (Number.isNaN(date.getTime())) return false;
+  if (date.getFullYear() > now.getFullYear()) return false;
+  return date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+}
+
+/** 今天到点的日期事件；多个事件同一天时一起返回。 */
+export function dueAnniversaryEvents(
+  events: readonly SoulRelationshipEvent[] | undefined,
+  now: Date,
+): SoulRelationshipEvent[] {
+  return (events ?? []).filter((event) => isAnniversaryDue(event, now));
+}
+
+/** 当天提醒去重键：日期 + 事件正文；同一天新增事件会得到新键，但不会重复旧提醒。 */
+export function anniversaryKey(events: readonly SoulRelationshipEvent[], now: Date): string {
+  const day =
+    now.getFullYear() +
+    '-' +
+    String(now.getMonth() + 1).padStart(2, '0') +
+    '-' +
+    String(now.getDate()).padStart(2, '0');
+  return (
+    day +
+    '|' +
+    events
+      .map((event) => event.text)
+      .sort()
+      .join('|')
+  );
 }
 
 /** 提示词里展示的事件类型标签。 */

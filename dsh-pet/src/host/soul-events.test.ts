@@ -7,7 +7,9 @@ import assert from 'node:assert/strict';
 import { defaultSoulState, normalizeSoulCard, observeUserText, renderSoulState } from './soul.ts';
 import {
   MAX_SOUL_EVENTS,
+  anniversaryKey,
   appendSoulEvent,
+  dueAnniversaryEvents,
   mergeSoulEvents,
   normalizeSoulEvent,
   normalizeSoulEvents,
@@ -75,6 +77,39 @@ describe('normalizeSoulEvents / mergeSoulEvents / appendSoulEvent', () => {
   test('提示词类型标签', () => {
     assert.equal(soulEventKindLabel('first'), '第一次');
     assert.equal(soulEventKindLabel('repair'), '和好');
+  });
+});
+
+describe('纪念日到期与去重键', () => {
+  test('按月日匹配，未来年份不提醒，非 date 事件不提醒', () => {
+    const events = normalizeSoulEvents(
+      [
+        { text: '第一次一起吃饭', kind: 'first', at: '2025-10-27' },
+        { text: '主人的生日', kind: 'date', at: '2024-10-27' },
+        { text: '明年的约定', kind: 'date', at: '2027-10-27' },
+        { text: '别的日子', kind: 'date', at: '2024-11-03' },
+      ],
+      NOW,
+    );
+    const due = dueAnniversaryEvents(events, NOW);
+    assert.deepEqual(
+      due.map((e) => e.text),
+      ['主人的生日'],
+    );
+    assert.match(anniversaryKey(due, NOW), /^2026-10-27\|/);
+  });
+
+  test('同一天多个事件一起提醒，键与事件正文有关', () => {
+    const one = normalizeSoulEvents([{ text: '生日', kind: 'date', at: '2024-10-27' }], NOW);
+    const two = normalizeSoulEvents(
+      [
+        { text: '生日', kind: 'date', at: '2024-10-27' },
+        { text: '第一次见面', kind: 'date', at: '2023-10-27' },
+      ],
+      NOW,
+    );
+    assert.equal(anniversaryKey(one, NOW) === anniversaryKey(two, NOW), false);
+    assert.equal(dueAnniversaryEvents(two, NOW).length, 2);
   });
 });
 

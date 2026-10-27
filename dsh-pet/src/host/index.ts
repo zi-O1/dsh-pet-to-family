@@ -86,7 +86,7 @@ import {
 import { profileNameFrom, storageEntries } from './storage-paths';
 import { parseStateWaitQuery, PollStateStore } from './state';
 import { composeSystemPrompt, petPersona } from './persona';
-import { mergeSoulEvents, normalizeSoulEvent } from './soul-events';
+import { anniversaryKey, dueAnniversaryEvents, mergeSoulEvents, normalizeSoulEvent } from './soul-events';
 import {
   decaySoulState,
   normalizeSoulState,
@@ -661,6 +661,8 @@ export function apply(ctx: any): void {
   const soulStatePath = join(userRoot, 'soul-state.json');
   /** 同一只宠物同一时间只跑一次反思；并发对话只让第一次触发，避免重复烧 token。 */
   const soulReflecting = new Set<string>();
+  /** 同一只宠物的纪念日提醒正在生成时不再重复触发。 */
+  const anniversaryInFlight = new Set<string>();
   type SoulStateMap = Record<string, SoulState>;
 
   /** 读灵魂状态：不存在 → 空；解析失败/根不是对象 → 记日志 + 空状态（不阻塞对话）。 */
@@ -871,6 +873,66 @@ export function apply(ctx: any): void {
     );
     // 文本随返回值带出，且与刚写进叶子的是同一个变量：两条出口给同一份文本，不是一个真相两个版本
     return { ok: true, text: result.text, ...(result.image ? { image: result.image } : {}) };
+  };
+
+  /**
+   * 纪念日提醒：用当前人设 + 灵魂状态生成一句自然的提醒，写进同一个 say 叶子。
+   * 模型失败时回落到一句普通文本，不让纪念日静默消失。
+   */
+  const publishAnniversary = async (
+    petId: string,
+    events: Array<{ text: string; at: string }>,
+    key: string,
+  ): Promise<void> => {
+    if (anniversaryInFlight.has(petId)) return;
+    anniversaryInFlight.add(petId);
+    try {
+      const cfg = readAllConfig(configPaths);
+      const found = findPetInstance(cfg, petId);
+      if (!found) return;
+      const card = effectiveSoulCard(found);
+      if (!card) return;
+      const states = await readSoulStates();
+      const now = new Date();
+      const soulState = normalizeSoulState(states[petId], card, petId, now);
+      decaySoulState(soulState, card, now);
+      const dayText = events.map((e) => e.text).join('；');
+      const system =
+        petSystemPrompt(found, card, soulState) +
+        '\n\n【今天】今天对你们是一个特别的日子：' +
+        dayText +
+        '。请用你的语气自然提一句，不要像系统通知，不要逐条复述，也不要编造不存在的细节。';
+      const meme =
+        found.conf.whisperImageEnabled === true
+          ? pickMeme(readMemePool(found.conf.memes, memeDirsFor(found.entry)))
+          : undefined;
+      const result = await generateWhisper(ctx, system, meme, configuredModel(found.conf, 'whisperModel'));
+      const text = result.ok ? result.text : '今天是个特别的日子：' + dayText + '。';
+      if (!result.ok) {
+        log.warn(
+          '[dsh-pet] 纪念日提醒生成失败，使用文本兜底 pet=' +
+            petId +
+            ' reason=' +
+            result.reason +
+            (result.message ? ' ' + result.message : ''),
+        );
+      }
+      const image = result.ok ? result.image : undefined;
+      state.writePet(petId, 'say', image ? { text, image } : { text });
+      await withMemoryLock(async () => {
+        const currentStates = await readSoulStates();
+        const current = normalizeSoulState(currentStates[petId], card, petId, new Date());
+        current.lastAnniversaryReminder = key;
+        current.updatedAt = new Date().toISOString();
+        currentStates[petId] = current;
+        await writeSoulStates(currentStates);
+      });
+      log.info(`[dsh-pet] 纪念日提醒已发送 pet=${petId}：${dayText}`);
+    } catch (e) {
+      log.warn(`[dsh-pet] 纪念日提醒异常 pet=${petId}：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      anniversaryInFlight.delete(petId);
+    }
   };
 
   /** 与某只宠物对话：截取最近记忆 → 生成回复 → 写入记忆 → 写进 S 的 pets.<id>.say。
@@ -2469,6 +2531,7 @@ export function apply(ctx: any): void {
               state.activeGoals = [];
               state.selfNarrative = '';
               state.lastReflectionAt = null;
+              state.lastAnniversaryReminder = '';
               state.updatedAt = new Date().toISOString();
               states[who.petId] = state;
             } else {
@@ -3045,6 +3108,52 @@ export function apply(ctx: any): void {
       if (timer !== null) clearTimeout(timer);
     };
   }, 'dsh-pet: whisper poll');
+
+  // 纪念日提醒：独立于碎碎念周期，每 30 分钟检查一次；同一只宠物同一天只提醒一次。
+  // 只对 whisperEnabled=true 的宠物生效——它仍然是一条自动气泡，尊重用户对自动说话的开关。
+  ctx.effect(() => {
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const periodMs = 30 * 60 * 1000;
+    async function tick(): Promise<void> {
+      try {
+        const cfg = readAllConfig(configPaths);
+        for (const pet of flattenPetList(cfg)) {
+          if (pet.whisperEnabled !== true) continue;
+          const petId = String(pet.id ?? '');
+          if (!petId) continue;
+          const found = findPetInstance(cfg, petId);
+          if (!found) continue;
+          const card = effectiveSoulCard(found);
+          if (!card) continue;
+          const schedule = automaticWhisperSchedule(standaloneAiPolicy(), true, 86400);
+          if (!schedule.enabled) continue;
+          const states = await readSoulStates();
+          const now = new Date();
+          const state = normalizeSoulState(states[petId], card, petId, now);
+          const due = dueAnniversaryEvents(state.relationshipEvents, now);
+          if (!due.length) continue;
+          const key = anniversaryKey(due, now);
+          if (state.lastAnniversaryReminder === key) continue;
+          if (lock.locked(petId)) continue;
+          if (anniversaryInFlight.has(petId)) continue;
+          log.info(`[dsh-pet] 纪念日到点 pet=${petId}，开始生成提醒`);
+          void publishAnniversary(petId, due, key).catch(() => {});
+        }
+      } catch (e) {
+        log.warn('[dsh-pet] 纪念日检查失败，下一拍重试：' + (e instanceof Error ? e.message : String(e)));
+      }
+      if (!disposed) {
+        timer = setTimeout(() => void tick(), periodMs);
+        timer.unref?.();
+      }
+    }
+    void tick();
+    return () => {
+      disposed = true;
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, 'dsh-pet: anniversary poll');
 
   // /pet 斜杠命令：选择「当前桌宠」（/chat 对话的目标）。浏览器端另有 commandUi 装饰的选择框
   // （裸输 /pet 回车或菜单点选时弹出，选中后提交 /pet <id> 走同一 handler）；手输参数认 id 或名字

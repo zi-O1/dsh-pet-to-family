@@ -166,6 +166,8 @@ export interface SoulState {
   /** 自我叙事（由反思层更新）。 */
   selfNarrative?: string;
   lastReflectionAt?: string | null;
+  /** 最近一次纪念日提醒的去重键（日期 + 事件正文），跨重启避免当天重复提醒。 */
+  lastAnniversaryReminder?: string;
   updatedAt: string;
 }
 

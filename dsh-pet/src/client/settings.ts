@@ -384,6 +384,7 @@ export const zh = {
   soulEventKind: '事件类型',
   soulEventText: '事件内容',
   soulEventDate: '日期（可选）',
+  soulEventDateHint: '日期事件按每年同月同日自动提醒；仅在开启自动碎碎念时生效。',
   soulAddEvent: '添加关系事件',
   soulEventDelete: '删除',
   soulEventDeleteConfirm: '确定删除这条关系事件？',
@@ -656,6 +657,7 @@ export const en = {
   soulEventKind: 'Event type',
   soulEventText: 'Event text',
   soulEventDate: 'Date (optional)',
+  soulEventDateHint: 'Date events remind you on the same month/day every year; only when automatic whispers are on.',
   soulAddEvent: 'Add relationship event',
   soulEventDelete: 'Delete',
   soulEventDeleteConfirm: 'Delete this relationship event?',
@@ -2436,6 +2438,8 @@ export function makePetConfigSection(rt: {
                                 onChange: (e: ChangeEvent<HTMLInputElement>) =>
                                   setSoulEventDraft((draft) => ({ ...draft, at: e.target.value })),
                               }),
+                              t('soulEventDateHint'),
+                              true,
                             ),
                             h('div', {
                               className: 'dsh-pet-cfg__field',

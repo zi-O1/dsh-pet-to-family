@@ -3837,6 +3837,9 @@ components:
           oneOf:
             - type: string
             - type: "null"
+        lastAnniversaryReminder:
+          type: string
+          description: 最近一次纪念日提醒的去重键（日期 + 事件正文），防止同一天重复提醒。
         updatedAt:
           type: string
 
