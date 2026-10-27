@@ -11,11 +11,11 @@
  * @module dsh-pet/src/host/index
  */
 import { spawn } from 'node:child_process';
-import { createReadStream, existsSync, fstatSync, readFileSync } from 'node:fs';
-import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { createReadStream, existsSync, fstatSync, readdirSync, readFileSync } from 'node:fs';
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
-import { join, normalize, resolve, sep } from 'node:path';
+import { dirname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { credentialRef } from '@deepseek-ai/dsh-credentials';
@@ -1851,6 +1851,123 @@ export function apply(ctx: any): void {
         return { kind: 'text', status: 404, body: 'settings window bundle not built (run npm run bundle)' };
       }
       return { kind: 'file', file, contentType: 'text/javascript; charset=utf-8' };
+    }
+
+    // 搬家：把用户配置 / 聊天记忆 / 灵魂状态 / 关系事件 / 文件宠物配置打成一个 .dshpet JSON 包。
+    // 不包含 standalone-ai.json（API key）与自定义动画 / 表情包媒体；这些应随素材目录手动迁移。
+    if (rest === 'move/export') {
+      if (method !== 'GET') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+      try {
+        const files: Record<string, string> = {};
+        for (const name of ['main-config.jsonc', 'main-config.json', 'memory.json', 'soul-state.json']) {
+          const file = join(userRoot, name);
+          if (existsSync(file)) files[name] = await readFile(file, 'utf8');
+        }
+        const petDir = join(userRoot, 'pet');
+        if (existsSync(petDir)) {
+          for (const name of readdirSync(petDir).sort()) {
+            if (!/\.(?:json|jsonc)$/.test(name)) continue;
+            files['pet/' + name] = await readFile(join(petDir, name), 'utf8');
+          }
+        }
+        let appVersion = '0.0.0';
+        try {
+          const pkg = JSON.parse(readFileSync(join(PACKAGE_ROOT, 'package.json'), 'utf8')) as { version?: unknown };
+          if (typeof pkg.version === 'string') appVersion = pkg.version;
+        } catch {
+          /* 版本只作展示，读不到不影响搬家 */
+        }
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        return {
+          kind: 'json',
+          status: 200,
+          obj: {
+            format: 'dsh-pet-move',
+            version: 1,
+            exportedAt: new Date().toISOString(),
+            appVersion,
+            files,
+          },
+          headers: {
+            'cache-control': 'no-store',
+            'content-disposition': `attachment; filename="dsh-pet-move-${stamp}.dshpet"`,
+          },
+        };
+      } catch (e) {
+        return {
+          kind: 'json',
+          status: 200,
+          obj: { ok: false, reason: 'error', message: e instanceof Error ? e.message : String(e) },
+        };
+      }
+    }
+
+    if (rest === 'move/import') {
+      if (method !== 'POST') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+      if ((body?.length ?? 0) > 16 * 1024 * 1024) {
+        return { kind: 'json', status: 200, obj: { ok: false, reason: 'too-large' } };
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(body ?? 'null');
+      } catch {
+        return { kind: 'json', status: 200, obj: { ok: false, reason: 'bad-request' } };
+      }
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return { kind: 'json', status: 200, obj: { ok: false, reason: 'bad-request' } };
+      }
+      const pkg = parsed as Record<string, unknown>;
+      if (pkg.format !== 'dsh-pet-move' || pkg.version !== 1) {
+        return { kind: 'json', status: 200, obj: { ok: false, reason: 'bad-format' } };
+      }
+      const source = pkg.files;
+      if (!source || typeof source !== 'object' || Array.isArray(source)) {
+        return { kind: 'json', status: 200, obj: { ok: false, reason: 'bad-request' } };
+      }
+      const allowed = (name: string): boolean =>
+        name === 'main-config.jsonc' ||
+        name === 'main-config.json' ||
+        name === 'memory.json' ||
+        name === 'soul-state.json' ||
+        /^pet\/[^/\\]+\.(?:json|jsonc)$/.test(name);
+      const entries = Object.entries(source as Record<string, unknown>).filter(
+        (entry): entry is [string, string] => allowed(entry[0]) && typeof entry[1] === 'string',
+      );
+      if (!entries.length || entries.length !== Object.keys(source).length) {
+        return { kind: 'json', status: 200, obj: { ok: false, reason: 'bad-request' } };
+      }
+      try {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const backupDir = join(userRoot, 'move-backup-' + stamp);
+        for (const [name, value] of entries) {
+          if (value.length > 8 * 1024 * 1024)
+            return { kind: 'json', status: 200, obj: { ok: false, reason: 'too-large' } };
+          if (name === 'memory.json' || name === 'soul-state.json') {
+            const data = JSON.parse(value) as unknown;
+            if (!data || typeof data !== 'object' || Array.isArray(data)) {
+              return { kind: 'json', status: 200, obj: { ok: false, reason: 'bad-request' } };
+            }
+          }
+          const target = join(userRoot, name);
+          if (existsSync(target)) {
+            const backup = join(backupDir, name);
+            await mkdir(dirname(backup), { recursive: true });
+            await copyFile(target, backup);
+          }
+          await mkdir(dirname(target), { recursive: true });
+          await writeFile(target, value, 'utf8');
+        }
+        if (entries.some(([name]) => name === 'main-config.jsonc' || name === 'main-config.json')) {
+          void syncDesktop();
+        }
+        return { kind: 'json', status: 200, obj: { ok: true, imported: entries.map(([name]) => name), backupDir } };
+      } catch (e) {
+        return {
+          kind: 'json',
+          status: 200,
+          obj: { ok: false, reason: 'error', message: e instanceof Error ? e.message : String(e) },
+        };
+      }
     }
 
     // 轮询状态（/state，GET，no-cache）是前端轮询的唯一数据源：只读、纯内存、零副作用——

@@ -108,6 +108,8 @@ dsh-pet 的宿主半侧向 DSH 自己的 Web 服务注册了**一条前缀路由
 | `GET /dsh-pet-7340/settings-window` | 独立设置小窗 HTML 壳（不缓存，自动替换脚本版本号） |
 | `GET /dsh-pet-7340/settings-window.js` | 独立设置小窗 React bundle（IIFE，React 已打进包） |
 | `POST /dsh-pet-7340/settings-window/open` | overlay popup 被桌面外壳拦截时，由宿主拉起独立设置进程；body 可带 `section` / `lang` |
+| `GET /dsh-pet-7340/move/export` | 下载 `.dshpet` 搬家包（配置 / 聊天记忆 / 灵魂状态 / pet 配置） |
+| `POST /dsh-pet-7340/move/import` | 导入 `.dshpet` 搬家包；旧文件先备份到 `move-backup-*` |
 
 桌面端**右键宠物 →「桌宠设置」**选择分组，由 Helper 拉起单独的 Electron 设置进程；普通浏览器用同源 popup 打开同一页面。
 页面只复用「桌宠配置」设置组件，不打开 DSH 主设置页或主界面。

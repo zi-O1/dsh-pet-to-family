@@ -446,6 +446,22 @@ export const zh = {
   uninstallStep3:
     '3. 按需删除上面的位置：缓存类删了无影响；「插件用户数据」删了会丢配置、对话记忆与灵魂状态（想保留就先备份其中的 main-config.jsonc）。',
   uninstallCmd: 'dsh plugin --profile {profile} remove dsh-pet',
+  moveTitle: '搬家',
+  moveHint:
+    '把桌宠的用户配置、聊天记忆、灵魂状态、长期记忆、关系事件和 pet pack 配置打成一个 .dshpet 包，换电脑后导入即可恢复。',
+  moveExport: '打包搬家啦',
+  moveImport: '我住进来喽',
+  moveExporting: '正在打包…',
+  moveImporting: '正在入住…',
+  moveExportOk: '搬家包已开始下载',
+  moveImportOk: '搬家包已导入，正在重新加载配置',
+  moveError: '搬家操作失败，请检查文件或服务日志',
+  moveTooLarge: '搬家包过大（上限 16 MB）',
+  moveNoFile: '没有选择文件',
+  moveInclude: '包含：main-config.jsonc、memory.json、soul-state.json、pet/* 配置文件。',
+  moveExclude:
+    '不包含：standalone-ai.json（API key）、main-animation/ 与 pet 素材、日志、缓存；这些请随素材目录手动复制。',
+  moveImportConfirm: '导入会覆盖当前配置、聊天记忆、灵魂状态和关系事件；旧文件会先备份到 move-backup-*。继续吗？',
 };
 
 /** 设置页英文文案。 */
@@ -723,6 +739,23 @@ export const en = {
   uninstallStep3:
     '3. Delete the locations above as needed: cache folders are harmless; deleting "plugin user data" loses your config, chat memory and soul state (back up main-config.jsonc first if you want to keep it).',
   uninstallCmd: 'dsh plugin --profile {profile} remove dsh-pet',
+  moveTitle: 'Move house',
+  moveHint:
+    'Bundle the user config, chat memory, soul state, long-term memories, relationship events and pet-pack configs into one .dshpet file; import it on another computer to restore.',
+  moveExport: 'Pack up and move',
+  moveImport: 'I am moving in',
+  moveExporting: 'Packing…',
+  moveImporting: 'Moving in…',
+  moveExportOk: 'The move package is downloading',
+  moveImportOk: 'Move package imported; reloading config',
+  moveError: 'Move failed. Check the file or server log.',
+  moveTooLarge: 'Move package is too large (max 16 MB)',
+  moveNoFile: 'No file selected',
+  moveInclude: 'Includes: main-config.jsonc, memory.json, soul-state.json, pet/* config files.',
+  moveExclude:
+    'Excludes: standalone-ai.json (API keys), main-animation/ and pet assets, logs and caches; copy those directories manually.',
+  moveImportConfirm:
+    'Importing overwrites the current config, chat memory, soul state and relationship events. Existing files are backed up to move-backup-*. Continue?',
 };
 
 /**
@@ -1184,6 +1217,9 @@ export function makePetConfigSection(rt: {
       text: '',
       at: '',
     });
+    const [moveBusy, setMoveBusy] = useState<'' | 'export' | 'import'>('');
+    const [moveMsg, setMoveMsg] = useState<{ kind: 'ok' | 'err' | ''; text: string }>({ kind: '', text: '' });
+    const moveInputRef = useRef<HTMLInputElement | null>(null);
     const [soulActionMsg, setSoulActionMsg] = useState<{ kind: 'ok' | 'err' | ''; text: string }>({
       kind: '',
       text: '',
@@ -1524,6 +1560,68 @@ export function makePetConfigSection(rt: {
         setSoulActionMsg({ kind: 'err', text: t('soulEventError') });
       } finally {
         setSoulActionBusy(false);
+      }
+    };
+
+    /** 打包：下载 .dshpet；文件内容由宿主生成，客户端只负责触发浏览器下载。 */
+    const exportMove = async (): Promise<void> => {
+      if (moveBusy) return;
+      setMoveBusy('export');
+      setMoveMsg({ kind: '', text: '' });
+      try {
+        const res = await fetch('/dsh-pet-7340/move/export', { cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const blob = await res.blob();
+        const cd = res.headers.get('content-disposition') || '';
+        const name = /filename="([^"]+)"/.exec(cd)?.[1] || 'dsh-pet-move.dshpet';
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        setMoveMsg({ kind: 'ok', text: t('moveExportOk') });
+      } catch {
+        setMoveMsg({ kind: 'err', text: t('moveError') });
+      } finally {
+        setMoveBusy('');
+      }
+    };
+
+    /** 导入：上传 .dshpet，宿主备份旧文件后覆盖；成功后重新拉一次成品配置。 */
+    const onMoveFile = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file || moveBusy) return;
+      if (file.size > 16 * 1024 * 1024) {
+        setMoveMsg({ kind: 'err', text: t('moveTooLarge') });
+        return;
+      }
+      if (!window.confirm(t('moveImportConfirm'))) return;
+      setMoveBusy('import');
+      setMoveMsg({ kind: '', text: '' });
+      try {
+        const text = await file.text();
+        const res = await fetch('/dsh-pet-7340/move/import', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: text,
+        });
+        const data = (await res.json().catch(() => null)) as { ok?: unknown } | null;
+        if (!res.ok || !data || data.ok !== true) throw new Error('import failed');
+        const cfgRes = await fetch('/dsh-pet-7340/config', { cache: 'no-store' });
+        if (cfgRes.ok) {
+          const merged = (await cfgRes.json()) as Record<string, Record<string, unknown>>;
+          applyConfig(merged);
+          petBridge.reload(merged);
+        }
+        setMoveMsg({ kind: 'ok', text: t('moveImportOk') });
+      } catch {
+        setMoveMsg({ kind: 'err', text: t('moveError') });
+      } finally {
+        setMoveBusy('');
       }
     };
 
@@ -2669,6 +2767,48 @@ export function makePetConfigSection(rt: {
                   String(paths.storage.length),
                 )
               : null,
+
+            // 搬家：配置 / 聊天记忆 / 灵魂状态 / 关系事件 / pet pack 配置文件打成 .dshpet。
+            accItem('move', t('moveTitle'), t('moveHint'), [
+              h('div', { className: 'dsh-pet-cfg__note', children: t('moveInclude') }),
+              h('div', { className: 'dsh-pet-cfg__note', children: t('moveExclude') }),
+              h('div', {
+                className: 'dsh-pet-cfg__soulRow',
+                children: [
+                  h('button', {
+                    type: 'button',
+                    className: 'dsh-pet-cfg__btn is-primary',
+                    disabled: busy || moveBusy !== '',
+                    onClick: () => void exportMove(),
+                    children: moveBusy === 'export' ? t('moveExporting') : t('moveExport'),
+                  }),
+                  h('button', {
+                    type: 'button',
+                    className: 'dsh-pet-cfg__btn',
+                    disabled: busy || moveBusy !== '',
+                    onClick: () => moveInputRef.current?.click(),
+                    children: moveBusy === 'import' ? t('moveImporting') : t('moveImport'),
+                  }),
+                  h('input', {
+                    ref: moveInputRef,
+                    type: 'file',
+                    accept: '.dshpet,application/json',
+                    style: { display: 'none' },
+                    onChange: (e: ChangeEvent<HTMLInputElement>) => void onMoveFile(e),
+                  }),
+                ],
+              }),
+              moveMsg.text
+                ? h('p', {
+                    className: 'dsh-pet-cfg__note',
+                    style:
+                      moveMsg.kind === 'err'
+                        ? { color: 'var(--dsw-alias-state-error-primary)' }
+                        : { color: 'var(--dsw-alias-state-success-primary)' },
+                    children: moveMsg.text,
+                  })
+                : null,
+            ]),
           ],
         }),
 

@@ -1724,6 +1724,63 @@ paths:
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
 
+  /dsh-pet-7340/move/export:
+    get:
+      tags: [Settings]
+      operationId: exportMovePackage
+      summary: 导出 .dshpet 搬家包
+      description: |
+        把用户配置（main-config.jsonc / main-config.json）、聊天记忆 memory.json、灵魂状态
+        soul-state.json、pet pack 配置文件打成一个 JSON 搬家包。响应带
+        `content-disposition: attachment; filename="dsh-pet-move-<时间>.dshpet"`。
+        不包含 standalone-ai.json（API key）、自定义动画/表情包媒体、日志与缓存。
+      responses:
+        "200":
+          description: 搬家包（JSON）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MovePackage"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+
+  /dsh-pet-7340/move/import:
+    post:
+      tags: [Settings]
+      operationId: importMovePackage
+      summary: 导入 .dshpet 搬家包
+      description: |
+        校验 format/version 与允许的文件名后覆盖当前用户配置、聊天记忆、灵魂状态与 pet 配置。
+        覆盖前把旧文件备份到 `$DSH_HOME/dsh-pet/move-backup-<时间>/`；不处理 API key 与素材目录。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MovePackage"
+      responses:
+        "200":
+          description: 导入结果；失败也是 200（`{ ok:false, reason }`）
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [ok, imported, backupDir]
+                    properties:
+                      ok:
+                        type: boolean
+                        const: true
+                      imported:
+                        type: array
+                        items:
+                          type: string
+                      backupDir:
+                        type: string
+                  - $ref: "#/components/schemas/FailureResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+
   /dsh-pet-7340/config:
     get:
       tags: [Config]
@@ -3876,3 +3933,30 @@ components:
         at:
           type: string
           format: date-time
+
+
+    MovePackage:
+      type: object
+      description: |
+        `.dshpet` 搬家包（JSON）
+      required: [format, version, exportedAt, files]
+      additionalProperties: true
+      properties:
+        format:
+          type: string
+          const: dsh-pet-move
+        version:
+          type: integer
+          const: 1
+        exportedAt:
+          type: string
+          format: date-time
+        appVersion:
+          type: string
+        files:
+          type: object
+          description: |
+            文件名 → 文本内容。允许：main-config.jsonc、main-config.json、memory.json、
+            soul-state.json、pet/<name>.json、pet/<name>.jsonc。
+          additionalProperties:
+            type: string

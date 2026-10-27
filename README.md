@@ -116,6 +116,7 @@ dsh plugin --profile web add file:D:/path/to/dsh-pet/dsh-pet
 - **余额展示**：按已用百分比分档播余额动画 + 头顶联想气泡（10 秒自动消失）；DeepSeek 显示账户余额，OpenCode Zen Go 与 Command Code 显示最紧迫的一个额度窗口；**未登记余额接口的服务商改为弹文字说明**（不静默）；按宠物独立开关
 - **碎碎念与对话**：碎碎念按周期自动生成一句（说话动画 + 气泡，也可手动触发）；对话在右键弹输入框与宠物聊天，记忆持久化（浏览器 / 桌面共享同一份）
 - **人格灵魂与长期连续性**：灵魂卡定义“它是谁”，动态状态记录情绪/关系，反思层把成功对话整理成长期记忆与关系事件；纪念日会在当天主动提醒（详见下方「人格灵魂、长期记忆与关系事件」）
+- **一键搬家**：设置页「打包搬家啦」把配置、聊天记忆、灵魂状态、关系事件和 pet 配置打成 `.dshpet`；新电脑「我住进来喽」导入恢复
 - **工作状态联动**：监听 DSH 会话事件，切「思考 / 工作 / 整理 / 等待 / 成功 / 出错」档位动画 + 常驻气泡；目标多轮任务只在真正收尾轮庆祝
 - **系统通知**：窗口失焦时弹系统 toast（对话完成 / 生成失败 / 输出截断 / 权限申请 / 用户选择）
 - **桌面模式（可选）**：每只宠物开一个独立透明置顶局部小窗，与浏览器严格同行为、共用同一份素材与纯逻辑（见下节）
@@ -279,8 +280,34 @@ npm run build && npm run standalone   # 仓库里（先构建）
 | `GET /dsh-pet-7340/settings-window` | 独立设置小窗 HTML |
 | `GET /dsh-pet-7340/settings-window.js` | 独立设置小窗 React IIFE bundle |
 | `POST /dsh-pet-7340/settings-window/open` | `{section?,lang?}`：popup 被桌面外壳拦截时，由宿主拉起独立设置进程 |
+| `GET /dsh-pet-7340/move/export` | 下载 `.dshpet` 搬家包 |
+| `POST /dsh-pet-7340/move/import` | 导入 `.dshpet` 搬家包；旧文件先备份 |
 
 完整请求/响应契约见 [`openapi.yaml`](openapi.yaml) 与 [`API.md`](API.md)。
+
+## 📦 搬家（一键打包 / 入住）
+
+设置页切到「搬家」分组：
+
+- **打包搬家啦**：下载一个 `dsh-pet-move-<时间>.dshpet` 文件。
+- **我住进来喽**：在新环境选择这个文件导入；导入前会把当前旧文件备份到 `$DSH_HOME/dsh-pet/move-backup-<时间>/`。
+
+搬家包包含：
+
+| 内容 | 作用 |
+| --- | --- |
+| `main-config.jsonc` / `main-config.json` | 宠物列表、人设、动画池与播放权重、物理/字体/模型等全部偏好 |
+| `memory.json` | 完整聊天记录（`chatMemoryRounds` 只影响进上下文，不影响存档） |
+| `soul-state.json` | 情绪、关系、上次对话、长期记忆、关系事件、挂心、自我叙事、纪念日去重 |
+| `pet/*.json` / `pet/*.jsonc` | pet pack 的配置文件（如果有） |
+
+不包含：
+
+- `standalone-ai.json`（可能含 API key，避免搬家包泄露凭证）
+- `main-animation/`、`pet/*-animation/`、表情包图片等自定义媒体素材
+- 日志、Electron 缓存、插件本体
+
+因此，「记忆与偏好」可以一键搬家；如果你还自定义了动画/表情包素材，请把对应素材目录一起复制到新电脑的 `$DSH_HOME/dsh-pet/` 下。搬家包使用带版本号的 JSON 格式，导入时会校验格式和文件名，未知字段/路径会被拒绝。
 
 ## ⚙️ 工作状态联动（Work Status）
 

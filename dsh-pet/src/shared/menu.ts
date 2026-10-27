@@ -8,7 +8,17 @@
 import type { Animations, Category, PetDisplay } from './types';
 
 /** 设置页手风琴分组 id：右键「桌宠设置」子菜单与独立设置页共用同一套值。 */
-export const SETTINGS_SECTIONS = ['pets', 'soul', 'global', 'font', 'model', 'physics', 'config', 'storage'] as const;
+export const SETTINGS_SECTIONS = [
+  'pets',
+  'soul',
+  'global',
+  'font',
+  'model',
+  'physics',
+  'config',
+  'storage',
+  'move',
+] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 /** 叶子：可点击的菜单项。 */
@@ -68,6 +78,7 @@ export const settingsMenuBranch = (): MenuBranch => ({
     { label: '物理（拖拽抛掷手感）', action: 'settings', section: 'physics' },
     { label: '高级配置（文件）', action: 'settings', section: 'config' },
     { label: '卸载与存储', action: 'settings', section: 'storage' },
+    { label: '搬家', action: 'settings', section: 'move' },
   ],
 });
 
