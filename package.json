@@ -1,0 +1,89 @@
+{
+  "name": "dsh-pet-to-family",
+  "version": "0.4.0",
+  "private": true,
+  "description": "吃白饭的蓝色大肥鱼，赖在 DeepSeek Harness 里不走了。平时爱玩魔方、爱吃各种零食、偶尔打个盹，闲不住就在桌面上溜达两圈，被你拖来甩去也照旧赖着；你忙起来它跟着忙前忙后，也会帮你打理余额钱包，闲下来爱碎碎念，还乐意陪你唠两句。",
+  "type": "module",
+  "main": "dsh-pet/lib/index.js",
+  "exports": {
+    ".": {
+      "types": "./dsh-pet/lib/types/index.d.ts",
+      "default": "./dsh-pet/lib/index.js"
+    },
+    "./client": {
+      "types": "./dsh-pet/lib/types/client/index.d.ts",
+      "default": "./dsh-pet/lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "_comment": [
+    "仓库根包：仅用于 DSH「安装第三方插件」直接输入 GitHub 仓库地址。",
+    "实际插件源码/发布包在 dsh-pet/ 子目录；npm 包从 dsh-pet 发布。",
+    "main / dsh.bundle.patch / exports 都指向子目录构建产物，因此 Git 安装不需要在安装时重新构建。",
+    "private: true 防止误把整个素材仓库发布到 npm；npm 发布请 cd dsh-pet && npm publish。"
+  ],
+  "files": [
+    "dsh-pet/lib",
+    "dsh-pet/runtime/electron-helper",
+    "dsh-pet/assets",
+    "dsh-pet/cordis.patch.yml",
+    "dsh-pet/scripts/ensure-electron.mjs"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./dsh-pet/cordis.patch.yml"
+    },
+    "compatibility": {
+      "dshReleases": {
+        "0.1.7-rc.2": "incompatible",
+        "0.2.0-rc.1": "compatible",
+        "0.2.0-rc.2": "compatible",
+        "0.2.1-rc.2": "compatible"
+      }
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-connection"
+      ],
+      "platform": "web"
+    }
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.135.0",
+    "@electron-internal/extract-zip": "^1.0.5",
+    "@electron/get": "^5.1.0",
+    "openai": "7.39.0",
+    "zod": "4.6.7"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.4",
+    "@deepseek-ai/dsh-agent-default-model": "^0.2.0-rc.1",
+    "@deepseek-ai/dsh-client-connection": "^0.2.0-rc.1",
+    "@deepseek-ai/dsh-client-ui-primitives": "^0.2.0-rc.1",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.2.0-rc.1",
+    "@deepseek-ai/dsh-commands": "^0.2.0-rc.1",
+    "@deepseek-ai/dsh-credentials": "^0.2.0-rc.1",
+    "@deepseek-ai/dsh-home-paths": "^0.2.0-rc.1",
+    "@deepseek-ai/dsh-host-webserver": "^0.2.0-rc.1",
+    "@deepseek-ai/dsh-llm": "^0.2.0-rc.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/zi-O1/dsh-pet-to-family#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zi-O1/dsh-pet-to-family.git",
+    "directory": "dsh-pet"
+  },
+  "bugs": {
+    "url": "https://github.com/zi-O1/dsh-pet-to-family/issues"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  }
+}

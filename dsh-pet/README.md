@@ -1,4 +1,4 @@
-# dsh-pet 🐾
+# dsh-pet-to-family 🐾
 
 一只住在 DeepSeek Harness 里的桌面宠物，一百余个透明动画，可多开、能上桌面。
 
@@ -13,6 +13,10 @@
 - **一键搬家**：「打包搬家啦」导出配置/记忆/灵魂状态/关系事件，「我住进来喽」在新环境导入恢复
 
 参数、字段、默认值和操作说明见本仓库根目录的 **[README（人格灵魂、长期记忆与关系事件）](https://github.com/zi-O1/dsh-pet-to-family#-人格灵魂长期记忆与关系事件)** 与 **[CONFIG.md](https://github.com/zi-O1/dsh-pet-to-family/blob/main/CONFIG.md)**。
+
+安装：npm 包名 `dsh-pet-to-family`；GitHub 地址 `https://github.com/zi-O1/dsh-pet-to-family#path:/dsh-pet`。
+
+本仓库：**<https://github.com/zi-O1/dsh-pet-to-family>**
 
 基础项目与完整素材链：**<https://github.com/PC2005-cloud/dsh-pet>**
 

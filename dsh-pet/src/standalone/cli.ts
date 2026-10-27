@@ -132,8 +132,8 @@ async function run(logger: StandaloneLogger, options: { port: number }): Promise
   const desktopVisible = pets.filter(isDesktopVisible);
   for (const line of [
     '',
-    '===== dsh-pet 独立模式（不需要 DSH）=====',
-    `  插件        dsh-pet@${packageVersion(packageRoot)}  ${packageRoot}`,
+    '===== dsh-pet-to-family 独立模式（不需要 DSH）=====',
+    `  插件        dsh-pet-to-family@${packageVersion(packageRoot)}  ${packageRoot}`,
     `  路由        http://127.0.0.1:${server.port}/dsh-pet-7340/`,
     `  配置        ${configSource}`,
     `  宠物        ${describePets(pets)}`,

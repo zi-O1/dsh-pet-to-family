@@ -1669,7 +1669,7 @@ export function apply(ctx: any): void {
             home: homedir(),
             packageRoot: PACKAGE_ROOT,
           }),
-          // profile 名（拼卸载命令 dsh plugin --profile <名> remove dsh-pet；反推不出时为空串）
+          // profile 名（拼卸载命令 dsh plugin --profile <名> remove dsh-pet-to-family；反推不出时为空串）
           profile: profileNameFrom(PACKAGE_ROOT) ?? '',
         },
       };

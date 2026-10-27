@@ -19,7 +19,7 @@ export interface CliOptions {
 }
 
 /** --help 正文。 */
-export const USAGE = `dsh-pet 独立模式（不需要 DSH）
+export const USAGE = `dsh-pet-to-family 独立模式（不需要 DSH）
 
 用法：dsh-pet-standalone [选项]
 

@@ -1,14 +1,14 @@
-# dsh-pet 🐾
+# dsh-pet-to-family 🐾
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/dsh-pet"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-pet?label=npm&color=blue"></a>
-  <a href="https://www.npmjs.com/package/dsh-pet"><img alt="npm monthly downloads" src="https://img.shields.io/npm/dm/dsh-pet?label=%E6%9C%88%E4%B8%8B%E8%BD%BD&color=brightgreen"></a>
-  <a href="https://www.npmjs.com/package/dsh-pet"><img alt="total downloads" src="https://img.shields.io/npm/dt/dsh-pet?label=%E6%80%BB%E4%B8%8B%E8%BD%BD&color=success"></a>
-  <a href="https://github.com/PC2005-cloud/dsh-pet"><img alt="stars" src="https://img.shields.io/github/stars/PC2005-cloud/dsh-pet?style=social"></a>
-  <a href="https://github.com/PC2005-cloud/dsh-pet/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/github/license/PC2005-cloud/dsh-pet?color=orange"></a>
+  <a href="https://www.npmjs.com/package/dsh-pet-to-family"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-pet-to-family?label=npm&color=blue"></a>
+  <a href="https://www.npmjs.com/package/dsh-pet-to-family"><img alt="npm monthly downloads" src="https://img.shields.io/npm/dm/dsh-pet-to-family?label=%E6%9C%88%E4%B8%8B%E8%BD%BD&color=brightgreen"></a>
+  <a href="https://www.npmjs.com/package/dsh-pet-to-family"><img alt="total downloads" src="https://img.shields.io/npm/dt/dsh-pet-to-family?label=%E6%80%BB%E4%B8%8B%E8%BD%BD&color=success"></a>
+  <a href="https://github.com/zi-O1/dsh-pet-to-family"><img alt="stars" src="https://img.shields.io/github/stars/zi-O1/dsh-pet-to-family?style=social"></a>
+  <a href="https://github.com/zi-O1/dsh-pet-to-family/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/github/license/zi-O1/dsh-pet-to-family?color=orange"></a>
   <a href="https://awesome-dsh-plugin.com"><img alt="awesome dsh plugin" src="https://awesome-dsh-plugin.com/badge.svg"></a>
-  <a href="https://github.com/PC2005-cloud/dsh-pet"><img alt="repo size" src="https://img.shields.io/github/repo-size/PC2005-cloud/dsh-pet"></a>
-  <a href="https://github.com/PC2005-cloud/dsh-pet/issues"><img alt="issues" src="https://img.shields.io/github/issues/PC2005-cloud/dsh-pet"></a>
+  <a href="https://github.com/zi-O1/dsh-pet-to-family"><img alt="repo size" src="https://img.shields.io/github/repo-size/zi-O1/dsh-pet-to-family"></a>
+  <a href="https://github.com/zi-O1/dsh-pet-to-family/issues"><img alt="issues" src="https://img.shields.io/github/issues/zi-O1/dsh-pet-to-family"></a>
   <img alt="platform" src="https://img.shields.io/badge/platform-DeepSeek%20Harness%20Web-8A2BE2">
   <img alt="assets" src="https://img.shields.io/badge/assets-dynamic%20animations-ff69b4">
 </p>
@@ -32,7 +32,13 @@ AI 生成动画的配方     源视频 → 透明动画的管线    运行在 DS
 
 ### 🪟 桌面应用（Electron 版）
 
-直接在应用内「插件管理」页的安装框里填 `dsh-pet`，不用开终端；需要在终端里操作插件时，用桌面应用自带的那份 CLI。
+直接在应用内「插件管理」页的安装框里填 `dsh-pet-to-family`（npm 已发布后），不用开终端；需要在终端里操作插件时，用桌面应用自带的那份 CLI。
+
+也可以直接填 GitHub 仓库地址 `https://github.com/zi-O1/dsh-pet-to-family`（仓库根的兼容包会指向 `dsh-pet/` 里的插件构建产物）；如果安装器只认子目录，用 `https://github.com/zi-O1/dsh-pet-to-family#path:/dsh-pet`。安装源选 **npm 官方源**（`https://registry.npmjs.org/`）。
+
+> 已安装旧包 `dsh-pet` 的 profile，请先在插件管理里卸载旧包，再安装 `dsh-pet-to-family`；用户数据仍在 `$DSH_HOME/dsh-pet/`，不会被清空。
+>
+> npm 包首次发布：`cd dsh-pet && npm publish --access public`（`publishConfig` 已固定为 npm 官方源）。
 
 ### 🌐 `dsh web`
 
@@ -47,7 +53,7 @@ npm install -g @deepseek-ai/dsh pnpm
 dsh --version   # 验证 dsh 命令可用
 
 # ③ 安装本插件（web 模式用 --profile web）
-dsh plugin --profile web add dsh-pet
+dsh plugin --profile web add dsh-pet-to-family
 ```
 
 装完**重开桌面应用**（`dsh web` 用户则重启 `dsh web`）才生效——运行中的进程持有内存里的旧插件。宠物出现在界面右上角（默认配置角落，可在设置页修改）。
@@ -60,8 +66,8 @@ dsh plugin --profile web add dsh-pet
 
 ```sh
 # ① clone 本仓库，进入插件目录
-git clone https://github.com/PC2005-cloud/dsh-pet.git
-cd dsh-pet/dsh-pet
+git clone https://github.com/zi-O1/dsh-pet-to-family.git
+cd dsh-pet-to-family/dsh-pet
 
 # ② 安装依赖
 npm install
@@ -72,7 +78,7 @@ npm run build       # 必须手动跑一次（克隆后 npm install 不再自动
 # ④ 安装到 DSH（file: 指向**插件目录**——上面 cd 进去的那一层，用构建好的 lib）
 #    --profile 填实际在用的那个：dsh web → web；
 #    桌面应用（Electron 版）改用应用内「插件管理」安装，见上方快速开始
-dsh plugin --profile web add file:D:/path/to/dsh-pet/dsh-pet
+dsh plugin --profile web add file:D:/path/to/dsh-pet-to-family/dsh-pet
 ```
 
 > 注：`npm run build`（即 `scripts/prepare.js`）才产出**完整可安装**的 lib——除 tsdown 构建外还构建桌面共享核心（`shared-core.js`）、生成类型声明并收敛发布 `files` 清单；裸 `tsdown` 构建会缺桌面运行时与类型。发布与打包（`npm publish` / `npm pack`）时由 `prepack` 自动调用它，克隆仓库后需手动跑一次。
@@ -164,8 +170,8 @@ dsh plugin --profile web add file:D:/path/to/dsh-pet/dsh-pet
 连 DSH 都不用开：插件的宿主半边跑在伪 ctx 上，由一个本机 HTTP 服务接管路由（**路由表仍是插件那一份**）。
 
 ```sh
-npm install -g dsh-pet        # 必须 npm 装；dsh plugin add 装进 profile，bin 不在 PATH 上
-dsh-pet-standalone            # http://127.0.0.1:3080/dsh-pet-7340/（占用则顺延）
+npm install -g dsh-pet-to-family        # 必须 npm 装；dsh plugin add 装进 profile，bin 不在 PATH 上
+dsh-pet-standalone            # http://127.0.0.1:3080/dsh-pet-7340/（bin 名保持兼容）（占用则顺延）
 dsh-pet-standalone --check    # 只体检
 dsh-pet-standalone --port 3100
 
