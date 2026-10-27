@@ -138,6 +138,17 @@ export interface SoulMemory {
   at: string;
 }
 
+/** 关系事件类型：第一次、阶段里程碑、约定、冲突 / 和好、日期、礼物等。 */
+export type SoulRelationshipEventKind =
+  'first' | 'milestone' | 'promise' | 'conflict' | 'repair' | 'date' | 'gift' | 'other';
+
+/** 一条关系事件：关系时间线上的节点，和「长期记忆」分开存。 */
+export interface SoulRelationshipEvent {
+  text: string;
+  kind: SoulRelationshipEventKind;
+  at: string;
+}
+
 /** 宿主写回的动态灵魂状态（soul-state.json 的单个宠物分桶）。 */
 export interface SoulState {
   version: 1;
@@ -148,6 +159,8 @@ export interface SoulState {
   lastExchange?: SoulLastExchange;
   /** 长期记忆（反思层抽取，最多 20 条；跨会话注入提示词）。 */
   memories?: SoulMemory[];
+  /** 关系事件时间线（最多 30 条；反思层 + 阶段变化写入）。 */
+  relationshipEvents?: SoulRelationshipEvent[];
   /** 当前挂心的事（最多 5 条；由反思层更新）。 */
   activeGoals?: string[];
   /** 自我叙事（由反思层更新）。 */

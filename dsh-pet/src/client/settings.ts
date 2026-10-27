@@ -355,7 +355,7 @@ export const zh = {
   invalidChatImageLimit: '请检查对话配图张数上限：需为 ≥ 0 的数字（0 = 不限制）。',
   soulTitle: '人格灵魂色彩',
   soulHint:
-    '灵魂卡是比人设更稳定的「内在设定」：身份、在意的东西、说话方式、渴望、害怕、边界、关系起点与灵魂色彩。配置后，宿主会在碎碎念与对话的 system 里追加「稳定灵魂卡 + 此刻的灵魂状态」；状态（情绪 / 关系 / 上次聊天 / 长期记忆）由 soul-state.json 跨会话延续；成功对话后还会定期反思，整理偏好、约定、事件与自我叙事。没有卡 / 空卡 = 完全走旧人设。',
+    '灵魂卡是比人设更稳定的「内在设定」：身份、在意的东西、说话方式、渴望、害怕、边界、关系起点与灵魂色彩。配置后，宿主会在碎碎念与对话的 system 里追加「稳定灵魂卡 + 此刻的灵魂状态」；状态（情绪 / 关系 / 上次聊天 / 长期记忆 / 关系事件）由 soul-state.json 跨会话延续；成功对话后还会定期反思，整理偏好、约定、事件与自我叙事。没有卡 / 空卡 = 完全走旧人设。',
   soulToggle: '灵魂注入',
   soulToggleHint:
     '全局默认，所有宠物共用。开启（默认）= 有灵魂卡的宠物在提示词里追加灵魂段，并在成功对话后推进 soul-state.json；关闭 = 不读卡、不写状态、不追加任何段落，行为回到旧版。只影响 AI 提示词，设置页仍可查看灵魂卡。',
@@ -376,10 +376,11 @@ export const zh = {
   soulReflectError: '整理失败，请稍后重试',
   soulClearMemories: '清空长期记忆',
   soulResetState: '重置关系与情绪',
-  soulClearConfirm: '确定清空这只宠物的长期记忆？聊天记录不会删除。',
+  soulClearConfirm: '确定清空这只宠物的长期记忆与关系事件？聊天记录不会删除。',
   soulResetConfirm: '确定重置这只宠物的情绪、关系和长期记忆？聊天记录不会删除。',
   soulResetOk: '已重置',
   soulResetError: '重置失败，请稍后重试',
+  soulEventsTitle: '关系事件',
   soulMemoriesTitle: '长期记忆',
   soulGoalsTitle: '当前挂心',
   soulNarrativeTitle: '自我叙事',
@@ -609,7 +610,7 @@ export const en = {
   invalidChatImageLimit: 'Check the chat image limit: it must be a number ≥ 0 (0 = no limit).',
   soulTitle: 'Soul & personality color',
   soulHint:
-    'A soul card is a more stable inner layer than the persona: identity, what it cares about, voice, desires, fears, boundaries, relationship seed and soul color. When configured, the host appends a stable soul card plus the current soul state to every whisper / chat system prompt; the state (mood / relationship / last exchange / long-term memories) persists across sessions in soul-state.json; after successful chats it also reflects periodically to distill preferences, promises, events and a self-narrative. No card / empty card = the legacy persona only.',
+    'A soul card is a more stable inner layer than the persona: identity, what it cares about, voice, desires, fears, boundaries, relationship seed and soul color. When configured, the host appends a stable soul card plus the current soul state to every whisper / chat system prompt; the state (mood / relationship / last exchange / long-term memories / relationship events) persists across sessions in soul-state.json; after successful chats it also reflects periodically to distill preferences, promises, events and a self-narrative. No card / empty card = the legacy persona only.',
   soulToggle: 'Soul injection',
   soulToggleHint:
     'Global default shared by every pet. On (default) = pets with a soul card get the soul sections and advance soul-state.json after successful chats; off = no card read, no state write, no extra prompt sections (legacy behavior). It only affects AI prompts; the card stays visible here.',
@@ -634,6 +635,7 @@ export const en = {
   soulResetConfirm: "Reset this pet's mood, relationship and long-term memories? Chat history is not deleted.",
   soulResetOk: 'Reset complete',
   soulResetError: 'Reset failed. Try again later.',
+  soulEventsTitle: 'Relationship events',
   soulMemoriesTitle: 'Long-term memories',
   soulGoalsTitle: 'Current concerns',
   soulNarrativeTitle: 'Self narrative',
@@ -1133,6 +1135,7 @@ export function makePetConfigSection(rt: {
       enabled: boolean;
       color: string | null;
       memories: Array<{ text: string; kind: string }>;
+      relationshipEvents: Array<{ text: string; kind: string; at: string }>;
       activeGoals: string[];
       selfNarrative: string;
     }>(null);
@@ -1336,6 +1339,16 @@ export function makePetConfigSection(rt: {
               }))
               .filter((m) => m.text)
           : [];
+        const relationshipEvents = Array.isArray(state?.relationshipEvents)
+          ? state.relationshipEvents
+              .filter((e): e is Record<string, unknown> => Boolean(e) && typeof e === 'object')
+              .map((e) => ({
+                text: typeof e.text === 'string' ? e.text : '',
+                kind: typeof e.kind === 'string' ? e.kind : 'other',
+                at: typeof e.at === 'string' ? e.at : '',
+              }))
+              .filter((e) => e.text)
+          : [];
         const activeGoals = Array.isArray(state?.activeGoals)
           ? state.activeGoals.filter((g): g is string => typeof g === 'string')
           : [];
@@ -1345,6 +1358,7 @@ export function makePetConfigSection(rt: {
           enabled: data.enabled !== false,
           color: typeof data.color === 'string' ? data.color : null,
           memories,
+          relationshipEvents,
           activeGoals,
           selfNarrative: typeof state?.selfNarrative === 'string' ? state.selfNarrative : '',
         });
@@ -2212,6 +2226,19 @@ export function makePetConfigSection(rt: {
                   ? h('div', {
                       className: 'dsh-pet-cfg__field',
                       children: [
+                        soulPreview.relationshipEvents.length
+                          ? h('div', {
+                              className: 'dsh-pet-cfg__cardTitle',
+                              children: t('soulEventsTitle'),
+                            })
+                          : null,
+                        ...soulPreview.relationshipEvents.slice(-8).map((e, i) =>
+                          h('div', {
+                            key: 'se' + i,
+                            className: 'dsh-pet-cfg__note',
+                            children: '· ' + (e.at ? e.at.slice(0, 10) + ' ' : '') + e.text,
+                          }),
+                        ),
                         soulPreview.memories.length
                           ? h('div', {
                               className: 'dsh-pet-cfg__cardTitle',

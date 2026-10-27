@@ -10,6 +10,7 @@
  *
  * @module dsh-pet/src/host/soul
  */
+import { appendSoulEvent, normalizeSoulEvents, soulEventKindLabel } from './soul-events';
 import { normalizeSoulMemories, soulMemoryKindLabel } from './soul-memory';
 import type {
   SoulCard,
@@ -27,7 +28,7 @@ import type {
 /** 渲染后的灵魂卡上限（字符）：灵魂卡是「稳定内核」，不是第二份人设，超长只保留前面的内容。 */
 const MAX_CARD_CHARS = 2600;
 /** 渲染后的动态状态上限：状态要短，避免每轮都挤占上下文。 */
-const MAX_STATE_CHARS = 1400;
+const MAX_STATE_CHARS = 1900;
 
 const STAGES: readonly SoulStage[] = ['陌生', '初识', '熟悉', '亲近', '默契', '羁绊'];
 const STAGE_SET = new Set<string>(STAGES);
@@ -411,6 +412,12 @@ export function renderSoulState(
     const lines = state.memories.slice(-10).map((m) => '· [' + soulMemoryKindLabel(m.kind) + '] ' + m.text);
     body.push('长期记忆（只作背景，不要逐条复述）：\n' + lines.join('\n'));
   }
+  if (state.relationshipEvents?.length) {
+    const lines = state.relationshipEvents
+      .slice(-6)
+      .map((e) => '· ' + formatTime(e.at) + ' [' + soulEventKindLabel(e.kind) + '] ' + e.text);
+    body.push('关系事件（只作背景，不要逐条复述）：\n' + lines.join('\n'));
+  }
   if (state.activeGoals?.length) body.push('当前挂心：' + state.activeGoals.join('；'));
   if (state.selfNarrative) body.push('自我叙事：' + state.selfNarrative);
   if (card?.temperament?.baselineMood) body.push('（基线心情：' + card.temperament.baselineMood + '）');
@@ -478,6 +485,7 @@ export function defaultSoulState(card: SoulCard | null | undefined, petId: strin
     mood,
     relationship,
     memories: [],
+    relationshipEvents: [],
     activeGoals: [],
     selfNarrative: '',
     lastReflectionAt: null,
@@ -544,6 +552,7 @@ export function normalizeSoulState(
     mood,
     relationship,
     memories: normalizeSoulMemories(raw.memories, now),
+    relationshipEvents: normalizeSoulEvents(raw.relationshipEvents, now),
     activeGoals: textList(pick(raw, 'activeGoals', 'active_goals'), 5, 200) ?? [],
     selfNarrative: text(pick(raw, 'selfNarrative', 'self_narrative'), 600) ?? '',
     lastReflectionAt: isoOrNull(pick(raw, 'lastReflectionAt', 'last_reflection_at')),
@@ -593,6 +602,16 @@ export function observeUserText(state: SoulState, value: string, now: Date): voi
   if (!message) return;
   const iso = now.toISOString();
   const rel = state.relationship;
+  const wasFirst = rel.interactions === 0;
+  const previousStage = rel.stage;
+  // 老状态没有关系事件时间线：下一次互动时补一条里程碑，避免 UI 永远是空的。
+  if (!state.relationshipEvents?.length && rel.interactions > 0) {
+    state.relationshipEvents = appendSoulEvent(
+      state.relationshipEvents,
+      { text: '和主人已经聊过 ' + rel.interactions + ' 次', kind: 'milestone', at: iso },
+      now,
+    );
+  }
   rel.interactions += 1;
   rel.familiarity = clampPercent(rel.familiarity + 1.2 + Math.min(Array.from(message).length / 200, 0.8));
   rel.lastInteractionAt = iso;
@@ -619,6 +638,20 @@ export function observeUserText(state: SoulState, value: string, now: Date): voi
     state.mood.cause = '和主人聊了几句';
   }
   rel.stage = relationshipStage(rel);
+  if (wasFirst) {
+    state.relationshipEvents = appendSoulEvent(
+      state.relationshipEvents,
+      { text: '第一次和主人说话', kind: 'first', at: iso },
+      now,
+    );
+  }
+  if (rel.stage !== previousStage) {
+    state.relationshipEvents = appendSoulEvent(
+      state.relationshipEvents,
+      { text: '关系进入「' + rel.stage + '」', kind: 'milestone', at: iso },
+      now,
+    );
+  }
   state.mood.label = moodLabel(state.mood, rel.tension);
   state.mood.updatedAt = iso;
   state.updatedAt = iso;

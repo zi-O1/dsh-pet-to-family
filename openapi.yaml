@@ -1605,7 +1605,7 @@ paths:
       summary: 重置灵魂状态或清空长期记忆
       description: |
         `scope: "state"` = 删除这只宠物的整个 soul-state 分桶（情绪 / 关系 / 长期记忆全部回到灵魂卡默认）；
-        `scope: "memories"` = 只清空长期记忆、挂心、自我叙事与反思时间，保留情绪和关系。
+        `scope: "memories"` = 只清空长期记忆、关系事件、挂心、自我叙事与反思时间，保留情绪和关系。
         **不删除 `memory.json` 的聊天记录。**
       parameters:
         - $ref: "#/components/parameters/PetIdQuery"
@@ -3735,6 +3735,14 @@ components:
             只保留最近 20 条，注入时取最近 10 条；没有记忆时为空数组。
           items:
             $ref: "#/components/schemas/SoulMemory"
+        relationshipEvents:
+          type: array
+          maxItems: 30
+          description: |
+            关系事件时间线（第一次 / 里程碑 / 约定 / 冲突 / 和好 / 日期 / 礼物）。
+            由阶段变化和反思层写入；只保留最近 30 条，注入时取最近 6 条。
+          items:
+            $ref: "#/components/schemas/SoulRelationshipEvent"
         activeGoals:
           type: array
           items:
@@ -3761,6 +3769,23 @@ components:
         kind:
           type: string
           enum: [preference, event, promise, person, date, other]
+        at:
+          type: string
+          format: date-time
+
+
+    SoulRelationshipEvent:
+      type: object
+      description: 一条关系事件（`soul-state.json` 的 `states.<petId>.relationshipEvents[]`）
+      required: [text, kind, at]
+      additionalProperties: true
+      properties:
+        text:
+          type: string
+          maxLength: 180
+        kind:
+          type: string
+          enum: [first, milestone, promise, conflict, repair, date, gift, other]
         at:
           type: string
           format: date-time

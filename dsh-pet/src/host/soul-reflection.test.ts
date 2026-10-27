@@ -43,11 +43,13 @@ describe('buildSoulReflectionPrompt', () => {
 describe('parseSoulReflection / applySoulReflection', () => {
   test('代码围栏 JSON 可解析，坏 JSON / 空更新返回 null', () => {
     const parsed = parseSoulReflection(
-      '```json\n{"memories":[{"text":"喜欢蓝莓","kind":"preference"}],"activeGoals":["等主人回来"],"selfNarrative":"我在慢慢记住主人。"}\n```',
+      '```json\n{"memories":[{"text":"喜欢蓝莓","kind":"preference"}],"relationshipEvents":[{"text":"第一次一起吃饭","kind":"first"}],"activeGoals":["等主人回来"],"selfNarrative":"我在慢慢记住主人。"}\n```',
       NOW,
     );
     assert.ok(parsed);
     assert.equal(parsed.memories.length, 1);
+    assert.equal(parsed.relationshipEvents.length, 1);
+    assert.equal(parsed.relationshipEvents[0].kind, 'first');
     assert.deepEqual(parsed.activeGoals, ['等主人回来']);
     assert.equal(parsed.selfNarrative, '我在慢慢记住主人。');
 
@@ -65,23 +67,31 @@ describe('parseSoulReflection / applySoulReflection', () => {
           { text: ' 喜欢蓝莓 ', kind: 'preference', at: NOW.toISOString() },
           { text: '周末要考试', kind: 'event', at: NOW.toISOString() },
         ],
+        relationshipEvents: [
+          { text: '第一次一起复习', kind: 'first', at: NOW.toISOString() },
+          { text: '约好周末一起复习', kind: 'promise', at: NOW.toISOString() },
+        ],
         activeGoals: ['陪主人复习'],
         selfNarrative: '我想成为会记住主人的桌宠。',
       },
       NOW,
     );
     assert.equal(state.memories?.length, 2);
+    assert.equal(state.relationshipEvents?.length, 2);
     assert.equal(state.activeGoals?.[0], '陪主人复习');
     assert.equal(state.selfNarrative, '我想成为会记住主人的桌宠。');
     assert.equal(state.lastReflectionAt, NOW.toISOString());
     assert.equal(state.relationship.trust, 42);
   });
 
-  test('长期记忆会进入状态提示词，并带类型标签', () => {
+  test('长期记忆与关系事件会进入状态提示词，并带类型标签', () => {
     state.memories = [{ text: '喜欢蓝莓', kind: 'preference', at: NOW.toISOString() }];
+    state.relationshipEvents = [{ text: '第一次一起复习', kind: 'first', at: NOW.toISOString() }];
     const text = renderSoulState(state, card);
     assert.match(text, /长期记忆/);
     assert.match(text, /\[偏好\] 喜欢蓝莓/);
+    assert.match(text, /关系事件/);
+    assert.match(text, /\[第一次\] 第一次一起复习/);
   });
 });
 

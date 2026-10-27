@@ -727,7 +727,7 @@ export function apply(ctx: any): void {
 
   /** 反思结果：成功时带回实际写入的条目数；失败用结构化 reason，设置页可直接显示。 */
   type SoulReflectOutcome =
-    | { ok: true; memories: number; activeGoals: number; selfNarrative: boolean }
+    | { ok: true; memories: number; relationshipEvents: number; activeGoals: number; selfNarrative: boolean }
     | {
         ok: false;
         reason: 'busy' | 'no-soul' | 'no-memory' | 'generate-error' | 'parse-error' | 'error';
@@ -781,6 +781,7 @@ export function apply(ctx: any): void {
       return {
         ok: true,
         memories: reflection.memories.length,
+        relationshipEvents: reflection.relationshipEvents.length,
         activeGoals: reflection.activeGoals.length,
         selfNarrative: reflection.selfNarrative.length > 0,
       };
@@ -2420,7 +2421,7 @@ export function apply(ctx: any): void {
         });
         if (result.ok) {
           log.info(
-            `[dsh-pet] 手动灵魂反思完成 pet=${who.petId} 新增/合并记忆=${result.memories} 挂心=${result.activeGoals}`,
+            `[dsh-pet] 手动灵魂反思完成 pet=${who.petId} 新增/合并记忆=${result.memories} 事件=${result.relationshipEvents} 挂心=${result.activeGoals}`,
           );
         } else {
           log.warn(
@@ -2463,6 +2464,7 @@ export function apply(ctx: any): void {
             if (card) {
               const state = normalizeSoulState(states[who.petId], card, who.petId, new Date());
               state.memories = [];
+              state.relationshipEvents = [];
               state.activeGoals = [];
               state.selfNarrative = '';
               state.lastReflectionAt = null;
