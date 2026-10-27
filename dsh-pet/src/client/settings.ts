@@ -355,7 +355,7 @@ export const zh = {
   invalidChatImageLimit: '请检查对话配图张数上限：需为 ≥ 0 的数字（0 = 不限制）。',
   soulTitle: '人格灵魂色彩',
   soulHint:
-    '灵魂卡是比人设更稳定的「内在设定」：身份、在意的东西、说话方式、渴望、害怕、边界、关系起点与灵魂色彩。配置后，宿主会在碎碎念与对话的 system 里追加「稳定灵魂卡 + 此刻的灵魂状态」；状态（情绪 / 关系 / 上次聊天）由 soul-state.json 跨会话延续。没有卡 / 空卡 = 完全走旧人设。',
+    '灵魂卡是比人设更稳定的「内在设定」：身份、在意的东西、说话方式、渴望、害怕、边界、关系起点与灵魂色彩。配置后，宿主会在碎碎念与对话的 system 里追加「稳定灵魂卡 + 此刻的灵魂状态」；状态（情绪 / 关系 / 上次聊天 / 长期记忆）由 soul-state.json 跨会话延续；成功对话后还会定期反思，整理偏好、约定、事件与自我叙事。没有卡 / 空卡 = 完全走旧人设。',
   soulToggle: '灵魂注入',
   soulToggleHint:
     '全局默认，所有宠物共用。开启（默认）= 有灵魂卡的宠物在提示词里追加灵魂段，并在成功对话后推进 soul-state.json；关闭 = 不读卡、不写状态、不追加任何段落，行为回到旧版。只影响 AI 提示词，设置页仍可查看灵魂卡。',
@@ -364,7 +364,7 @@ export const zh = {
     '只影响这只宠物。留空 = 跟随所属条目的灵魂卡（输入框里的灰色文字就是那份内容）；填了非空 JSON = 整张取代条目卡。字段见仓库 CONFIG.md（或包内 assets/config.jsonc 的默认卡）；支持 camelCase 与 snake_case。保存前会校验 JSON，格式不对不会写盘。',
   soulCardPlaceholder: '留空 = 跟随条目灵魂卡；也可以粘贴一张完整 JSON 覆盖这只宠物。',
   soulPreview: '预览当前注入',
-  soulPreviewNote: '预览读取的是已保存配置；改完灵魂卡请先点「保存」。',
+  soulPreviewNote: '预览读取的是已保存配置（含长期记忆）；改完灵魂卡请先点「保存」。',
   soulPreviewBusy: '读取中…',
   soulPreviewEmpty: '没有可注入的灵魂卡。',
   soulPreviewDisabled: '灵魂注入已关闭；下面是卡内容，但不会进入提示词。',
@@ -595,7 +595,7 @@ export const en = {
   invalidChatImageLimit: 'Check the chat image limit: it must be a number ≥ 0 (0 = no limit).',
   soulTitle: 'Soul & personality color',
   soulHint:
-    'A soul card is a more stable inner layer than the persona: identity, what it cares about, voice, desires, fears, boundaries, relationship seed and soul color. When configured, the host appends a stable soul card plus the current soul state to every whisper / chat system prompt; the state (mood / relationship / last exchange) persists across sessions in soul-state.json. No card / empty card = the legacy persona only.',
+    'A soul card is a more stable inner layer than the persona: identity, what it cares about, voice, desires, fears, boundaries, relationship seed and soul color. When configured, the host appends a stable soul card plus the current soul state to every whisper / chat system prompt; the state (mood / relationship / last exchange / long-term memories) persists across sessions in soul-state.json; after successful chats it also reflects periodically to distill preferences, promises, events and a self-narrative. No card / empty card = the legacy persona only.',
   soulToggle: 'Soul injection',
   soulToggleHint:
     'Global default shared by every pet. On (default) = pets with a soul card get the soul sections and advance soul-state.json after successful chats; off = no card read, no state write, no extra prompt sections (legacy behavior). It only affects AI prompts; the card stays visible here.',
@@ -604,7 +604,7 @@ export const en = {
     'Applies to this pet only. Leave empty to follow the entry soul card (the grey text in the box is exactly that); a non-empty JSON object replaces it entirely. See the repository CONFIG.md (or the default card in assets/config.jsonc) for fields; camelCase and snake_case are both accepted. JSON is validated before saving — malformed input is never written.',
   soulCardPlaceholder: 'Leave empty to follow the entry soul card, or paste a full JSON object to override this pet.',
   soulPreview: 'Preview current injection',
-  soulPreviewNote: 'The preview reads the saved config; save your edits first.',
+  soulPreviewNote: 'The preview reads the saved config (including long-term memories); save your edits first.',
   soulPreviewBusy: 'Loading…',
   soulPreviewEmpty: 'No soul card to inject.',
   soulPreviewDisabled: 'Soul injection is off; the card below is not sent to the model.',

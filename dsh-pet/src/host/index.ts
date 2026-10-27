@@ -23,6 +23,12 @@ import { listBalanceProviders, queryBalance, registerBalanceProvider } from './b
 import { generateWhisper } from './whisper';
 import { automaticWhisperSchedule, type StandaloneWhisperPolicy } from './whisper-policy';
 import { generateChat, type ChatMemoryMessage } from './chat';
+import {
+  applySoulReflection,
+  buildSoulReflectionPrompt,
+  parseSoulReflection,
+  shouldReflectSoul,
+} from './soul-reflection';
 import { configuredModel } from './model-selection';
 import { limitPool, pickMeme, readMemePool } from './memes';
 import {
@@ -652,6 +658,8 @@ export function apply(ctx: any): void {
   // 结构：{ version: 1, states: { <petId>: SoulState } }。它只存情绪 / 关系 / 上次聊天这类
   // 「连续性状态」，不存完整聊天记录；完整记录仍在 memory.json。
   const soulStatePath = join(userRoot, 'soul-state.json');
+  /** 同一只宠物同一时间只跑一次反思；并发对话只让第一次触发，避免重复烧 token。 */
+  const soulReflecting = new Set<string>();
   type SoulStateMap = Record<string, SoulState>;
 
   /** 读灵魂状态：不存在 → 空；解析失败/根不是对象 → 记日志 + 空状态（不阻塞对话）。 */
@@ -716,6 +724,63 @@ export function apply(ctx: any): void {
     conf: Record<string, unknown>;
     pet: Record<string, unknown>;
   }): SoulCard | null => (found.conf.chatSoulEnabled === false ? null : soulCardOf(found.conf, found.pet));
+
+  /**
+   * 灵魂反思：把最近对话交给模型整理成长期记忆 / 挂心 / 自我叙事。
+   * LLM 调用在锁外，最终读改写走 withMemoryLock，避免与同时发生的对话写状态交错；
+   * 同一只宠物同一时间只跑一次。失败只记日志，不影响已经返回的聊天回复。
+   */
+  const runSoulReflection = async (job: {
+    petId: string;
+    card: SoulCard;
+    messages: ChatMemoryMessage[];
+    preferred: ReturnType<typeof configuredModel>;
+  }): Promise<void> => {
+    if (soulReflecting.has(job.petId)) return;
+    soulReflecting.add(job.petId);
+    try {
+      const states = await readSoulStates();
+      const promptNow = new Date();
+      const promptState = normalizeSoulState(states[job.petId], job.card, job.petId, promptNow);
+      decaySoulState(promptState, job.card, promptNow);
+      const prompt = buildSoulReflectionPrompt(job.card, promptState, job.messages);
+      const generated = await generateChat(ctx, prompt.system, [], prompt.user, [], job.preferred);
+      if (!generated.ok) {
+        log.warn(
+          '[dsh-pet] 灵魂反思生成失败 pet=' +
+            job.petId +
+            ' reason=' +
+            generated.reason +
+            (generated.message ? ' ' + generated.message : ''),
+        );
+        return;
+      }
+      const reflection = parseSoulReflection(generated.text, new Date());
+      if (!reflection) {
+        log.warn('[dsh-pet] 灵魂反思返回了无法解析的 JSON pet=' + job.petId);
+        return;
+      }
+      await withMemoryLock(async () => {
+        const cfg = readAllConfig(configPaths);
+        const found = findPetInstance(cfg, job.petId);
+        if (!found) return;
+        const card = effectiveSoulCard(found);
+        if (!card) return;
+        const currentStates = await readSoulStates();
+        const current = normalizeSoulState(currentStates[job.petId], card, job.petId, new Date());
+        applySoulReflection(current, reflection, new Date());
+        currentStates[job.petId] = current;
+        await writeSoulStates(currentStates);
+      });
+      log.info(
+        `[dsh-pet] 灵魂反思完成 pet=${job.petId} 新增/合并记忆=${reflection.memories.length} 挂心=${reflection.activeGoals.length}`,
+      );
+    } catch (e) {
+      log.warn(`[dsh-pet] 灵魂反思异常 pet=${job.petId}：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      soulReflecting.delete(job.petId);
+    }
+  };
 
   /** 对话记忆轮数（1 轮 = 1 问 1 答）：该宠物所属条目的 chatMemoryRounds（合并器已填默认）。
    *  收已解析的条目配置：调用方都已拿到 `findPetInstance` 的结果。 */
@@ -787,14 +852,20 @@ export function apply(ctx: any): void {
   ): Promise<
     | { ok: true; text: string; image?: string }
     | { ok: false; reason: 'provider-missing' | 'generate-error' | 'unknown-pet'; message?: string }
-  > =>
-    withMemoryLock(async () => {
+  > => {
+    let reflectionJob: {
+      petId: string;
+      card: SoulCard;
+      messages: ChatMemoryMessage[];
+      preferred: ReturnType<typeof configuredModel>;
+    } | null = null;
+    const result = await withMemoryLock(async () => {
       const cfg = readAllConfig(configPaths);
       const found = findPetInstance(cfg, petId);
       // 宠物在「校验那次读」与这里之间被删了——本函数还要先排 withMemoryLock 的串行队列，
       // 窗口可能是秒级，所以这一支真会命中。明确失败：不生成、不写记忆也不写叶子，
       // 否则会在 memory.json 里永久留下一个已删宠物的分桶，外加一只幽灵叶子。
-      if (!found) return { ok: false, reason: 'unknown-pet', message: '没有这只桌宠：' + petId };
+      if (!found) return { ok: false as const, reason: 'unknown-pet' as const, message: '没有这只桌宠：' + petId };
       const rounds = memoryRounds(found.conf);
       // 灵魂：先读状态 → 按离线时长衰减 → 用这次用户发言推进（只改内存，生成成功后才落盘）。
       // 全局开关关闭 / 没有灵魂卡 → 不读不写，system 与旧版逐字一致。
@@ -829,7 +900,8 @@ export function apply(ctx: any): void {
       // 不能写 slice(-rounds * 2)：-0 在 JS 里 === 0，slice(-0) 返回整个数组而不是空。
       const list = sliceMemoryRounds(entry.messages, rounds);
       // 模型：条目配置的 chatModel 优先（留空 = 不指定）；生成侧失败会回落到当前对话的模型重试一次
-      const generated = await generateChat(ctx, system, list, text, pool, configuredModel(found.conf, 'chatModel'));
+      const preferred = configuredModel(found.conf, 'chatModel');
+      const generated = await generateChat(ctx, system, list, text, pool, preferred);
       if (!generated.ok) return generated;
       const now = Date.now();
       entry.messages.push({ role: 'user', content: text, ts: now });
@@ -838,11 +910,13 @@ export function apply(ctx: any): void {
       await writeMemory(mem);
       // 灵魂状态：只有生成成功并写入记忆后才推进/落盘。写状态失败不能影响对话本身——
       // 最多丢一次连续性，下一轮会从磁盘旧状态继续；记忆已经保存，回复照常返回。
+      let soulStateSaved = false;
       if (soulCard && soulState) {
         recordExchange(soulState, text, generated.text, new Date());
         soulStates[petId] = soulState;
         try {
           await writeSoulStates(soulStates);
+          soulStateSaved = true;
         } catch (e) {
           log.warn(
             `[dsh-pet] 灵魂状态写入失败 pet=${petId}（对话已成功，本轮状态未落盘）：${
@@ -850,6 +924,15 @@ export function apply(ctx: any): void {
             }`,
           );
         }
+      }
+      // 只有状态真的落盘后才安排反思：否则模型会基于一个没保存的临时状态整理记忆。
+      if (soulStateSaved && soulCard && soulState && shouldReflectSoul(soulState, new Date())) {
+        reflectionJob = {
+          petId,
+          card: soulCard,
+          messages: entry.messages.slice(-12).map((m) => ({ ...m })),
+          preferred,
+        };
       }
       // 回复写进 S（与碎碎念同一个叶子：前端本来就是同一条展示链路）
       state.writePet(
@@ -860,6 +943,9 @@ export function apply(ctx: any): void {
       // 同一份文本随返回值带出（叶子照写，不是二选一）
       return { ok: true as const, text: generated.text, ...(generated.image ? { image: generated.image } : {}) };
     });
+    if (result.ok && reflectionJob) void runSoulReflection(reflectionJob);
+    return result;
+  };
 
   /** 当前生效宠物列表：成品配置拍平（合并器已保证 id 唯一、字段填满），命令与桌面模式共用。 */
   const effectivePetList = (): Record<string, unknown>[] => flattenPetList(readAllConfig(configPaths));

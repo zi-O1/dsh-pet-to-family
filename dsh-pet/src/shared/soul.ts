@@ -129,6 +129,15 @@ export interface SoulLastExchange {
   at: string;
 }
 
+/** 长期记忆条目：由反思层从对话中抽取，跨会话注入。 */
+export type SoulMemoryKind = 'preference' | 'event' | 'promise' | 'person' | 'date' | 'other';
+
+export interface SoulMemory {
+  text: string;
+  kind: SoulMemoryKind;
+  at: string;
+}
+
 /** 宿主写回的动态灵魂状态（soul-state.json 的单个宠物分桶）。 */
 export interface SoulState {
   version: 1;
@@ -137,9 +146,11 @@ export interface SoulState {
   relationship: SoulRelationship;
   /** 最近一次对话（截断后的短句，不是完整记忆）。 */
   lastExchange?: SoulLastExchange;
-  /** 当前挂心的事（最多 5 条；P1 默认空，留给后续反思层）。 */
+  /** 长期记忆（反思层抽取，最多 20 条；跨会话注入提示词）。 */
+  memories?: SoulMemory[];
+  /** 当前挂心的事（最多 5 条；由反思层更新）。 */
   activeGoals?: string[];
-  /** 自我叙事（P1 默认空，留给后续反思层）。 */
+  /** 自我叙事（由反思层更新）。 */
   selfNarrative?: string;
   lastReflectionAt?: string | null;
   updatedAt: string;

@@ -4,12 +4,13 @@
  * 设计边界：
  *  - 灵魂卡是**稳定设定**，来自配置（条目级 `soul` 或实例级 `pets[].soul`），由
  *    `soulCardOf` 做「实例覆盖 → 条目回落」；没有卡 / 卡为空 → 完全走旧人设，不注入任何新段落。
- *  - 动态状态是**连续状态**，由宿主唯一写入 `soul-state.json`；P1 只记录情绪、关系与最近一次
- *    对话，不做语义记忆抽取（后续阶段再加）。
+ *  - 动态状态是**连续状态**，由宿主唯一写入 `soul-state.json`；P1 记录情绪、关系与最近一次
+ *    对话，P2 的反思层再把最近对话整理成长期记忆 / 挂心 / 自我叙事。
  *  - 本模块不碰 IO、不读时钟：时间由调用方传入，方便单测钉死。
  *
  * @module dsh-pet/src/host/soul
  */
+import { normalizeSoulMemories, soulMemoryKindLabel } from './soul-memory';
 import type {
   SoulCard,
   SoulColor,
@@ -26,7 +27,7 @@ import type {
 /** 渲染后的灵魂卡上限（字符）：灵魂卡是「稳定内核」，不是第二份人设，超长只保留前面的内容。 */
 const MAX_CARD_CHARS = 2600;
 /** 渲染后的动态状态上限：状态要短，避免每轮都挤占上下文。 */
-const MAX_STATE_CHARS = 900;
+const MAX_STATE_CHARS = 1400;
 
 const STAGES: readonly SoulStage[] = ['陌生', '初识', '熟悉', '亲近', '默契', '羁绊'];
 const STAGE_SET = new Set<string>(STAGES);
@@ -34,7 +35,7 @@ const STAGE_SET = new Set<string>(STAGES);
 /** 最近一次对话的锚点长度：只留足够模型接上话的短句，不把整段聊天塞进状态文件。 */
 const LAST_EXCHANGE_CHARS = 300;
 
-/** 温和 / 亲近的信号词：只做轻量启发式，不追求语义准确；真正的长期记忆留给后续阶段。 */
+/** 温和 / 亲近的信号词：只做轻量启发式，不追求语义准确；语义记忆由反思层负责。 */
 const WARM_RE =
   /(谢谢|感谢|喜欢你|爱你|抱抱|辛苦|晚安|早安|想你|可爱|好棒|乖|摸摸|陪你|一起|记住|别怕|我在|开心|高兴|厉害|加油|么么|亲亲|宝贝|好梦|慢慢来)/g;
 /** 尖锐 / 排斥的信号词：用于让张力上升、信任下降；不把单次负向话永久写死。 */
@@ -406,6 +407,10 @@ export function renderSoulState(
   if (state.lastExchange) {
     body.push('上次聊天：主人说「' + state.lastExchange.user + '」；你说「' + state.lastExchange.assistant + '」。');
   }
+  if (state.memories?.length) {
+    const lines = state.memories.slice(-10).map((m) => '· [' + soulMemoryKindLabel(m.kind) + '] ' + m.text);
+    body.push('长期记忆（只作背景，不要逐条复述）：\n' + lines.join('\n'));
+  }
   if (state.activeGoals?.length) body.push('当前挂心：' + state.activeGoals.join('；'));
   if (state.selfNarrative) body.push('自我叙事：' + state.selfNarrative);
   if (card?.temperament?.baselineMood) body.push('（基线心情：' + card.temperament.baselineMood + '）');
@@ -472,6 +477,7 @@ export function defaultSoulState(card: SoulCard | null | undefined, petId: strin
     petId,
     mood,
     relationship,
+    memories: [],
     activeGoals: [],
     selfNarrative: '',
     lastReflectionAt: null,
@@ -537,6 +543,7 @@ export function normalizeSoulState(
     petId,
     mood,
     relationship,
+    memories: normalizeSoulMemories(raw.memories, now),
     activeGoals: textList(pick(raw, 'activeGoals', 'active_goals'), 5, 200) ?? [],
     selfNarrative: text(pick(raw, 'selfNarrative', 'self_narrative'), 600) ?? '',
     lastReflectionAt: isoOrNull(pick(raw, 'lastReflectionAt', 'last_reflection_at')),

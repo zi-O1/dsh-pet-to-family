@@ -3650,6 +3650,14 @@ components:
           additionalProperties: true
           description: |
             最近一次对话（user / assistant / at），用于 `chatMemoryRounds: 0` 时的连续性。
+        memories:
+          type: array
+          maxItems: 20
+          description: |
+            反思层从对话中抽取的长期记忆（偏好 / 事件 / 约定 / 人物 / 日期）。
+            只保留最近 20 条，注入时取最近 10 条；没有记忆时为空数组。
+          items:
+            $ref: "#/components/schemas/SoulMemory"
         activeGoals:
           type: array
           items:
@@ -3662,3 +3670,20 @@ components:
             - type: "null"
         updatedAt:
           type: string
+
+
+    SoulMemory:
+      type: object
+      description: 一条长期记忆（`soul-state.json` 的 `states.<petId>.memories[]`）
+      required: [text, kind, at]
+      additionalProperties: true
+      properties:
+        text:
+          type: string
+          maxLength: 200
+        kind:
+          type: string
+          enum: [preference, event, promise, person, date, other]
+        at:
+          type: string
+          format: date-time
