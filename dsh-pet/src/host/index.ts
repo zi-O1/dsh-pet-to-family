@@ -725,18 +725,27 @@ export function apply(ctx: any): void {
     pet: Record<string, unknown>;
   }): SoulCard | null => (found.conf.chatSoulEnabled === false ? null : soulCardOf(found.conf, found.pet));
 
+  /** 反思结果：成功时带回实际写入的条目数；失败用结构化 reason，设置页可直接显示。 */
+  type SoulReflectOutcome =
+    | { ok: true; memories: number; activeGoals: number; selfNarrative: boolean }
+    | {
+        ok: false;
+        reason: 'busy' | 'no-soul' | 'no-memory' | 'generate-error' | 'parse-error' | 'error';
+        message?: string;
+      };
+
   /**
    * 灵魂反思：把最近对话交给模型整理成长期记忆 / 挂心 / 自我叙事。
    * LLM 调用在锁外，最终读改写走 withMemoryLock，避免与同时发生的对话写状态交错；
-   * 同一只宠物同一时间只跑一次。失败只记日志，不影响已经返回的聊天回复。
+   * 同一只宠物同一时间只跑一次。失败返回结构化原因，调用方决定日志/提示。
    */
-  const runSoulReflection = async (job: {
+  const reflectSoul = async (job: {
     petId: string;
     card: SoulCard;
     messages: ChatMemoryMessage[];
     preferred: ReturnType<typeof configuredModel>;
-  }): Promise<void> => {
-    if (soulReflecting.has(job.petId)) return;
+  }): Promise<SoulReflectOutcome> => {
+    if (soulReflecting.has(job.petId)) return { ok: false, reason: 'busy' };
     soulReflecting.add(job.petId);
     try {
       const states = await readSoulStates();
@@ -746,20 +755,15 @@ export function apply(ctx: any): void {
       const prompt = buildSoulReflectionPrompt(job.card, promptState, job.messages);
       const generated = await generateChat(ctx, prompt.system, [], prompt.user, [], job.preferred);
       if (!generated.ok) {
-        log.warn(
-          '[dsh-pet] 灵魂反思生成失败 pet=' +
-            job.petId +
-            ' reason=' +
-            generated.reason +
-            (generated.message ? ' ' + generated.message : ''),
-        );
-        return;
+        return {
+          ok: false,
+          reason: 'generate-error',
+          message: generated.reason + (generated.message ? '：' + generated.message : ''),
+        };
       }
       const reflection = parseSoulReflection(generated.text, new Date());
-      if (!reflection) {
-        log.warn('[dsh-pet] 灵魂反思返回了无法解析的 JSON pet=' + job.petId);
-        return;
-      }
+      if (!reflection) return { ok: false, reason: 'parse-error' };
+      let applied = false;
       await withMemoryLock(async () => {
         const cfg = readAllConfig(configPaths);
         const found = findPetInstance(cfg, job.petId);
@@ -771,14 +775,37 @@ export function apply(ctx: any): void {
         applySoulReflection(current, reflection, new Date());
         currentStates[job.petId] = current;
         await writeSoulStates(currentStates);
+        applied = true;
       });
-      log.info(
-        `[dsh-pet] 灵魂反思完成 pet=${job.petId} 新增/合并记忆=${reflection.memories.length} 挂心=${reflection.activeGoals.length}`,
-      );
+      if (!applied) return { ok: false, reason: 'no-soul' };
+      return {
+        ok: true,
+        memories: reflection.memories.length,
+        activeGoals: reflection.activeGoals.length,
+        selfNarrative: reflection.selfNarrative.length > 0,
+      };
     } catch (e) {
-      log.warn(`[dsh-pet] 灵魂反思异常 pet=${job.petId}：${e instanceof Error ? e.message : String(e)}`);
+      return { ok: false, reason: 'error', message: e instanceof Error ? e.message : String(e) };
     } finally {
       soulReflecting.delete(job.petId);
+    }
+  };
+
+  /** 自动反思：只记日志，绝不把失败抛回对话链路。 */
+  const runSoulReflection = async (job: {
+    petId: string;
+    card: SoulCard;
+    messages: ChatMemoryMessage[];
+    preferred: ReturnType<typeof configuredModel>;
+  }): Promise<void> => {
+    const result = await reflectSoul(job);
+    if (result.ok) {
+      log.info(`[dsh-pet] 灵魂反思完成 pet=${job.petId} 新增/合并记忆=${result.memories} 挂心=${result.activeGoals}`);
+    } else {
+      log.warn(
+        `[dsh-pet] 灵魂反思未完成 pet=${job.petId} reason=${result.reason}` +
+          (result.message ? ' ' + result.message : ''),
+      );
     }
   };
 
@@ -2363,6 +2390,96 @@ export function apply(ctx: any): void {
           kind: 'json',
           status: 200,
           obj: { ok: false, reason: 'generate-error', message: e instanceof Error ? e.message : String(e) },
+        };
+      }
+    }
+
+    // 手动整理长期记忆：POST /soul/reflect?pet=<id>。设置页「立即整理记忆」按钮调用；
+    // 与自动反思共用 reflectSoul，失败返回结构化 reason，不写状态。
+    if (rest === 'soul/reflect') {
+      if (method !== 'POST') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+      try {
+        const cfg = readAllConfig(configPaths);
+        const who = requirePet(url.searchParams, () => cfg);
+        if (!who.ok) return who.res;
+        const card = effectiveSoulCard(who);
+        if (!card) return { kind: 'json', status: 200, obj: { ok: false, reason: 'no-soul' } };
+        const mem = await readMemory();
+        const rawMessages = mem[who.entry]?.[who.petId]?.messages;
+        const messages = Array.isArray(rawMessages)
+          ? rawMessages
+              .filter((m) => m && typeof m.content === 'string' && (m.role === 'user' || m.role === 'assistant'))
+              .slice(-12)
+          : [];
+        if (!messages.length) return { kind: 'json', status: 200, obj: { ok: false, reason: 'no-memory' } };
+        const result = await reflectSoul({
+          petId: who.petId,
+          card,
+          messages,
+          preferred: configuredModel(who.conf, 'chatModel'),
+        });
+        if (result.ok) {
+          log.info(
+            `[dsh-pet] 手动灵魂反思完成 pet=${who.petId} 新增/合并记忆=${result.memories} 挂心=${result.activeGoals}`,
+          );
+        } else {
+          log.warn(
+            `[dsh-pet] 手动灵魂反思未完成 pet=${who.petId} reason=${result.reason}` +
+              (result.message ? ' ' + result.message : ''),
+          );
+        }
+        return { kind: 'json', status: 200, obj: result };
+      } catch (e) {
+        return {
+          kind: 'json',
+          status: 200,
+          obj: { ok: false, reason: 'error', message: e instanceof Error ? e.message : String(e) },
+        };
+      }
+    }
+
+    // 重置灵魂状态：POST /soul/reset?pet=<id>，body {scope:'state'|'memories'}。
+    // 只清 soul-state.json 的分桶，不删 memory.json 的完整聊天记录（设置页有明确提示）。
+    if (rest === 'soul/reset') {
+      if (method !== 'POST') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = (JSON.parse(body ?? 'null') as Record<string, unknown> | null) ?? {};
+      } catch {
+        return { kind: 'json', status: 200, obj: { ok: false, reason: 'bad-request' } };
+      }
+      const scope = parsed.scope === 'memories' ? 'memories' : parsed.scope === 'state' ? 'state' : '';
+      if (!scope) return { kind: 'json', status: 200, obj: { ok: false, reason: 'bad-request' } };
+      try {
+        const cfg = readAllConfig(configPaths);
+        const who = requirePet(url.searchParams, () => cfg);
+        if (!who.ok) return who.res;
+        await withMemoryLock(async () => {
+          const states = await readSoulStates();
+          if (scope === 'state') {
+            delete states[who.petId];
+          } else {
+            const card = effectiveSoulCard(who);
+            if (card) {
+              const state = normalizeSoulState(states[who.petId], card, who.petId, new Date());
+              state.memories = [];
+              state.activeGoals = [];
+              state.selfNarrative = '';
+              state.lastReflectionAt = null;
+              state.updatedAt = new Date().toISOString();
+              states[who.petId] = state;
+            } else {
+              delete states[who.petId];
+            }
+          }
+          await writeSoulStates(states);
+        });
+        return { kind: 'json', status: 200, obj: { ok: true, scope } };
+      } catch (e) {
+        return {
+          kind: 'json',
+          status: 200,
+          obj: { ok: false, reason: 'error', message: e instanceof Error ? e.message : String(e) },
         };
       }
     }

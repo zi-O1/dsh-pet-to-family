@@ -369,6 +369,20 @@ export const zh = {
   soulPreviewEmpty: '没有可注入的灵魂卡。',
   soulPreviewDisabled: '灵魂注入已关闭；下面是卡内容，但不会进入提示词。',
   soulPreviewError: '预览失败，请检查服务连接后重试。',
+  soulReflectNow: '立即整理记忆',
+  soulReflectBusy: '整理中…',
+  soulReflectOk: '已整理，新增/合并 {n} 条记忆',
+  soulReflectNoMemory: '还没有可整理的对话记忆',
+  soulReflectError: '整理失败，请稍后重试',
+  soulClearMemories: '清空长期记忆',
+  soulResetState: '重置关系与情绪',
+  soulClearConfirm: '确定清空这只宠物的长期记忆？聊天记录不会删除。',
+  soulResetConfirm: '确定重置这只宠物的情绪、关系和长期记忆？聊天记录不会删除。',
+  soulResetOk: '已重置',
+  soulResetError: '重置失败，请稍后重试',
+  soulMemoriesTitle: '长期记忆',
+  soulGoalsTitle: '当前挂心',
+  soulNarrativeTitle: '自我叙事',
   soulFollowEntry: '当前跟随条目灵魂卡',
   soulOverride: '当前使用这只宠物的覆盖',
   soulColorLabel: '灵魂色彩',
@@ -609,6 +623,20 @@ export const en = {
   soulPreviewEmpty: 'No soul card to inject.',
   soulPreviewDisabled: 'Soul injection is off; the card below is not sent to the model.',
   soulPreviewError: 'Preview failed. Check the server connection and try again.',
+  soulReflectNow: 'Reflect now',
+  soulReflectBusy: 'Reflecting…',
+  soulReflectOk: 'Reflected; {n} memories merged',
+  soulReflectNoMemory: 'No chat memory to reflect on yet',
+  soulReflectError: 'Reflection failed. Try again later.',
+  soulClearMemories: 'Clear long-term memories',
+  soulResetState: 'Reset mood & relationship',
+  soulClearConfirm: "Clear this pet's long-term memories? Chat history is not deleted.",
+  soulResetConfirm: "Reset this pet's mood, relationship and long-term memories? Chat history is not deleted.",
+  soulResetOk: 'Reset complete',
+  soulResetError: 'Reset failed. Try again later.',
+  soulMemoriesTitle: 'Long-term memories',
+  soulGoalsTitle: 'Current concerns',
+  soulNarrativeTitle: 'Self narrative',
   soulFollowEntry: 'Following the entry soul card',
   soulOverride: 'Using this pet’s override',
   soulColorLabel: 'Soul color',
@@ -1104,9 +1132,18 @@ export function makePetConfigSection(rt: {
       text: string;
       enabled: boolean;
       color: string | null;
+      memories: Array<{ text: string; kind: string }>;
+      activeGoals: string[];
+      selfNarrative: string;
     }>(null);
     const [soulPreviewBusy, setSoulPreviewBusy] = useState(false);
     const [soulPreviewErr, setSoulPreviewErr] = useState(false);
+    // 手动整理 / 清空记忆 / 重置状态的独立忙碌与反馈，不污染页面级保存提示。
+    const [soulActionBusy, setSoulActionBusy] = useState(false);
+    const [soulActionMsg, setSoulActionMsg] = useState<{ kind: 'ok' | 'err' | ''; text: string }>({
+      kind: '',
+      text: '',
+    });
     // 候选清单：宿主半侧 llm 服务的实时服务商与模型；null = 还没拉到，拉失败置 catalogErr 显示一行提示。
     const [catalog, setCatalog] = useState<ModelCatalogGroup[] | null>(null);
     const [catalogErr, setCatalogErr] = useState(false);
@@ -1285,13 +1322,31 @@ export function makePetConfigSection(rt: {
           enabled?: unknown;
           render?: unknown;
           color?: unknown;
+          state?: unknown;
         };
         if (!data || data.ok !== true) throw new Error('bad response');
+        const state =
+          data.state && typeof data.state === 'object' ? (data.state as Record<string, unknown>) : undefined;
+        const memories = Array.isArray(state?.memories)
+          ? state.memories
+              .filter((m): m is Record<string, unknown> => Boolean(m) && typeof m === 'object')
+              .map((m) => ({
+                text: typeof m.text === 'string' ? m.text : '',
+                kind: typeof m.kind === 'string' ? m.kind : 'other',
+              }))
+              .filter((m) => m.text)
+          : [];
+        const activeGoals = Array.isArray(state?.activeGoals)
+          ? state.activeGoals.filter((g): g is string => typeof g === 'string')
+          : [];
         setSoulPreview({
           petId: cur.id,
           text: typeof data.render === 'string' ? data.render : '',
           enabled: data.enabled !== false,
           color: typeof data.color === 'string' ? data.color : null,
+          memories,
+          activeGoals,
+          selfNarrative: typeof state?.selfNarrative === 'string' ? state.selfNarrative : '',
         });
       } catch {
         setSoulPreview(null);
@@ -1301,10 +1356,66 @@ export function makePetConfigSection(rt: {
       }
     };
 
+    /** 手动触发一次长期记忆整理；成功后重新拉预览，让记忆/挂心/叙事立即显示。 */
+    const reflectSoulNow = async (): Promise<void> => {
+      if (!cur || soulActionBusy) return;
+      setSoulActionBusy(true);
+      setSoulActionMsg({ kind: '', text: '' });
+      try {
+        const res = await fetch('/dsh-pet-7340/soul/reflect?pet=' + encodeURIComponent(cur.id), { method: 'POST' });
+        const data = (await res.json().catch(() => null)) as {
+          ok?: unknown;
+          reason?: unknown;
+          memories?: unknown;
+        } | null;
+        if (!res.ok || !data || data.ok !== true) {
+          setSoulActionMsg({
+            kind: 'err',
+            text: data?.reason === 'no-memory' ? t('soulReflectNoMemory') : t('soulReflectError'),
+          });
+          return;
+        }
+        setSoulActionMsg({ kind: 'ok', text: t('soulReflectOk').replace('{n}', String(data.memories ?? 0)) });
+        await previewSoul();
+      } catch {
+        setSoulActionMsg({ kind: 'err', text: t('soulReflectError') });
+      } finally {
+        setSoulActionBusy(false);
+      }
+    };
+
+    /** 清空长期记忆或重置整只宠物的灵魂状态；只写 soul-state.json，不删聊天记忆。 */
+    const resetSoul = async (scope: 'memories' | 'state'): Promise<void> => {
+      if (!cur || soulActionBusy) return;
+      if (!window.confirm(t(scope === 'state' ? 'soulResetConfirm' : 'soulClearConfirm'))) return;
+      setSoulActionBusy(true);
+      setSoulActionMsg({ kind: '', text: '' });
+      try {
+        const res = await fetch('/dsh-pet-7340/soul/reset?pet=' + encodeURIComponent(cur.id), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ scope }),
+        });
+        const data = (await res.json().catch(() => null)) as { ok?: unknown } | null;
+        if (!res.ok || !data || data.ok !== true) {
+          setSoulActionMsg({ kind: 'err', text: t('soulResetError') });
+          return;
+        }
+        setSoulActionMsg({ kind: 'ok', text: t('soulResetOk') });
+        setSoulPreview(null);
+        await previewSoul();
+      } catch {
+        setSoulActionMsg({ kind: 'err', text: t('soulResetError') });
+      } finally {
+        setSoulActionBusy(false);
+      }
+    };
+
     useEffect(() => {
       // 切换宠物时旧预览已不属于当前编辑对象；清掉，避免误以为新宠物是这个状态。
       setSoulPreview(null);
       setSoulPreviewErr(false);
+      setSoulActionMsg({ kind: '', text: '' });
     }, [selId]);
 
     /** 解析一只宠物的灵魂卡草稿：留空/空对象 = 删除覆盖（跟随条目）；非对象或坏 JSON = 明确错误。
@@ -2054,6 +2165,78 @@ export function makePetConfigSection(rt: {
                         soulPreview.text
                           ? h('pre', { className: 'dsh-pet-cfg__soulPreview', children: soulPreview.text })
                           : h('p', { className: 'dsh-pet-cfg__note', children: t('soulPreviewEmpty') }),
+                      ],
+                    })
+                  : null,
+                cur
+                  ? h('div', {
+                      className: 'dsh-pet-cfg__soulRow',
+                      children: [
+                        h('button', {
+                          type: 'button',
+                          className: 'dsh-pet-cfg__btn is-sm',
+                          disabled: busy || soulActionBusy,
+                          onClick: () => void reflectSoulNow(),
+                          children: soulActionBusy ? t('soulReflectBusy') : t('soulReflectNow'),
+                        }),
+                        h('button', {
+                          type: 'button',
+                          className: 'dsh-pet-cfg__btn is-sm',
+                          disabled: busy || soulActionBusy,
+                          onClick: () => void resetSoul('memories'),
+                          children: t('soulClearMemories'),
+                        }),
+                        h('button', {
+                          type: 'button',
+                          className: 'dsh-pet-cfg__btn is-sm',
+                          disabled: busy || soulActionBusy,
+                          onClick: () => void resetSoul('state'),
+                          children: t('soulResetState'),
+                        }),
+                      ],
+                    })
+                  : null,
+                cur && soulActionMsg.text
+                  ? h('p', {
+                      className: 'dsh-pet-cfg__note',
+                      style:
+                        soulActionMsg.kind === 'err'
+                          ? { color: 'var(--dsw-alias-state-error-primary)' }
+                          : { color: 'var(--dsw-alias-state-success-primary)' },
+                      children: soulActionMsg.text,
+                    })
+                  : null,
+                cur &&
+                soulPreview?.petId === cur.id &&
+                (soulPreview.memories.length > 0 || soulPreview.activeGoals.length > 0 || soulPreview.selfNarrative)
+                  ? h('div', {
+                      className: 'dsh-pet-cfg__field',
+                      children: [
+                        soulPreview.memories.length
+                          ? h('div', {
+                              className: 'dsh-pet-cfg__cardTitle',
+                              children: t('soulMemoriesTitle'),
+                            })
+                          : null,
+                        ...soulPreview.memories.slice(-10).map((m, i) =>
+                          h('div', {
+                            key: 'sm' + i,
+                            className: 'dsh-pet-cfg__note',
+                            children: '· ' + m.text,
+                          }),
+                        ),
+                        soulPreview.activeGoals.length
+                          ? h('div', {
+                              className: 'dsh-pet-cfg__note',
+                              children: t('soulGoalsTitle') + '：' + soulPreview.activeGoals.join('；'),
+                            })
+                          : null,
+                        soulPreview.selfNarrative
+                          ? h('div', {
+                              className: 'dsh-pet-cfg__note',
+                              children: t('soulNarrativeTitle') + '：' + soulPreview.selfNarrative,
+                            })
+                          : null,
                       ],
                     })
                   : null,

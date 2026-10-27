@@ -1563,6 +1563,83 @@ paths:
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
 
+  /dsh-pet-7340/soul/reflect:
+    post:
+      tags: [Soul]
+      operationId: reflectSoul
+      summary: 手动整理一次长期记忆
+      description: |
+        设置页「立即整理记忆」按钮调用。读取该宠物 `memory.json` 的最近对话，用当前对话模型
+        整理成长记忆 / 挂心 / 自我叙事并写回 `soul-state.json`。失败也是 200（`{ ok:false, reason }`）：
+        `no-soul`（没有灵魂卡）、`no-memory`（还没有聊天记录）、`busy`（同一只宠物正在反思）、
+        `generate-error`、`parse-error`、`error`。
+      parameters:
+        - $ref: "#/components/parameters/PetIdQuery"
+      responses:
+        "200":
+          description: 反思结果
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [ok, memories, activeGoals, selfNarrative]
+                    properties:
+                      ok:
+                        type: boolean
+                        const: true
+                      memories:
+                        type: integer
+                      activeGoals:
+                        type: integer
+                      selfNarrative:
+                        type: boolean
+                  - $ref: "#/components/schemas/FailureResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+
+  /dsh-pet-7340/soul/reset:
+    post:
+      tags: [Soul]
+      operationId: resetSoulState
+      summary: 重置灵魂状态或清空长期记忆
+      description: |
+        `scope: "state"` = 删除这只宠物的整个 soul-state 分桶（情绪 / 关系 / 长期记忆全部回到灵魂卡默认）；
+        `scope: "memories"` = 只清空长期记忆、挂心、自我叙事与反思时间，保留情绪和关系。
+        **不删除 `memory.json` 的聊天记录。**
+      parameters:
+        - $ref: "#/components/parameters/PetIdQuery"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope]
+              properties:
+                scope:
+                  type: string
+                  enum: [state, memories]
+      responses:
+        "200":
+          description: 重置结果；失败也是 200（`{ ok:false, reason }`）
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [ok, scope]
+                    properties:
+                      ok:
+                        type: boolean
+                        const: true
+                      scope:
+                        type: string
+                        enum: [state, memories]
+                  - $ref: "#/components/schemas/FailureResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+
   /dsh-pet-7340/config:
     get:
       tags: [Config]

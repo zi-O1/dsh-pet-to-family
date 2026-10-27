@@ -64,6 +64,7 @@ DSH 设置 → 「桌宠配置」：
 - **实例级**：`pets[].soul`，写了就整张取代所属条目的卡；留空 / `{}` = 跟随条目。
 - **设置页**：「人格灵魂色彩」里可以改全局开关、编辑当前宠物的实例卡 JSON，并「预览当前注入」——预览读的是**已保存**配置，不会写状态；预览里同时能看到当前长期记忆与自我叙事。
 - **长期记忆**：`memories[]`（`preference` / `event` / `promise` / `person` / `date` / `other`，单条 ≤ 200 字）、`activeGoals[]`（≤ 5 条）、`selfNarrative` 与 `lastReflectionAt` 都在 `soul-state.json` 里；它们会随提示词注入，但反思层不会把数值或记忆直接当台词让模型复述。
+- **管理**：设置页可以「立即整理记忆」「清空长期记忆」「重置关系与情绪」；后两者只改 `soul-state.json`，不会删除 `memory.json` 的聊天记录。
 - **默认卡**：包内 `assets/config.jsonc` 自带一张蓝毛小女仆卡，可直接改成你的角色；删掉 `soul` 即回到旧人设。
 - **灵魂色**：`soulColor.primary`（缺失时依次回退 `glow` / `secondary`）会用作对话弹窗的描边、聚焦光晕与光标颜色；没有卡或全局关闭时保持旧版样式。
 
