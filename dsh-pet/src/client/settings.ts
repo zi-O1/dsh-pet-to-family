@@ -381,6 +381,23 @@ export const zh = {
   soulResetOk: '已重置',
   soulResetError: '重置失败，请稍后重试',
   soulEventsTitle: '关系事件',
+  soulEventKind: '事件类型',
+  soulEventText: '事件内容',
+  soulEventDate: '日期（可选）',
+  soulAddEvent: '添加关系事件',
+  soulEventDelete: '删除',
+  soulEventDeleteConfirm: '确定删除这条关系事件？',
+  soulEventAddOk: '已添加关系事件',
+  soulEventDeleteOk: '已删除关系事件',
+  soulEventError: '操作失败，请稍后重试',
+  'soulEventKind.first': '第一次',
+  'soulEventKind.milestone': '里程碑',
+  'soulEventKind.promise': '约定',
+  'soulEventKind.conflict': '别扭',
+  'soulEventKind.repair': '和好',
+  'soulEventKind.date': '日期',
+  'soulEventKind.gift': '礼物',
+  'soulEventKind.other': '其他',
   soulMemoriesTitle: '长期记忆',
   soulGoalsTitle: '当前挂心',
   soulNarrativeTitle: '自我叙事',
@@ -636,6 +653,23 @@ export const en = {
   soulResetOk: 'Reset complete',
   soulResetError: 'Reset failed. Try again later.',
   soulEventsTitle: 'Relationship events',
+  soulEventKind: 'Event type',
+  soulEventText: 'Event text',
+  soulEventDate: 'Date (optional)',
+  soulAddEvent: 'Add relationship event',
+  soulEventDelete: 'Delete',
+  soulEventDeleteConfirm: 'Delete this relationship event?',
+  soulEventAddOk: 'Relationship event added',
+  soulEventDeleteOk: 'Relationship event deleted',
+  soulEventError: 'Action failed. Try again later.',
+  'soulEventKind.first': 'First',
+  'soulEventKind.milestone': 'Milestone',
+  'soulEventKind.promise': 'Promise',
+  'soulEventKind.conflict': 'Conflict',
+  'soulEventKind.repair': 'Repair',
+  'soulEventKind.date': 'Date',
+  'soulEventKind.gift': 'Gift',
+  'soulEventKind.other': 'Other',
   soulMemoriesTitle: 'Long-term memories',
   soulGoalsTitle: 'Current concerns',
   soulNarrativeTitle: 'Self narrative',
@@ -1143,6 +1177,11 @@ export function makePetConfigSection(rt: {
     const [soulPreviewErr, setSoulPreviewErr] = useState(false);
     // 手动整理 / 清空记忆 / 重置状态的独立忙碌与反馈，不污染页面级保存提示。
     const [soulActionBusy, setSoulActionBusy] = useState(false);
+    const [soulEventDraft, setSoulEventDraft] = useState<{ kind: string; text: string; at: string }>({
+      kind: 'milestone',
+      text: '',
+      at: '',
+    });
     const [soulActionMsg, setSoulActionMsg] = useState<{ kind: 'ok' | 'err' | ''; text: string }>({
       kind: '',
       text: '',
@@ -1420,6 +1459,67 @@ export function makePetConfigSection(rt: {
         await previewSoul();
       } catch {
         setSoulActionMsg({ kind: 'err', text: t('soulResetError') });
+      } finally {
+        setSoulActionBusy(false);
+      }
+    };
+
+    /** 手动添加一条关系事件；日期留空 = 今天。 */
+    const addSoulEvent = async (): Promise<void> => {
+      if (!cur || soulActionBusy) return;
+      const text = soulEventDraft.text.trim();
+      if (!text) {
+        setSoulActionMsg({ kind: 'err', text: t('soulEventError') });
+        return;
+      }
+      setSoulActionBusy(true);
+      setSoulActionMsg({ kind: '', text: '' });
+      try {
+        const res = await fetch('/dsh-pet-7340/soul/event?pet=' + encodeURIComponent(cur.id), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            text,
+            kind: soulEventDraft.kind,
+            ...(soulEventDraft.at ? { at: soulEventDraft.at } : {}),
+          }),
+        });
+        const data = (await res.json().catch(() => null)) as { ok?: unknown } | null;
+        if (!res.ok || !data || data.ok !== true) {
+          setSoulActionMsg({ kind: 'err', text: t('soulEventError') });
+          return;
+        }
+        setSoulEventDraft((draft) => ({ ...draft, text: '', at: '' }));
+        setSoulActionMsg({ kind: 'ok', text: t('soulEventAddOk') });
+        await previewSoul();
+      } catch {
+        setSoulActionMsg({ kind: 'err', text: t('soulEventError') });
+      } finally {
+        setSoulActionBusy(false);
+      }
+    };
+
+    /** 删除一条关系事件；按正文删除（事件正文是去重键）。 */
+    const removeSoulEvent = async (text: string): Promise<void> => {
+      if (!cur || soulActionBusy) return;
+      if (!window.confirm(t('soulEventDeleteConfirm'))) return;
+      setSoulActionBusy(true);
+      setSoulActionMsg({ kind: '', text: '' });
+      try {
+        const res = await fetch('/dsh-pet-7340/soul/event/remove?pet=' + encodeURIComponent(cur.id), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+        const data = (await res.json().catch(() => null)) as { ok?: unknown } | null;
+        if (!res.ok || !data || data.ok !== true) {
+          setSoulActionMsg({ kind: 'err', text: t('soulEventError') });
+          return;
+        }
+        setSoulActionMsg({ kind: 'ok', text: t('soulEventDeleteOk') });
+        await previewSoul();
+      } catch {
+        setSoulActionMsg({ kind: 'err', text: t('soulEventError') });
       } finally {
         setSoulActionBusy(false);
       }
@@ -2222,7 +2322,10 @@ export function makePetConfigSection(rt: {
                   : null,
                 cur &&
                 soulPreview?.petId === cur.id &&
-                (soulPreview.memories.length > 0 || soulPreview.activeGoals.length > 0 || soulPreview.selfNarrative)
+                (soulPreview.memories.length > 0 ||
+                  soulPreview.relationshipEvents.length > 0 ||
+                  soulPreview.activeGoals.length > 0 ||
+                  soulPreview.selfNarrative)
                   ? h('div', {
                       className: 'dsh-pet-cfg__field',
                       children: [
@@ -2235,8 +2338,20 @@ export function makePetConfigSection(rt: {
                         ...soulPreview.relationshipEvents.slice(-8).map((e, i) =>
                           h('div', {
                             key: 'se' + i,
-                            className: 'dsh-pet-cfg__note',
-                            children: '· ' + (e.at ? e.at.slice(0, 10) + ' ' : '') + e.text,
+                            className: 'dsh-pet-cfg__soulRow',
+                            children: [
+                              h('span', {
+                                className: 'dsh-pet-cfg__note',
+                                children: '· ' + (e.at ? e.at.slice(0, 10) + ' ' : '') + e.text,
+                              }),
+                              h('button', {
+                                type: 'button',
+                                className: 'dsh-pet-cfg__btn is-sm',
+                                disabled: busy || soulActionBusy,
+                                onClick: () => void removeSoulEvent(e.text),
+                                children: t('soulEventDelete'),
+                              }),
+                            ],
                           }),
                         ),
                         soulPreview.memories.length
@@ -2264,6 +2379,79 @@ export function makePetConfigSection(rt: {
                               children: t('soulNarrativeTitle') + '：' + soulPreview.selfNarrative,
                             })
                           : null,
+                      ],
+                    })
+                  : null,
+                cur
+                  ? h('div', {
+                      className: 'dsh-pet-cfg__field',
+                      children: [
+                        h('div', { className: 'dsh-pet-cfg__cardTitle', children: t('soulAddEvent') }),
+                        h('div', {
+                          className: 'dsh-pet-cfg__grid2',
+                          children: [
+                            field(
+                              t('soulEventKind'),
+                              h('select', {
+                                className: inputClass,
+                                value: soulEventDraft.kind,
+                                disabled: busy || soulActionBusy,
+                                onChange: (e: ChangeEvent<HTMLSelectElement>) =>
+                                  setSoulEventDraft((draft) => ({ ...draft, kind: e.target.value })),
+                                children: [
+                                  'first',
+                                  'milestone',
+                                  'promise',
+                                  'conflict',
+                                  'repair',
+                                  'date',
+                                  'gift',
+                                  'other',
+                                ].map((k) => h('option', { key: k, value: k, children: t('soulEventKind.' + k) })),
+                              }),
+                            ),
+                            field(
+                              t('soulEventText'),
+                              h('input', {
+                                className: inputClass,
+                                value: soulEventDraft.text,
+                                disabled: busy || soulActionBusy,
+                                placeholder: t('soulEventText'),
+                                onChange: (e: ChangeEvent<HTMLInputElement>) =>
+                                  setSoulEventDraft((draft) => ({ ...draft, text: e.target.value })),
+                              }),
+                            ),
+                          ],
+                        }),
+                        h('div', {
+                          className: 'dsh-pet-cfg__grid2',
+                          children: [
+                            field(
+                              t('soulEventDate'),
+                              h('input', {
+                                className: inputClass,
+                                type: 'date',
+                                value: soulEventDraft.at,
+                                disabled: busy || soulActionBusy,
+                                onChange: (e: ChangeEvent<HTMLInputElement>) =>
+                                  setSoulEventDraft((draft) => ({ ...draft, at: e.target.value })),
+                              }),
+                            ),
+                            h('div', {
+                              className: 'dsh-pet-cfg__field',
+                              children: [
+                                h('span', { className: 'dsh-pet-cfg__flabel', children: ' ' }),
+                                h('button', {
+                                  type: 'button',
+                                  className: 'dsh-pet-cfg__btn',
+                                  disabled: busy || soulActionBusy || !soulEventDraft.text.trim(),
+                                  onClick: () => void addSoulEvent(),
+                                  children: t('soulAddEvent'),
+                                }),
+                              ],
+                            }),
+                          ],
+                        }),
                       ],
                     })
                   : null,

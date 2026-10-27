@@ -21,6 +21,8 @@ dsh-pet 的宿主半侧向 DSH 自己的 Web 服务注册了**一条前缀路由
 | `GET /dsh-pet-7340/soul?pet=` | 读灵魂卡与动态状态预览（含长期记忆 / 挂心 / 自我叙事；只读，不推进关系、不写状态） |
 | `POST /dsh-pet-7340/soul/reflect?pet=` | 手动整理一次长期记忆（设置页「立即整理记忆」） |
 | `POST /dsh-pet-7340/soul/reset?pet=` | 重置灵魂状态 / 清空长期记忆与关系事件；body `{scope:'state'\|'memories'}`，不删聊天记录 |
+| `POST /dsh-pet-7340/soul/event?pet=` | 手动添加关系事件；body `{text, kind?, at?}` |
+| `POST /dsh-pet-7340/soul/event/remove?pet=` | 按正文删除关系事件；body `{text}` |
 | `GET /dsh-pet-7340/pose?pet=` | 读**桌面端**宠物的实况（位置 + 朝向）；网页端用客户端服务 `petApi7340`，不走这条路 |
 
 ## 二、占用锁

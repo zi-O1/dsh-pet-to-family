@@ -86,6 +86,7 @@ import {
 import { profileNameFrom, storageEntries } from './storage-paths';
 import { parseStateWaitQuery, PollStateStore } from './state';
 import { composeSystemPrompt, petPersona } from './persona';
+import { mergeSoulEvents, normalizeSoulEvent } from './soul-events';
 import {
   decaySoulState,
   normalizeSoulState,
@@ -2477,6 +2478,90 @@ export function apply(ctx: any): void {
           await writeSoulStates(states);
         });
         return { kind: 'json', status: 200, obj: { ok: true, scope } };
+      } catch (e) {
+        return {
+          kind: 'json',
+          status: 200,
+          obj: { ok: false, reason: 'error', message: e instanceof Error ? e.message : String(e) },
+        };
+      }
+    }
+
+    // 手动添加关系事件：POST /soul/event?pet=<id>，body { text, kind?, at? }。
+    // 只允许有灵魂卡的宠物；和自动事件共用同一套归一化、去重与上限。
+    if (rest === 'soul/event') {
+      if (method !== 'POST') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = (JSON.parse(body ?? 'null') as Record<string, unknown> | null) ?? {};
+      } catch {
+        return { kind: 'json', status: 200, obj: { ok: false, reason: 'bad-request' } };
+      }
+      const event = normalizeSoulEvent(
+        {
+          text: parsed.text,
+          kind: parsed.kind,
+          at: parsed.at,
+        },
+        new Date(),
+      );
+      if (!event) return { kind: 'json', status: 200, obj: { ok: false, reason: 'bad-request' } };
+      try {
+        const cfg = readAllConfig(configPaths);
+        const who = requirePet(url.searchParams, () => cfg);
+        if (!who.ok) return who.res;
+        const card = effectiveSoulCard(who);
+        if (!card) return { kind: 'json', status: 200, obj: { ok: false, reason: 'no-soul' } };
+        await withMemoryLock(async () => {
+          const states = await readSoulStates();
+          const current = normalizeSoulState(states[who.petId], card, who.petId, new Date());
+          current.relationshipEvents = mergeSoulEvents(current.relationshipEvents, [event], new Date());
+          current.updatedAt = new Date().toISOString();
+          states[who.petId] = current;
+          await writeSoulStates(states);
+        });
+        return { kind: 'json', status: 200, obj: { ok: true, event } };
+      } catch (e) {
+        return {
+          kind: 'json',
+          status: 200,
+          obj: { ok: false, reason: 'error', message: e instanceof Error ? e.message : String(e) },
+        };
+      }
+    }
+
+    // 删除关系事件：POST /soul/event/remove?pet=<id>，body { text }。
+    // 文本是事件的去重键；删掉同文的全部副本（正常情况下最多一条）。
+    if (rest === 'soul/event/remove') {
+      if (method !== 'POST') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = (JSON.parse(body ?? 'null') as Record<string, unknown> | null) ?? {};
+      } catch {
+        return { kind: 'json', status: 200, obj: { ok: false, reason: 'bad-request' } };
+      }
+      const text = typeof parsed.text === 'string' ? parsed.text.trim() : '';
+      if (!text) return { kind: 'json', status: 200, obj: { ok: false, reason: 'bad-request' } };
+      try {
+        const cfg = readAllConfig(configPaths);
+        const who = requirePet(url.searchParams, () => cfg);
+        if (!who.ok) return who.res;
+        const card = effectiveSoulCard(who);
+        if (!card) return { kind: 'json', status: 200, obj: { ok: false, reason: 'no-soul' } };
+        let removed = 0;
+        await withMemoryLock(async () => {
+          const states = await readSoulStates();
+          const current = normalizeSoulState(states[who.petId], card, who.petId, new Date());
+          const before = current.relationshipEvents?.length ?? 0;
+          current.relationshipEvents = (current.relationshipEvents ?? []).filter((e) => e.text !== text);
+          removed = before - (current.relationshipEvents.length ?? 0);
+          if (removed > 0) {
+            current.updatedAt = new Date().toISOString();
+            states[who.petId] = current;
+            await writeSoulStates(states);
+          }
+        });
+        return { kind: 'json', status: 200, obj: { ok: true, removed } };
       } catch (e) {
         return {
           kind: 'json',

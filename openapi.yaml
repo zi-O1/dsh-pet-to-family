@@ -1640,6 +1640,90 @@ paths:
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
 
+  /dsh-pet-7340/soul/event:
+    post:
+      tags: [Soul]
+      operationId: addSoulRelationshipEvent
+      summary: 手动添加一条关系事件
+      description: |
+        添加「第一次 / 里程碑 / 约定 / 别扭 / 和好 / 日期 / 礼物」等关系节点。
+        只允许有灵魂卡的宠物；文本是去重键，超过 30 条时保留最近的事件。
+      parameters:
+        - $ref: "#/components/parameters/PetIdQuery"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  maxLength: 180
+                kind:
+                  type: string
+                  enum: [first, milestone, promise, conflict, repair, date, gift, other]
+                at:
+                  type: string
+                  format: date-time
+      responses:
+        "200":
+          description: 添加结果；失败也是 200（`{ ok:false, reason }`）
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [ok, event]
+                    properties:
+                      ok:
+                        type: boolean
+                        const: true
+                      event:
+                        $ref: "#/components/schemas/SoulRelationshipEvent"
+                  - $ref: "#/components/schemas/FailureResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+
+  /dsh-pet-7340/soul/event/remove:
+    post:
+      tags: [Soul]
+      operationId: removeSoulRelationshipEvent
+      summary: 删除一条关系事件
+      description: 按事件正文删除；正常情况下正文是去重键，最多一条。
+      parameters:
+        - $ref: "#/components/parameters/PetIdQuery"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  maxLength: 180
+      responses:
+        "200":
+          description: 删除结果；失败也是 200（`{ ok:false, reason }`）
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [ok, removed]
+                    properties:
+                      ok:
+                        type: boolean
+                        const: true
+                      removed:
+                        type: integer
+                  - $ref: "#/components/schemas/FailureResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+
   /dsh-pet-7340/config:
     get:
       tags: [Config]
