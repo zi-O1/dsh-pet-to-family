@@ -3680,19 +3680,19 @@ var require_error_correction_code = __commonJS({ "node_modules/.pnpm/qrcode@1.5.
 		2430
 	];
 	/**
-
+	
 	* Returns the number of error correction block that the QR Code should contain
-
+	
 	* for the specified version and error correction level.
-
+	
 	*
-
+	
 	* @param  {Number} version              QR Code version
-
+	
 	* @param  {Number} errorCorrectionLevel Error correction level
-
+	
 	* @return {Number}                      Number of error correction blocks
-
+	
 	*/
 	exports.getBlocksCount = function getBlocksCount(version$1, errorCorrectionLevel) {
 		switch (errorCorrectionLevel) {
@@ -3704,19 +3704,19 @@ var require_error_correction_code = __commonJS({ "node_modules/.pnpm/qrcode@1.5.
 		}
 	};
 	/**
-
+	
 	* Returns the number of error correction codewords to use for the specified
-
+	
 	* version and error correction level.
-
+	
 	*
-
+	
 	* @param  {Number} version              QR Code version
-
+	
 	* @param  {Number} errorCorrectionLevel Error correction level
-
+	
 	* @return {Number}                      Number of error correction codewords
-
+	
 	*/
 	exports.getTotalCodewordsCount = function getTotalCodewordsCount(version$1, errorCorrectionLevel) {
 		switch (errorCorrectionLevel) {
