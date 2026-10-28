@@ -32,13 +32,13 @@ AI 生成动画的配方     源视频 → 透明动画的管线    运行在 DS
 
 ### 🪟 桌面应用（Electron 版）
 
-直接在应用内「插件管理」页的安装框里填 `dsh-pet-to-family`（当前 npm 正式版 `0.4.1`），不用开终端；需要在终端里操作插件时，用桌面应用自带的那份 CLI。
+直接在应用内「插件管理」页的安装框里填 `dsh-pet-to-family`（当前 npm 正式版 `0.5.0`），不用开终端；需要在终端里操作插件时，用桌面应用自带的那份 CLI。
 
 也可以直接填 GitHub 仓库地址 `https://github.com/zi-O1/dsh-pet-to-family`（仓库根的兼容包指向 `dsh-pet/` 里已入库的构建产物，安装时不需要再构建）；如果安装器只认子目录，用 `https://github.com/zi-O1/dsh-pet-to-family#path:/dsh-pet`。安装源选 **npm 官方源**（`https://registry.npmjs.org/`）。
 
 > 已安装旧包 `dsh-pet` 的 profile，请先在插件管理里卸载旧包，再安装 `dsh-pet-to-family`；用户数据仍在 `$DSH_HOME/dsh-pet/`，不会被清空。
 >
-> 当前 npm 正式版：`0.4.1`（`latest`）。**0.5.0 的原生微信 / QQ 接入尚未发布到 npm**；当前仓库构建和本地安装包已包含，等 0.5.0 发布后可直接从 npm 升级。
+> 当前 npm 正式版：`0.5.0`（`latest`），包含原生微信 / QQ 接入、多机器人和 DSH session 模式。
 >
 > 维护者发新版本：`cd dsh-pet && npm publish --access public`（`publishConfig` 已固定为 npm 官方源）。
 
@@ -208,7 +208,7 @@ npm run standalone   # 仓库里；已提交的 lib 可直接跑，改过源码�
 
 ### 原生微信 / QQ（推荐，不依赖 dsh-im）
 
-> 本节属于 **0.5.0**；如果插件管理里显示 0.4.1，说明还是旧包，需要先升级或本地安装 0.5.0。
+> 本节属于 **0.5.0**；如果插件管理里显示 0.4.1 或更旧，说明还是旧包，请在插件管理里升级到 0.5.0。
 
 插件现在自带微信 iLink 与 QQ 官方机器人连接，不需要安装或启用 dsh-im。入口仍在「桌宠设置 → 消息接入（微信 / QQ）」。
 

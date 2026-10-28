@@ -33,7 +33,7 @@
 
 参数、字段、默认值和操作说明见本仓库根目录的 **[README（人格灵魂、长期记忆与关系事件）](https://github.com/zi-O1/dsh-pet-to-family#-人格灵魂长期记忆与关系事件)**、**[消息接入（微信 / QQ 与通用 Webhook）](https://github.com/zi-O1/dsh-pet-to-family#-消息接入通用-webhook)** 与 **[CONFIG.md](https://github.com/zi-O1/dsh-pet-to-family/blob/main/CONFIG.md)**。
 
-安装：npm 包名 `dsh-pet-to-family`（当前 npm 正式版 `0.4.1`；原生微信 / QQ 接入随 `0.5.0` 发布，未发布前请从仓库或本地安装包升级，安装源选官方源 `https://registry.npmjs.org/`）；GitHub 地址 `https://github.com/zi-O1/dsh-pet-to-family`（根兼容包）或 `https://github.com/zi-O1/dsh-pet-to-family#path:/dsh-pet`（插件子目录）。
+安装：npm 包名 `dsh-pet-to-family`（当前 npm 正式版 `0.5.0`，包含原生微信 / QQ 接入、多机器人和 DSH session 模式；安装源选官方源 `https://registry.npmjs.org/`）；GitHub 地址 `https://github.com/zi-O1/dsh-pet-to-family`（根兼容包）或 `https://github.com/zi-O1/dsh-pet-to-family#path:/dsh-pet`（插件子目录）。
 
 本仓库：**<https://github.com/zi-O1/dsh-pet-to-family>**
 
