@@ -204,68 +204,148 @@ npm run standalone   # 仓库里；已提交的 lib 可直接跑，改过源码�
 
 ## 📨 消息接入（通用 Webhook）
 
-让白名单里的外部联系人通过微信 / QQ / 其他桥接器给桌宠发消息，桌宠用当前对话模型回复，并按平台 + 发送者隔离聊天记忆。设置入口：右键宠物 →「桌宠设置」→「消息接入（微信 / QQ）」。
+> **先说清楚：这个功能不是“在设置里扫码登录微信 / QQ”。**
+>
+> 它只提供一个本机 HTTP 接口：外部桥接器把消息转成 JSON 发进来，桌宠生成回复，桥接器再把 `reply` 发回微信 / QQ。
+> 插件不内置个人微信 / QQ 协议、不接管账号。个人号没有稳定官方 API，优先使用企业微信、公众号、QQ 官方机器人等官方通道；第三方协议桥接有封号与安全风险。
 
-> **平台边界**：个人微信 / QQ 没有稳定的官方 API。本插件**不内置协议库、不接管账号**，只提供一个本机 HTTP 入口；真正连微信 / QQ 的是你自己选择并负责的外部桥接器。优先使用企业微信、公众号、QQ 官方机器人等官方通道；第三方个人号协议桥接有封号与安全风险。
-
-### 配置
-
-设置页可完成全部配置，也可以手写 `$DSH_HOME/dsh-pet/main-config.jsonc` 的顶层 `bridge`：
-
-| 字段 | 作用 | 默认 / 规则 |
-| --- | --- | --- |
-| `enabled` | 总开关 | `false`；关闭时入站端点直接拒绝 |
-| `petId` | 用哪只桌宠回复 | 空；开启时必须填真实存在的宠物 id |
-| `token` | 入站鉴权 token | 空；开启时 16–256 字符，设置页可一键生成 / 复制 |
-| `whitelist` | 权限白名单 | `[]`；最多 200 条，每项 `{ platform, id, name? }`，只有 `platform + id` 完全匹配才放行 |
-| `replyUrl` | 可选出站回调 | 空；填了之后插件会把回复 POST 过去，留空则只放在入站响应里 |
-| `dedupeTtlSec` | 同一 `messageId` 去重窗口 | `600` 秒；`0` = 不去重 |
-| `rateLimitPerMin` | 每个发送者每分钟上限 | `20`；`0` = 不限制 |
-| `writeSay` | 回复是否同时写桌面气泡 | `false`，避免多人聊天时桌面频繁弹话 |
-| `allowGroups` | 是否允许群聊触发 | `false`；群聊消息还必须显式带 `isGroup: true` |
-
-白名单里的 `id` 必须是平台内**稳定 id**（例如微信 `wxid_...`、QQ 号、机器人用户 id），不要用会改的昵称。设置页按「平台 | id | 名字」逐行编辑，例如：
+整条链路是这样：
 
 ```text
-wechat | wxid_abc123 | 张三
-qq | 123456789 | 李四
+微信 / QQ / 企业微信 / 其他平台
+        ↓  你的桥接器（负责收消息、拿稳定 sender id）
+POST http://127.0.0.1:<端口>/dsh-pet-7340/bridge/inbound
+        ↓  桌宠用当前对话模型生成
+   回复 reply（也可回调 replyUrl）
+        ↓  你的桥接器
+发回原来的聊天窗口
 ```
 
-### 入站请求
+### 一、在设置页打开
 
-端点：`POST /dsh-pet-7340/bridge/inbound`，只监听 `127.0.0.1`。桥接器必须带 token：
+右键宠物 →「桌宠设置」→「消息接入（微信 / QQ）」：
+
+1. 打开「启用消息接入」
+2. 「用哪只桌宠回复」选择一只真实存在的宠物
+3. 点「生成」创建 token；点「复制」保存好
+4. 在「权限白名单」里逐行写允许触发的联系人：
+
+   ```text
+   wechat | wxid_abc123 | 张三
+   qq | 123456789 | 李四
+   ```
+
+   - 第一列是平台标识，可自定义，但入站 JSON 的 `platform` 必须与它一致（大小写会转小写）
+   - 第二列是平台内**稳定 id**，不是昵称；只有完全一致才放行
+   - 第三列是显示名，可省略
+   - 空白名单 = 谁都不回
+
+5. 点「保存」。页面上会显示「入站地址」，通常类似：
+
+   ```text
+   http://127.0.0.1:3080/dsh-pet-7340/bridge/inbound
+   ```
+
+6. 如果想让回复同时出现在桌宠气泡，再打开「回复同时显示在桌面气泡」；不建议在多人聊天时打开
+
+> **看不到这个分组？** 确认插件版本是 `0.5.0` 或更新，并完全退出、重新打开 DSH。只刷新页面不够，宿主路由要重启才加载。
+
+### 二、先不接微信 / QQ，用 curl 自测
+
+先确认接口、token、白名单都能打通，再去接平台。
+
+1. 在白名单里加一条测试联系人：
+
+   ```text
+   test | me | 我
+   ```
+
+2. 保存设置。
+3. 在终端执行（把 token 和端口换成你自己的）：
 
 ```bash
 curl -s -X POST http://127.0.0.1:3080/dsh-pet-7340/bridge/inbound \
-  -H 'Authorization: Bearer <token>' \
+  -H 'Authorization: Bearer <你的 token>' \
   -H 'Content-Type: application/json' \
   -d '{
-    "platform": "wechat",
-    "senderId": "wxid_abc123",
-    "senderName": "张三",
-    "messageId": "msg-20261028-001",
-    "text": "在吗？今天过得怎么样",
+    "platform": "test",
+    "senderId": "me",
+    "senderName": "我",
+    "messageId": "test-001",
+    "text": "在吗？",
     "isGroup": false
   }'
 ```
 
-也可以把 token 放在 `X-DSH-Pet-Bridge-Token` 头里。成功响应直接带回回复：
+成功时返回类似：
 
 ```json
 {
   "ok": true,
-  "reply": "在呢，今天还行，你呢？",
+  "reply": "在呢。",
   "petId": "main",
-  "messageId": "msg-20261028-001",
-  "conversation": "bridge:wechat:wxid_abc123"
+  "messageId": "test-001",
+  "conversation": "bridge:test:me"
 }
 ```
 
-生成端选了配图时会另有 `image`。回复默认**不**写桌面气泡（`writeSay: false`），由桥接器把 `reply` 发回微信 / QQ；想让桌宠同时开口就把 `writeSay` 打开。
+注意：
 
-### 回调（可选）
+- `platform`、`senderId` 必须与白名单完全匹配
+- `messageId` 每次测试要换一个新的；重复会返回 `duplicate: true`，这是正常的去重
+- 生成端选中了表情包时会多一个 `image` 字段
+- 默认不写桌面气泡，回复只出现在 HTTP 响应里；这是为了让桥接器自己发回聊天窗口
 
-配置了 `replyUrl` 后，插件会在生成成功后异步 POST：
+### 三、接真实平台：你需要一个桥接器
+
+插件不负责登录微信 / QQ。你的桥接器至少要做四件事：
+
+1. 收到平台消息，拿到稳定的发送者 id（不是昵称）
+2. 把消息转成下面的 JSON，POST 到「入站地址」
+3. 从响应里取 `reply`，发回平台原来的会话
+4. 平台重试时复用同一个 `messageId`，让插件去重
+
+桥接器转发时只需要这一段核心请求：
+
+```js
+const res = await fetch('http://127.0.0.1:3080/dsh-pet-7340/bridge/inbound', {
+  method: 'POST',
+  headers: {
+    'content-type': 'application/json',
+    authorization: 'Bearer ' + process.env.DSH_PET_BRIDGE_TOKEN,
+  },
+  body: JSON.stringify({
+    platform: 'wechat',
+    senderId: stableSenderId,
+    senderName: displayName,
+    messageId: stableMessageId,
+    text: messageText,
+    isGroup: false,
+  }),
+});
+const data = await res.json();
+if (data.ok && data.reply) {
+  await sendToPlatform(originalConversation, data.reply);
+}
+```
+
+平台通道怎么选：
+
+| 通道 | 需要什么 | 说明 |
+| --- | --- | --- |
+| 企业微信自建应用 | 应用回调 URL + 你自己的桥接器 | 官方通道，适合接收成员消息；群机器人 webhook 通常只能发、不能收 |
+| 微信公众号 | 服务器配置 URL / Token + 桥接器 | 官方通道；平台发 XML，桥接器转成上面的 JSON |
+| QQ 官方机器人 | 官方机器人 webhook / WebSocket + 桥接器 | 官方通道；不要把个人 QQ 号当机器人 |
+| Telegram / Discord / Slack 等 | 对应平台的 bot + 桥接器 | 最容易自测，适合先跑通 |
+| 个人微信 / QQ | 第三方协议库或桌面自动化 | **无稳定官方 API，封号与安全风险高，不默认内置** |
+
+如果你还没有桥接器，建议先用上面的 `curl` 把桌宠回复跑通，再找对应平台官方文档接“收消息”回调；本插件只负责最后一步的桌宠回复。
+
+### 四、回复回调（可选，不是必须）
+
+默认情况下，回复直接放在入站 HTTP 响应里，桥接器拿到后自己发回平台即可。
+
+如果你的桥接器是异步处理、入站请求不方便等回复，可以在设置页填「回复回调地址」`replyUrl`。插件生成成功后会异步 POST 到该地址：
 
 ```json
 {
@@ -281,23 +361,58 @@ curl -s -X POST http://127.0.0.1:3080/dsh-pet-7340/bridge/inbound \
 }
 ```
 
-回调同样带 `Authorization: Bearer <token>` 与 `X-DSH-Pet-Bridge-Token`。回调失败只记日志，不影响已经返回给入站请求的回复。
+回调同样带 `Authorization: Bearer <token>` 与 `X-DSH-Pet-Bridge-Token`。回调失败只记日志，不影响入站响应。
 
-### 安全与隐私
+### 五、群聊
+
+默认**不回复群聊**。要开启：
+
+1. 打开「允许群聊触发」
+2. 在入站 JSON 里显式传 `"isGroup": true`
+3. 白名单里加群消息对应的稳定 id
+
+建议群聊保持 `writeSay: false`，否则桌宠会在桌面上频繁弹话。
+
+### 六、设置项完整说明
+
+设置页可完成全部配置，也可以手写 `$DSH_HOME/dsh-pet/main-config.jsonc` 的顶层 `bridge`：
+
+| 字段 | 作用 | 默认 / 规则 |
+| --- | --- | --- |
+| `enabled` | 总开关 | `false`；关闭时入站端点直接拒绝 |
+| `petId` | 用哪只桌宠回复 | 空；开启时必须填真实存在的宠物 id |
+| `token` | 入站鉴权 token | 空；开启时 16–256 字符，设置页可一键生成 / 复制 |
+| `whitelist` | 权限白名单 | `[]`；最多 200 条，每项 `{ platform, id, name? }`，只有 `platform + id` 完全匹配才放行 |
+| `replyUrl` | 可选出站回调 | 空；填了之后插件会把回复 POST 过去，留空则只放在入站响应里 |
+| `dedupeTtlSec` | 同一 `messageId` 去重窗口 | `600` 秒；`0` = 不去重 |
+| `rateLimitPerMin` | 每个发送者每分钟上限 | `20`；`0` = 不限制 |
+| `writeSay` | 回复是否同时写桌面气泡 | `false`，避免多人聊天时桌面频繁弹话 |
+| `allowGroups` | 是否允许群聊触发 | `false`；群聊消息还必须显式带 `isGroup: true` |
+
+### 七、常见问题
+
+| 现象 | 原因 / 处理 |
+| --- | --- |
+| 设置页没有「消息接入」 | 装的是旧版（0.4.1 及以前）。升级到 0.5.0，完全重启 DSH |
+| HTTP 401 `unauthorized` | token 没带、带错，或设置里重新生成后桥接器还在用旧 token |
+| HTTP 403 `not-whitelisted` | `platform + senderId` 与白名单不完全一致；注意 id 不是昵称 |
+| HTTP 403 `group-not-allowed` | 群聊消息带了 `isGroup: true`，但设置页没开「允许群聊触发」 |
+| HTTP 429 `rate-limited` | 该发送者超过每分钟上限，调大 `rateLimitPerMin` 或等一分钟 |
+| HTTP 413 `too-large` | 请求体超过 64 KiB；消息正文上限 2000 字 |
+| `bridge-disabled` | 设置页没启用，或启用了但没保存 |
+| `duplicate: true` | 同一个 `messageId` 重复到达；桥接器应停止重试 |
+| `unknown-pet` | 设置的回复宠物被删了；重新选一只并保存 |
+| `provider-missing` / `generate-error` | 当前没有可用对话模型 / 生成失败；检查 DSH 模型与凭据，桥接器可重试 |
+| 外面访问不到 | 端点只监听 `127.0.0.1`；外部平台 webhook 需要你自己的内网穿透或反向代理，别把无鉴权端口暴露到公网 |
+
+### 八、安全与隐私
 
 - **token 等于回复权限**：不要发到群里、截图里或公网；怀疑泄露就在设置页重新生成并保存。
-- **白名单为空 = 谁都不回**；未授权 / 非白名单 / 群聊未开启 / 重复 `messageId` / 超频都会被拒绝（HTTP 401 / 403 / 429，重复消息回 200 + `duplicate: true` 让桥接器停止重试）；没有可用对话服务商或生成失败时同样不写记忆，去重键会撤销以便重试。
+- **白名单为空 = 谁都不回**；未授权 / 非白名单 / 群聊未开启 / 重复 `messageId` / 超频都会被拒绝。
 - **只监听本机**：外部平台 webhook 需要你自己做内网穿透或反向代理，不要把无鉴权的本机端口直接暴露到公网。
-- **记忆隔离**：每个 `platform + senderId` 使用独立的 `bridge:<platform>:<senderId>` 记忆桶；灵魂状态仍按宠物 id 共享。消息正文会写入 `memory.json`，长期记忆会进入 `soul-state.json`；不想保留时按「搬家 / 卸载与存储」里的说明删除对应文件。
+- **记忆隔离**：每个 `platform + senderId` 使用独立的 `bridge:<platform>:<senderId>` 记忆桶；灵魂状态仍按宠物 id 共享。消息正文会写入 `memory.json`，长期记忆会进入 `soul-state.json`。
 - **日志**：只记录接入成功 / 回调失败等事件，不记录消息正文与 token。
-- **去重窗口是进程内的**：DSH 重启后清空；桥接器仍应使用稳定的 `messageId`，以便重启后继续去重。
-
-### 接入顺序建议
-
-1. 在设置页启用消息接入，选桌宠，生成 token。
-2. 先加一条自己的测试白名单（平台填 `test`，id 随便稳定字符串），用上面的 `curl` 打通回复。
-3. 再接企业微信 / 公众号 / QQ 官方机器人或本地桥接器：把平台 webhook 转成上面的 JSON，把 `reply` 发回对应会话。
-4. 需要异步发送时再填 `replyUrl`；群聊场景先确认 `allowGroups` 与群 id 白名单，避免刷屏。
+- **去重窗口是进程内的**：DSH 重启后清空；桥接器仍应使用稳定的 `messageId`。
 
 ## 🧠 人格灵魂、长期记忆与关系事件
 
