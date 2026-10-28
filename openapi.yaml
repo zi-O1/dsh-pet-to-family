@@ -86,6 +86,8 @@ tags:
     description: 人格灵魂卡的只读预览与动态状态
   - name: Bridge
     description: 通用消息接入（Webhook 桥接）——外部桥接器把白名单联系人消息转给桌宠；需要 bridge token
+  - name: IM
+    description: 原生微信 / QQ 连接——二维码登录、AppID 绑定、连接状态与断开
   - name: Settings
     description: 独立设置小窗页面与脚本（宿主 UI 资源，不是第三方业务 API）
   - name: Assets
@@ -1632,6 +1634,175 @@ paths:
               schema:
                 $ref: "#/components/schemas/BridgeInboundFailure"
 
+  /dsh-pet-7340/im/status:
+    get:
+      tags: [IM]
+      operationId: getImStatus
+      summary: 原生微信 / QQ 连接状态
+      description: 返回连接状态、脱敏账号、收发条数与当前微信扫码尝试。凭据不会出现在响应中。
+      responses:
+        "200":
+          description: 当前状态
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImStatus"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+
+  /dsh-pet-7340/im/wechat/login:
+    post:
+      tags: [IM]
+      operationId: startWechatLogin
+      summary: 生成微信登录二维码
+      description: 调用微信 iLink 生成一次性二维码；二维码图片以 data URL 返回，token 只留在 host。
+      responses:
+        "200":
+          description: 登录尝试（status 为 pending / failed 等）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImLoginAttempt"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+    get:
+      tags: [IM]
+      operationId: getWechatLogin
+      summary: 读取微信扫码状态
+      responses:
+        "200":
+          description: 当前登录尝试
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  login:
+                    oneOf:
+                      - $ref: "#/components/schemas/ImLoginAttempt"
+                      - type: "null"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+    delete:
+      tags: [IM]
+      operationId: cancelWechatLogin
+      summary: 取消微信扫码
+      responses:
+        "200":
+          description: 操作完成
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+
+  /dsh-pet-7340/im/wechat/verify:
+    post:
+      tags: [IM]
+      operationId: verifyWechatLogin
+      summary: 提交微信配对码（预留）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+      responses:
+        "200":
+          description: 当前登录尝试
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  login:
+                    oneOf:
+                      - $ref: "#/components/schemas/ImLoginAttempt"
+                      - type: "null"
+        "400":
+          description: 请求体不是合法 JSON
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+
+  /dsh-pet-7340/im/wechat/logout:
+    post:
+      tags: [IM]
+      operationId: logoutWechat
+      summary: 断开微信并删除本机凭据
+      responses:
+        "200":
+          description: 操作完成
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+
+  /dsh-pet-7340/im/qq/bind:
+    post:
+      tags: [IM]
+      operationId: bindQqBot
+      summary: 绑定 QQ 官方机器人
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [appId, appSecret]
+              properties:
+                appId:
+                  type: string
+                appSecret:
+                  type: string
+      responses:
+        "200":
+          description: 绑定结果；失败为 200 + ok:false
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    type: string
+                  status:
+                    $ref: "#/components/schemas/ImStatus"
+        "400":
+          description: 请求体不是合法 JSON
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+
+  /dsh-pet-7340/im/qq/logout:
+    post:
+      tags: [IM]
+      operationId: logoutQq
+      summary: 断开 QQ 并删除本机凭据
+      responses:
+        "200":
+          description: 操作完成
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+
   /dsh-pet-7340/soul:
     get:
       tags: [Soul]
@@ -2985,6 +3156,75 @@ components:
       description: |
         `bridge.replyUrl` 配置后，插件异步 POST 的回调体；请求头同样带
         `Authorization: Bearer <token>` 与 `X-DSH-Pet-Bridge-Token`。回调失败只记日志。
+
+    ImLoginAttempt:
+      type: object
+      required: [id, status, expiresAt]
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [starting, pending, scanned, needs_verification, connecting, connected, expired, failed]
+        qrCodeDataUrl:
+          type: string
+          description: 可直接放进 img src 的 data URL；只含二维码，不含凭据。
+        verificationUrl:
+          type: string
+        expiresAt:
+          type: number
+        verificationRequired:
+          type: boolean
+        accountId:
+          type: string
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+
+    ImStatus:
+      type: object
+      required: [wechat, qq]
+      properties:
+        wechat:
+          type: object
+          properties:
+            connected:
+              type: boolean
+            state:
+              type: string
+            account:
+              type: string
+            owner:
+              type: string
+            lastError:
+              type: string
+            messagesReceived:
+              type: integer
+            messagesReplied:
+              type: integer
+            login:
+              oneOf:
+                - $ref: "#/components/schemas/ImLoginAttempt"
+                - type: "null"
+        qq:
+          type: object
+          properties:
+            connected:
+              type: boolean
+            state:
+              type: string
+            appId:
+              type: string
+            lastError:
+              type: string
+            messagesReceived:
+              type: integer
+            messagesReplied:
+              type: integer
 
     SayResponse:
       type: object

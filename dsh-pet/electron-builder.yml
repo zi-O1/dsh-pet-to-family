@@ -29,6 +29,7 @@ files:
   - assets/config.jsonc
   - assets/logo.png
   - package.json
+  - THIRD_PARTY_NOTICES.md
   - '!node_modules/**'
 
 asar: true

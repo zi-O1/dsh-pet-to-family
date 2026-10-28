@@ -71,7 +71,8 @@
     "assets/config.jsonc",
     "assets/logo.png",
     "scripts/ensure-electron.mjs",
-    "cordis.patch.yml"
+    "cordis.patch.yml",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "scripts": {
     "bundle": "tsdown",
@@ -102,7 +103,9 @@
     "@anthropic-ai/sdk": "0.135.0",
     "@electron-internal/extract-zip": "^1.0.5",
     "@electron/get": "^5.1.0",
+    "@tencent-connect/qqbot-nodejs": "1.0.4",
     "openai": "7.39.0",
+    "qrcode": "1.5.4",
     "zod": "4.6.7"
   },
   "dsh": {
@@ -141,6 +144,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.2.0",
+    "@types/qrcode": "1.5.5",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "electron-builder": "^26.15.3",

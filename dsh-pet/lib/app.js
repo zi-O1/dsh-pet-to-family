@@ -1,12 +1,22 @@
 import { APIConnectionError, APIConnectionTimeoutError, APIError, APIUserAbortError, AnthropicError, AuthenticationError, BadRequestError, ConflictError, InternalServerError, NotFoundError, PermissionDeniedError, RateLimitError, RetryableError, ToolError, UnprocessableEntityError, __classPrivateFieldGet, __classPrivateFieldSet, applyJitter, backoff, castToError, checkMemorySyncInterval, checkNever, concatBytes, debugLogRequestDetails, decodeUTF8, defaultLogLevel, defaultLogger, encodeUTF8, isAbortError, isAbsoluteURL, isArray, isEmptyObj, isFatal4xx, isObj, isReadonlyArray, isStatus, jitter, loggerFor, maybeObj, parseLogLevel, promiseWithResolvers, readEnv, safeJSON, validatePositiveInteger } from "./promise-DxjFfmXm.js";
+import { createRequire } from "module";
 import { createRequire as createRequire$1 } from "node:module";
+import * as path$3 from "node:path";
 import { dirname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import * as fs$3 from "node:fs";
+import * as fs$2 from "node:fs";
+import * as fs$1 from "node:fs";
 import { appendFileSync, chmodSync, closeSync, constants, createReadStream, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { appendFile, copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import * as crypto$3 from "node:crypto";
+import * as crypto$2 from "node:crypto";
+import * as crypto$1 from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { appendFile, copyFile, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { execFileSync, spawn } from "node:child_process";
 import { homedir } from "node:os";
+import * as https$1 from "node:https";
+import * as http from "node:http";
 import { createServer } from "node:http";
 import { Readable } from "node:stream";
 
@@ -40,6 +50,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 	value: mod,
 	enumerable: true
 }) : target, mod));
+var __require = /* @__PURE__ */ createRequire(import.meta.url);
 
 //#endregion
 //#region src/host/bridge.ts
@@ -47,11 +58,11 @@ const MAX_BRIDGE_BODY_BYTES = 64 * 1024;
 const MAX_BRIDGE_TEXT_LENGTH = 2e3;
 /** 平台标识白名单（与 shared/bridge 同一套）。 */
 const PLATFORM_RE = /^[a-z0-9._-]{1,32}$/;
-const CONTROL_CHARS$1 = /[\x00-\x1f]/;
+const CONTROL_CHARS$2 = /[\x00-\x1f]/;
 const SENDER_ID_MAX = 128;
 const MESSAGE_ID_MAX = 200;
 const SENDER_NAME_MAX = 80;
-const WHITELIST_MAX = 200;
+const WHITELIST_MAX$1 = 200;
 const DEFAULT_BRIDGE = {
 	enabled: false,
 	petId: "",
@@ -76,18 +87,18 @@ function normalizeBridgeReplyUrl(value) {
 		return "";
 	}
 }
-function normalizeBridgePlatform(value) {
+function normalizeBridgePlatform$1(value) {
 	const platform = typeof value === "string" ? value.trim().toLowerCase() : "";
 	return PLATFORM_RE.test(platform) ? platform : "";
 }
-function normalizeBridgeWhitelistEntry(value) {
+function normalizeBridgeWhitelistEntry$1(value) {
 	if (typeof value === "string") {
 		const raw = value.trim();
 		const sep$1 = raw.indexOf(":");
 		if (sep$1 <= 0) return null;
-		const platform$1 = normalizeBridgePlatform(raw.slice(0, sep$1));
+		const platform$1 = normalizeBridgePlatform$1(raw.slice(0, sep$1));
 		const id$1 = raw.slice(sep$1 + 1).trim();
-		if (!platform$1 || !id$1 || id$1.length > SENDER_ID_MAX || id$1.includes("|") || CONTROL_CHARS$1.test(id$1)) return null;
+		if (!platform$1 || !id$1 || id$1.length > SENDER_ID_MAX || id$1.includes("|") || CONTROL_CHARS$2.test(id$1)) return null;
 		return {
 			platform: platform$1,
 			id: id$1
@@ -95,9 +106,9 @@ function normalizeBridgeWhitelistEntry(value) {
 	}
 	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
 	const o = value;
-	const platform = normalizeBridgePlatform(o.platform);
+	const platform = normalizeBridgePlatform$1(o.platform);
 	const id = typeof o.id === "string" ? o.id.trim() : "";
-	if (!platform || !id || id.length > SENDER_ID_MAX || id.includes("|") || CONTROL_CHARS$1.test(id)) return null;
+	if (!platform || !id || id.length > SENDER_ID_MAX || id.includes("|") || CONTROL_CHARS$2.test(id)) return null;
 	const rawName = typeof o.name === "string" ? o.name.trim() : "";
 	const name = rawName ? rawName.slice(0, SENDER_NAME_MAX).replace(/\|/g, " ").trim() : "";
 	return name ? {
@@ -109,18 +120,18 @@ function normalizeBridgeWhitelistEntry(value) {
 		id
 	};
 }
-function normalizeBridgeWhitelist(value) {
+function normalizeBridgeWhitelist$1(value) {
 	if (!Array.isArray(value)) return [];
 	const out = [];
 	const seen = new Set();
 	for (const item of value) {
-		const entry = normalizeBridgeWhitelistEntry(item);
+		const entry = normalizeBridgeWhitelistEntry$1(item);
 		if (!entry) continue;
 		const key = entry.platform + "\0" + entry.id;
 		if (seen.has(key)) continue;
 		seen.add(key);
 		out.push(entry);
-		if (out.length >= WHITELIST_MAX) break;
+		if (out.length >= WHITELIST_MAX$1) break;
 	}
 	return out;
 }
@@ -134,7 +145,7 @@ function normalizeBridgeConfig(raw) {
 		enabled: typeof o.enabled === "boolean" ? o.enabled : DEFAULT_BRIDGE.enabled,
 		petId,
 		token,
-		whitelist: normalizeBridgeWhitelist(o.whitelist),
+		whitelist: normalizeBridgeWhitelist$1(o.whitelist),
 		replyUrl: normalizeBridgeReplyUrl(o.replyUrl),
 		dedupeTtlSec: Number.isFinite(dedupeRaw) && dedupeRaw >= 0 && dedupeRaw <= 86400 ? Math.floor(dedupeRaw) : DEFAULT_BRIDGE.dedupeTtlSec,
 		rateLimitPerMin: Number.isFinite(rateRaw) && rateRaw >= 0 && rateRaw <= 120 ? Math.floor(rateRaw) : DEFAULT_BRIDGE.rateLimitPerMin,
@@ -149,8 +160,8 @@ function bridgeValid(raw) {
 	if (o.petId !== void 0 && (typeof o.petId !== "string" || o.petId.trim().length > 64)) return false;
 	if (o.token !== void 0 && (typeof o.token !== "string" || o.token.trim().length > 256)) return false;
 	if (o.whitelist !== void 0) {
-		if (!Array.isArray(o.whitelist) || o.whitelist.length > WHITELIST_MAX) return false;
-		for (const item of o.whitelist) if (!normalizeBridgeWhitelistEntry(item)) return false;
+		if (!Array.isArray(o.whitelist) || o.whitelist.length > WHITELIST_MAX$1) return false;
+		for (const item of o.whitelist) if (!normalizeBridgeWhitelistEntry$1(item)) return false;
 	}
 	if (o.replyUrl !== void 0) {
 		if (typeof o.replyUrl !== "string") return false;
@@ -185,13 +196,13 @@ function bridgeTokenFromHeaders(headers) {
 }
 function isBridgeSenderAllowed(config$1, platform, senderId, isGroup) {
 	if (isGroup && !config$1.allowGroups) return false;
-	const p = normalizeBridgePlatform(platform);
+	const p = normalizeBridgePlatform$1(platform);
 	const id = senderId.trim();
 	if (!p || !id) return false;
 	return config$1.whitelist.some((entry) => entry.platform === p && entry.id === id);
 }
 function bridgeConversationKey(platform, senderId) {
-	return "bridge:" + normalizeBridgePlatform(platform) + ":" + senderId.trim();
+	return "bridge:" + normalizeBridgePlatform$1(platform) + ":" + senderId.trim();
 }
 function parseBridgePayload(raw) {
 	const o = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : null;
@@ -200,26 +211,26 @@ function parseBridgePayload(raw) {
 		reason: "bad-request",
 		message: "请求体必须是 JSON 对象"
 	};
-	const platform = normalizeBridgePlatform(o.platform);
+	const platform = normalizeBridgePlatform$1(o.platform);
 	if (!platform) return {
 		ok: false,
 		reason: "bad-request",
 		message: "platform 必须是 1–32 位小写字母/数字/._-"
 	};
 	const senderId = typeof o.senderId === "string" ? o.senderId.trim() : "";
-	if (!senderId || senderId.length > SENDER_ID_MAX || CONTROL_CHARS$1.test(senderId)) return {
+	if (!senderId || senderId.length > SENDER_ID_MAX || CONTROL_CHARS$2.test(senderId)) return {
 		ok: false,
 		reason: "bad-request",
 		message: "senderId 必填，且长度不超过 128"
 	};
 	const rawName = typeof o.senderName === "string" ? o.senderName.trim() : "";
-	if (rawName.length > SENDER_NAME_MAX || CONTROL_CHARS$1.test(rawName)) return {
+	if (rawName.length > SENDER_NAME_MAX || CONTROL_CHARS$2.test(rawName)) return {
 		ok: false,
 		reason: "bad-request",
 		message: "senderName 过长或包含控制字符"
 	};
 	const messageId = typeof o.messageId === "string" ? o.messageId.trim() : "";
-	if (!messageId || messageId.length > MESSAGE_ID_MAX || CONTROL_CHARS$1.test(messageId)) return {
+	if (!messageId || messageId.length > MESSAGE_ID_MAX || CONTROL_CHARS$2.test(messageId)) return {
 		ok: false,
 		reason: "bad-request",
 		message: "messageId 必填，且长度不超过 200"
@@ -485,6 +496,125 @@ async function postBridgeReply(req, timeoutMs = 1e4) {
 }
 
 //#endregion
+//#region src/shared/bridge.ts
+const BRIDGE_WHITELIST_MAX = 200;
+const BRIDGE_PLATFORM_RE = /^[a-z0-9._-]{1,32}$/;
+const CONTROL_CHARS$1 = /[\x00-\x1f]/;
+const BRIDGE_SENDER_ID_MAX = 128;
+const BRIDGE_SENDER_NAME_MAX = 80;
+function normalizeBridgePlatform(value) {
+	const platform = typeof value === "string" ? value.trim().toLowerCase() : "";
+	return BRIDGE_PLATFORM_RE.test(platform) ? platform : "";
+}
+function normalizeBridgeWhitelistEntry(value) {
+	if (typeof value === "string") {
+		const raw = value.trim();
+		if (!raw) return null;
+		const sep$1 = raw.indexOf(":");
+		if (sep$1 <= 0) return null;
+		const platform$1 = normalizeBridgePlatform(raw.slice(0, sep$1));
+		const id$1 = raw.slice(sep$1 + 1).trim();
+		if (!platform$1 || !id$1 || id$1.length > BRIDGE_SENDER_ID_MAX || id$1.includes("|") || CONTROL_CHARS$1.test(id$1)) return null;
+		return {
+			platform: platform$1,
+			id: id$1
+		};
+	}
+	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+	const o = value;
+	const platform = normalizeBridgePlatform(o.platform);
+	const id = typeof o.id === "string" ? o.id.trim() : "";
+	if (!platform || !id || id.length > BRIDGE_SENDER_ID_MAX || id.includes("|") || CONTROL_CHARS$1.test(id)) return null;
+	const rawName = typeof o.name === "string" ? o.name.trim() : "";
+	const name = rawName ? rawName.slice(0, BRIDGE_SENDER_NAME_MAX).replace(/\|/g, " ").trim() : "";
+	return name ? {
+		platform,
+		id,
+		name
+	} : {
+		platform,
+		id
+	};
+}
+function normalizeBridgeWhitelist(value) {
+	if (!Array.isArray(value)) return [];
+	const out = [];
+	const seen = new Set();
+	for (const item of value) {
+		const entry = normalizeBridgeWhitelistEntry(item);
+		if (!entry) continue;
+		const key = entry.platform + "\0" + entry.id;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		out.push(entry);
+		if (out.length >= BRIDGE_WHITELIST_MAX) break;
+	}
+	return out;
+}
+
+//#endregion
+//#region src/shared/im.ts
+const IM_PLATFORMS = ["wechat", "qq"];
+const DEFAULT_CHANNEL = {
+	enabled: false,
+	petId: "",
+	whitelist: [],
+	allowOwner: true,
+	allowGroups: false,
+	writeSay: false
+};
+const DEFAULT_IM = {
+	wechat: {
+		...DEFAULT_CHANNEL,
+		whitelist: []
+	},
+	qq: {
+		...DEFAULT_CHANNEL,
+		whitelist: []
+	}
+};
+function normalizeImChannel(raw) {
+	const o = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+	return {
+		enabled: typeof o.enabled === "boolean" ? o.enabled : DEFAULT_CHANNEL.enabled,
+		petId: typeof o.petId === "string" ? o.petId.trim().slice(0, 64) : "",
+		whitelist: normalizeBridgeWhitelist(o.whitelist),
+		allowOwner: typeof o.allowOwner === "boolean" ? o.allowOwner : DEFAULT_CHANNEL.allowOwner,
+		allowGroups: typeof o.allowGroups === "boolean" ? o.allowGroups : DEFAULT_CHANNEL.allowGroups,
+		writeSay: typeof o.writeSay === "boolean" ? o.writeSay : DEFAULT_CHANNEL.writeSay
+	};
+}
+function normalizeImConfig(raw) {
+	const o = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+	return {
+		wechat: normalizeImChannel(o.wechat),
+		qq: normalizeImChannel(o.qq)
+	};
+}
+const WHITELIST_MAX = 200;
+function isValidImConfig(raw) {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+	const o = raw;
+	for (const platform of IM_PLATFORMS) {
+		const channel = o[platform];
+		if (channel === void 0) continue;
+		if (!channel || typeof channel !== "object" || Array.isArray(channel)) return false;
+		const c = channel;
+		if (c.enabled !== void 0 && typeof c.enabled !== "boolean") return false;
+		if (c.petId !== void 0 && (typeof c.petId !== "string" || c.petId.trim().length > 64)) return false;
+		if (c.allowOwner !== void 0 && typeof c.allowOwner !== "boolean") return false;
+		if (c.allowGroups !== void 0 && typeof c.allowGroups !== "boolean") return false;
+		if (c.writeSay !== void 0 && typeof c.writeSay !== "boolean") return false;
+		if (c.whitelist !== void 0) {
+			if (!Array.isArray(c.whitelist) || c.whitelist.length > WHITELIST_MAX) return false;
+			for (const item of c.whitelist) if (!normalizeBridgeWhitelistEntry(item)) return false;
+		}
+		if (c.enabled === true && (typeof c.petId !== "string" || !c.petId.trim())) return false;
+	}
+	return true;
+}
+
+//#endregion
 //#region src/host/log-file.ts
 function isFileLogger(value) {
 	if (!value || typeof value !== "object") return false;
@@ -522,7 +652,7 @@ function createFileLogger(options) {
 	/** 目录只建一次（首次 flush 时）；失败后不再重试，日志静默降级 */
 	let dirReady = null;
 	const ensureDir = () => dirReady ??= mkdir(dirname(file), { recursive: true }).then(() => void 0).catch(() => void 0);
-	const push = (level, message) => {
+	const push$1 = (level, message) => {
 		if (level === "debug" && !debugEnabled) return;
 		try {
 			options.base?.[level]?.(message);
@@ -583,10 +713,10 @@ function createFileLogger(options) {
 	return {
 		file,
 		isFileLogger: true,
-		info: (message) => push("info", message),
-		warn: (message) => push("warn", message),
-		error: (message) => push("error", message),
-		debug: (message) => push("debug", message),
+		info: (message) => push$1("info", message),
+		warn: (message) => push$1("warn", message),
+		error: (message) => push$1("error", message),
+		debug: (message) => push$1("debug", message),
 		flush,
 		dispose() {
 			if (disposed) return;
@@ -709,9 +839,9 @@ function stripJsonc(src) {
 	return out.trim();
 }
 /** 读取并解析 JSONC 文件；不存在/解析失败 → undefined（调用方决定处理） */
-function readJsonc(path$2) {
+function readJsonc(path$4) {
 	try {
-		const raw = JSON.parse(stripJsonc(readFileSync(path$2, "utf8")));
+		const raw = JSON.parse(stripJsonc(readFileSync(path$4, "utf8")));
 		return raw && typeof raw === "object" ? raw : void 0;
 	} catch {
 		return void 0;
@@ -863,6 +993,7 @@ function topFieldValid(key, value) {
 		case "chatImageEnabled": return typeof value === "boolean";
 		case "chatSoulEnabled": return typeof value === "boolean";
 		case "bridge": return bridgeValid(value);
+		case "im": return isValidImConfig(value);
 		case "soul": return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 		case "confineToScreen": return typeof value === "boolean";
 		case "trayEnabled": return typeof value === "boolean";
@@ -915,7 +1046,7 @@ function mergeEntry(base, overlay, label, basePets, seenIds) {
 		}
 		const own$1 = overlay ? overlay[key] : void 0;
 		if (own$1 === void 0) {
-			out[key] = key === "bridge" ? normalizeBridgeConfig(base[key]) : base[key];
+			out[key] = key === "bridge" ? normalizeBridgeConfig(base[key]) : key === "im" ? normalizeImConfig(base[key]) : base[key];
 			continue;
 		}
 		if (!topFieldValid(key, own$1)) {
@@ -923,7 +1054,7 @@ function mergeEntry(base, overlay, label, basePets, seenIds) {
 			out[key] = key === "bridge" ? normalizeBridgeConfig(base[key]) : base[key];
 			continue;
 		}
-		out[key] = key === "bridge" ? normalizeBridgeConfig(own$1) : own$1;
+		out[key] = key === "bridge" ? normalizeBridgeConfig(own$1) : key === "im" ? normalizeImConfig(own$1) : own$1;
 	}
 	return out;
 }
@@ -1142,6 +1273,8 @@ function saveUserConfig(raw, existing) {
 	if (cil !== void 0 && !topFieldValid("chatImageLimit", cil)) return null;
 	const br = o.bridge;
 	if (br !== void 0 && !bridgeValid(br)) return null;
+	const im = o.im;
+	if (im !== void 0 && !isValidImConfig(im)) return null;
 	const cleanModel = (v) => ({
 		provider: String(v.provider).trim(),
 		model: String(v.model).trim()
@@ -1161,6 +1294,7 @@ function saveUserConfig(raw, existing) {
 	if (cmr !== void 0) outConfig.chatMemoryRounds = Number(cmr);
 	if (cil !== void 0) outConfig.chatImageLimit = Number(cil);
 	if (br !== void 0) outConfig.bridge = normalizeBridgeConfig(br);
+	if (im !== void 0) outConfig.im = normalizeImConfig(im);
 	const bodyOwned = new Set(["pets"]);
 	if (ne !== void 0) bodyOwned.add("notificationsEnabled");
 	if (cse !== void 0) bodyOwned.add("clickSoundEnabled");
@@ -1176,6 +1310,7 @@ function saveUserConfig(raw, existing) {
 	if (cmr !== void 0) bodyOwned.add("chatMemoryRounds");
 	if (cil !== void 0) bodyOwned.add("chatImageLimit");
 	if (br !== void 0) bodyOwned.add("bridge");
+	if (im !== void 0) bodyOwned.add("im");
 	if (existing && typeof existing === "object") for (const key of Object.keys(existing)) {
 		if (bodyOwned.has(key)) continue;
 		outConfig[key] = existing[key];
@@ -1199,9 +1334,9 @@ const packageRoot$1 = resolve(here$1, "..");
 const defaultHelperMain = resolve(packageRoot$1, "runtime", "electron-helper", "main.js");
 const BRIDGE_PREFIX = "dsh-pet-bridge:";
 /** 只做基本文件校验：不验证二进制格式，也不实际启动候选。 */
-function isNonEmptyFile(path$2) {
+function isNonEmptyFile(path$4) {
 	try {
-		const stat$1 = statSync(path$2);
+		const stat$1 = statSync(path$4);
 		return stat$1.isFile() && stat$1.size > 0;
 	} catch {
 		return false;
@@ -1210,18 +1345,18 @@ function isNonEmptyFile(path$2) {
 function resolveElectronPath(candidates = []) {
 	const seen = new Set();
 	const list = [];
-	const push = (value) => {
+	const push$1 = (value) => {
 		if (!value || seen.has(value)) return;
 		seen.add(value);
 		list.push(value);
 	};
-	for (const value of candidates) push(value);
-	if (process.env.DSH_PET_ELECTRON_PATH) push(process.env.DSH_PET_ELECTRON_PATH);
+	for (const value of candidates) push$1(value);
+	if (process.env.DSH_PET_ELECTRON_PATH) push$1(process.env.DSH_PET_ELECTRON_PATH);
 	try {
 		const resolved = require$1("electron");
-		if (typeof resolved === "string" && resolved) push(resolved);
+		if (typeof resolved === "string" && resolved) push$1(resolved);
 	} catch {}
-	push(defaultElectronExe());
+	push$1(defaultElectronExe());
 	return list.find(isNonEmptyFile);
 }
 function hasGraphicalDisplay() {
@@ -2077,13 +2212,13 @@ function currentModel(ctx) {
 }
 function modelCandidates(ctx, preferred) {
 	const out = [];
-	const push = (m) => {
+	const push$1 = (m) => {
 		if (!m) return;
 		if (out.some((x) => x.provider === m.provider && x.model === m.model)) return;
 		out.push(m);
 	};
-	push(preferred);
-	push(currentModel(ctx));
+	push$1(preferred);
+	push$1(currentModel(ctx));
 	return out;
 }
 function modelLabel(m) {
@@ -2342,6 +2477,12015 @@ async function generateWith(ctx, llm, sel, system, history, userText, pool) {
 		text: picked.text
 	};
 }
+
+//#endregion
+//#region src/host/im/weixin-api.ts
+const WEIXIN_QR_BASE_URL = "https://ilinkai.weixin.qq.com/";
+const WEIXIN_PROTOCOL_VERSION = "2.4.6";
+const DEFAULT_BOT_TYPE = "3";
+const DEFAULT_WEIXIN_MAX_MESSAGE_CHARS = 1800;
+const ILINK_APP_ID = "bot";
+const ILINK_CLIENT_VERSION = 132102;
+const DEFAULT_TIMEOUT_MS$1 = 15e3;
+const DEFAULT_LONG_POLL_TIMEOUT_MS = 35e3;
+const TEXT_SEND_RETRY_DELAYS_MS = [400, 1200];
+const LOGIN_STATUSES = new Set([
+	"wait",
+	"scaned",
+	"confirmed",
+	"expired",
+	"scaned_but_redirect",
+	"need_verifycode",
+	"verify_code_blocked",
+	"binded_redirect"
+]);
+var WeixinApiError = class extends Error {
+	code;
+	status;
+	providerCode;
+	constructor(code, message, options = {}) {
+		super(message, options.cause === void 0 ? void 0 : { cause: options.cause });
+		this.name = "WeixinApiError";
+		this.code = code;
+		if (options.status !== void 0) this.status = options.status;
+		if (options.providerCode !== void 0) this.providerCode = options.providerCode;
+	}
+};
+function nonEmptyString(value) {
+	return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+function safeProviderCode(value) {
+	const code = value === void 0 || value === null ? null : String(value).trim();
+	return code && /^-?[A-Za-z0-9_.:-]{1,160}$/.test(code) ? code : void 0;
+}
+function rejectedProviderResponse(value, fields$1 = ["ret", "errcode"]) {
+	if (!value || typeof value !== "object") return null;
+	const o = value;
+	for (const field of fields$1) if (o[field] !== void 0 && o[field] !== 0 && o[field] !== "0") return safeProviderCode(o[field]) ?? "rejected";
+	return null;
+}
+function isWeixinHost(hostname) {
+	const normalized = hostname.toLowerCase().replace(/\.$/, "");
+	return normalized === "weixin.qq.com" || normalized.endsWith(".weixin.qq.com") || normalized === "wechat.com" || normalized.endsWith(".wechat.com");
+}
+function normalizeWeixinApiBaseUrl(value) {
+	let url;
+	try {
+		url = new URL(value);
+	} catch {
+		throw new WeixinApiError("invalid-base-url", "微信服务返回了无效的连接地址。");
+	}
+	if (url.protocol !== "https:" || !isWeixinHost(url.hostname) || url.port !== "" && url.port !== "443") throw new WeixinApiError("untrusted-base-url", "微信服务返回了不受信任的连接地址。");
+	url.username = "";
+	url.password = "";
+	url.search = "";
+	url.hash = "";
+	if (!url.pathname.endsWith("/")) url.pathname += "/";
+	return url.toString();
+}
+function normalizeWeixinQrUrl(value) {
+	const text$3 = nonEmptyString(value);
+	if (!text$3) throw new WeixinApiError("invalid-qr", "微信服务没有返回扫码地址。");
+	let url;
+	try {
+		url = new URL(text$3);
+	} catch {
+		throw new WeixinApiError("invalid-qr", "微信服务返回了无效的扫码地址。");
+	}
+	if (url.protocol !== "https:" || !isWeixinHost(url.hostname)) throw new WeixinApiError("untrusted-qr", "微信服务返回了不受信任的扫码地址。");
+	return url.toString();
+}
+function commonHeaders() {
+	return {
+		"iLink-App-Id": ILINK_APP_ID,
+		"iLink-App-ClientVersion": String(ILINK_CLIENT_VERSION)
+	};
+}
+function authenticatedHeaders(token) {
+	return {
+		...commonHeaders(),
+		"content-type": "application/json",
+		AuthorizationType: "ilink_bot_token",
+		"X-WECHAT-UIN": Buffer.from(String(randomBytes(4).readUInt32BE(0)), "utf8").toString("base64"),
+		Authorization: `Bearer ${token.trim()}`
+	};
+}
+function baseInfo() {
+	return {
+		channel_version: WEIXIN_PROTOCOL_VERSION,
+		bot_agent: "DeepSeekHarness/1.1.0"
+	};
+}
+function abortError(signal) {
+	return signal?.reason instanceof Error ? signal.reason : new DOMException("The operation was aborted", "AbortError");
+}
+async function requestJson(fetchImpl, options) {
+	const trustedBase = normalizeWeixinApiBaseUrl(options.baseUrl);
+	const url = new URL(options.endpoint, trustedBase);
+	if (!isWeixinHost(url.hostname)) throw new WeixinApiError("untrusted-endpoint", "拒绝访问不受信任的微信服务地址。");
+	const controller = new AbortController();
+	let timedOut = false;
+	const onAbort = () => controller.abort(options.signal?.reason);
+	if (options.signal?.aborted) throw abortError(options.signal);
+	options.signal?.addEventListener("abort", onAbort, { once: true });
+	const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS$1;
+	const timer = timeoutMs > 0 ? setTimeout(() => {
+		timedOut = true;
+		controller.abort();
+	}, timeoutMs) : null;
+	try {
+		const response = await fetchImpl(url, {
+			method: options.method,
+			headers: options.authenticated === false ? commonHeaders() : authenticatedHeaders(options.token ?? ""),
+			...options.body === void 0 ? {} : { body: JSON.stringify(options.body) },
+			signal: controller.signal
+		});
+		if (!response.ok) throw new WeixinApiError("http-error", `微信服务请求失败（HTTP ${response.status}）。`, { status: response.status });
+		try {
+			return await response.json();
+		} catch (error$1) {
+			throw new WeixinApiError("invalid-response", "微信服务返回了无法解析的响应。", { cause: error$1 });
+		}
+	} catch (error$1) {
+		if (options.signal?.aborted) throw abortError(options.signal);
+		if (timedOut) throw new WeixinApiError("timeout", "微信服务请求超时。", { cause: error$1 });
+		throw error$1 instanceof WeixinApiError ? error$1 : new WeixinApiError("network-error", "暂时无法访问微信服务。", { cause: error$1 });
+	} finally {
+		if (timer) clearTimeout(timer);
+		options.signal?.removeEventListener("abort", onAbort);
+	}
+}
+async function requestTextSend(fetchImpl, createRequest, signal) {
+	for (let attempt = 0;; attempt += 1) try {
+		return await requestJson(fetchImpl, createRequest());
+	} catch (error$1) {
+		const retryDelayMs = TEXT_SEND_RETRY_DELAYS_MS[attempt];
+		if (retryDelayMs === void 0 || error$1?.code !== "network-error" || signal?.aborted) throw error$1;
+		await new Promise((resolve$1) => setTimeout(resolve$1, retryDelayMs));
+		signal?.throwIfAborted?.();
+	}
+}
+function validateLoginResponse(value) {
+	if (!value || typeof value !== "object" || !LOGIN_STATUSES.has(String(value.status))) throw new WeixinApiError("invalid-login-status", "微信服务返回了无法识别的扫码状态。");
+	return value;
+}
+function createWeixinApi({ fetchImpl = fetch } = {}) {
+	if (typeof fetchImpl !== "function") throw new TypeError("fetchImpl must be a function");
+	return Object.freeze({
+		async beginLogin({ localTokens = [], botType = DEFAULT_BOT_TYPE, signal } = {}) {
+			const tokens = [...new Set(localTokens.map(nonEmptyString).filter(Boolean))].slice(-10);
+			const response = await requestJson(fetchImpl, {
+				method: "POST",
+				baseUrl: WEIXIN_QR_BASE_URL,
+				endpoint: `ilink/bot/get_bot_qrcode?bot_type=${encodeURIComponent(botType)}`,
+				body: { local_token_list: tokens },
+				timeoutMs: 1e4,
+				signal,
+				authenticated: false
+			});
+			const qrcode = nonEmptyString(response?.qrcode);
+			const providerCode = rejectedProviderResponse(response, ["errcode", "ret"]);
+			if (providerCode) throw new WeixinApiError("qr-request-rejected", "微信服务拒绝了二维码申请。", { providerCode });
+			if (!qrcode) throw new WeixinApiError("invalid-qr", "微信服务没有返回二维码令牌。");
+			return {
+				qrcode,
+				qrcodeUrl: normalizeWeixinQrUrl(response.qrcode_img_content)
+			};
+		},
+		async pollLogin({ qrcode, baseUrl = WEIXIN_QR_BASE_URL, verifyCode, signal }) {
+			let endpoint$1 = `ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(qrcode)}`;
+			if (nonEmptyString(verifyCode)) endpoint$1 += `&verify_code=${encodeURIComponent(String(verifyCode).trim())}`;
+			const response = await requestJson(fetchImpl, {
+				method: "GET",
+				baseUrl,
+				endpoint: endpoint$1,
+				timeoutMs: DEFAULT_LONG_POLL_TIMEOUT_MS,
+				signal,
+				authenticated: false
+			});
+			return validateLoginResponse(response);
+		},
+		async getUpdates({ baseUrl, token, getUpdatesBuf = "", timeoutMs, signal }) {
+			try {
+				return await requestJson(fetchImpl, {
+					method: "POST",
+					baseUrl,
+					endpoint: "ilink/bot/getupdates",
+					body: {
+						get_updates_buf: getUpdatesBuf,
+						base_info: baseInfo()
+					},
+					token,
+					timeoutMs: timeoutMs ?? DEFAULT_LONG_POLL_TIMEOUT_MS,
+					signal
+				});
+			} catch (error$1) {
+				if (error$1 instanceof WeixinApiError && error$1.code === "timeout") return {
+					ret: 0,
+					msgs: [],
+					get_updates_buf: getUpdatesBuf
+				};
+				throw error$1;
+			}
+		},
+		async sendText({ baseUrl, token, toUserId, text: text$3, contextToken, signal }) {
+			const recipient = nonEmptyString(toUserId);
+			const content = nonEmptyString(text$3);
+			if (!recipient || !content) throw new TypeError("toUserId and text are required");
+			const providerMessageIds = [];
+			for (const chunk of splitWeixinText(content)) {
+				const clientId = `dsh-weixin-${randomUUID()}`;
+				providerMessageIds.push(clientId);
+				const response = await requestTextSend(fetchImpl, () => ({
+					method: "POST",
+					baseUrl,
+					endpoint: "ilink/bot/sendmessage",
+					token,
+					signal,
+					body: {
+						msg: {
+							from_user_id: "",
+							to_user_id: recipient,
+							client_id: clientId,
+							message_type: 2,
+							message_state: 2,
+							item_list: [{
+								type: 1,
+								text_item: { text: chunk }
+							}],
+							...nonEmptyString(contextToken) ? { context_token: String(contextToken).trim() } : {}
+						},
+						base_info: baseInfo()
+					}
+				}), signal);
+				const sendRejection = rejectedProviderResponse(response);
+				if (sendRejection) throw new WeixinApiError("send-rejected", "微信服务拒绝了回复消息。", { providerCode: sendRejection });
+			}
+			return { providerMessageIds };
+		},
+		async notifyStart({ baseUrl, token, signal }) {
+			const response = await requestJson(fetchImpl, {
+				method: "POST",
+				baseUrl,
+				endpoint: "ilink/bot/msg/notifystart",
+				token,
+				signal,
+				timeoutMs: 1e4,
+				body: { base_info: baseInfo() }
+			});
+			const providerCode = rejectedProviderResponse(response, ["errcode", "ret"]);
+			if (providerCode) throw new WeixinApiError(providerCode === "-14" ? "stale-token" : "start-rejected", "微信账号连接启动失败。", { providerCode });
+			return response;
+		},
+		async notifyStop({ baseUrl, token, signal }) {
+			const response = await requestJson(fetchImpl, {
+				method: "POST",
+				baseUrl,
+				endpoint: "ilink/bot/msg/notifystop",
+				token,
+				signal,
+				timeoutMs: 1e4,
+				body: { base_info: baseInfo() }
+			});
+			const providerCode = rejectedProviderResponse(response, ["errcode", "ret"]);
+			if (providerCode) throw new WeixinApiError("stop-rejected", "微信服务未确认停止通知。", { providerCode });
+			return response;
+		}
+	});
+}
+function extractWeixinText(message) {
+	const items = message?.item_list;
+	if (!Array.isArray(items)) return null;
+	for (const item of items) {
+		const i = item;
+		if (i?.type === 1 && typeof i.text_item?.text === "string") {
+			const text$3 = i.text_item.text.trim();
+			if (text$3) return text$3;
+		}
+		if (i?.type === 3 && typeof i.voice_item?.text === "string") {
+			const text$3 = i.voice_item.text.trim();
+			if (text$3) return text$3;
+		}
+	}
+	return null;
+}
+function weixinMessageId(message) {
+	const m = message;
+	if (m?.message_id !== void 0 && m.message_id !== null) return String(m.message_id);
+	return nonEmptyString(m?.client_id) ?? "";
+}
+function splitWeixinText(text$3, maxChars = DEFAULT_WEIXIN_MAX_MESSAGE_CHARS) {
+	if (text$3.length <= maxChars) return [text$3];
+	const chunks = [];
+	let remaining = text$3;
+	while (remaining.length > maxChars) {
+		let splitAt = remaining.lastIndexOf("\n", maxChars);
+		if (splitAt < Math.floor(maxChars * .6)) splitAt = maxChars;
+		chunks.push(remaining.slice(0, splitAt));
+		remaining = remaining.slice(splitAt).replace(/^\n+/, "");
+	}
+	if (remaining) chunks.push(remaining);
+	return chunks;
+}
+function orderWeixinMessages(messages) {
+	if (!Array.isArray(messages) || messages.length < 2) return messages;
+	const fields$1 = ["seq", "create_time_ms"];
+	const field = fields$1.find((f) => messages.every((m) => {
+		const v = m?.[f];
+		return typeof v === "number" && Number.isFinite(v) || typeof v === "string" && v.trim() && Number.isFinite(Number(v));
+	}));
+	if (!field) return messages;
+	return messages.map((message, index) => ({
+		message,
+		index,
+		order: Number(message[field])
+	})).sort((a, b) => a.order - b.order || a.index - b.index).map((x) => x.message);
+}
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/can-promise.js
+var require_can_promise = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/can-promise.js"(exports, module) {
+	module.exports = function() {
+		return typeof Promise === "function" && Promise.prototype && Promise.prototype.then;
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/utils.js
+var require_utils$3 = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/utils.js"(exports) {
+	let toSJISFunction;
+	const CODEWORDS_COUNT = [
+		0,
+		26,
+		44,
+		70,
+		100,
+		134,
+		172,
+		196,
+		242,
+		292,
+		346,
+		404,
+		466,
+		532,
+		581,
+		655,
+		733,
+		815,
+		901,
+		991,
+		1085,
+		1156,
+		1258,
+		1364,
+		1474,
+		1588,
+		1706,
+		1828,
+		1921,
+		2051,
+		2185,
+		2323,
+		2465,
+		2611,
+		2761,
+		2876,
+		3034,
+		3196,
+		3362,
+		3532,
+		3706
+	];
+	/**
+	* Returns the QR Code size for the specified version
+	*
+	* @param  {Number} version QR Code version
+	* @return {Number}         size of QR code
+	*/
+	exports.getSymbolSize = function getSymbolSize$2(version$1) {
+		if (!version$1) throw new Error("\"version\" cannot be null or undefined");
+		if (version$1 < 1 || version$1 > 40) throw new Error("\"version\" should be in range from 1 to 40");
+		return version$1 * 4 + 17;
+	};
+	/**
+	* Returns the total number of codewords used to store data and EC information.
+	*
+	* @param  {Number} version QR Code version
+	* @return {Number}         Data length in bits
+	*/
+	exports.getSymbolTotalCodewords = function getSymbolTotalCodewords(version$1) {
+		return CODEWORDS_COUNT[version$1];
+	};
+	/**
+	* Encode data with Bose-Chaudhuri-Hocquenghem
+	*
+	* @param  {Number} data Value to encode
+	* @return {Number}      Encoded value
+	*/
+	exports.getBCHDigit = function(data) {
+		let digit = 0;
+		while (data !== 0) {
+			digit++;
+			data >>>= 1;
+		}
+		return digit;
+	};
+	exports.setToSJISFunction = function setToSJISFunction(f) {
+		if (typeof f !== "function") throw new Error("\"toSJISFunc\" is not a valid function.");
+		toSJISFunction = f;
+	};
+	exports.isKanjiModeEnabled = function() {
+		return typeof toSJISFunction !== "undefined";
+	};
+	exports.toSJIS = function toSJIS(kanji$1) {
+		return toSJISFunction(kanji$1);
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/error-correction-level.js
+var require_error_correction_level = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/error-correction-level.js"(exports) {
+	exports.L = { bit: 1 };
+	exports.M = { bit: 0 };
+	exports.Q = { bit: 3 };
+	exports.H = { bit: 2 };
+	function fromString$1(string$1) {
+		if (typeof string$1 !== "string") throw new Error("Param is not a string");
+		const lcStr = string$1.toLowerCase();
+		switch (lcStr) {
+			case "l":
+			case "low": return exports.L;
+			case "m":
+			case "medium": return exports.M;
+			case "q":
+			case "quartile": return exports.Q;
+			case "h":
+			case "high": return exports.H;
+			default: throw new Error("Unknown EC Level: " + string$1);
+		}
+	}
+	exports.isValid = function isValid(level) {
+		return level && typeof level.bit !== "undefined" && level.bit >= 0 && level.bit < 4;
+	};
+	exports.from = function from(value, defaultValue) {
+		if (exports.isValid(value)) return value;
+		try {
+			return fromString$1(value);
+		} catch (e) {
+			return defaultValue;
+		}
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/bit-buffer.js
+var require_bit_buffer = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/bit-buffer.js"(exports, module) {
+	function BitBuffer$1() {
+		this.buffer = [];
+		this.length = 0;
+	}
+	BitBuffer$1.prototype = {
+		get: function(index) {
+			const bufIndex = Math.floor(index / 8);
+			return (this.buffer[bufIndex] >>> 7 - index % 8 & 1) === 1;
+		},
+		put: function(num$1, length) {
+			for (let i = 0; i < length; i++) this.putBit((num$1 >>> length - i - 1 & 1) === 1);
+		},
+		getLengthInBits: function() {
+			return this.length;
+		},
+		putBit: function(bit) {
+			const bufIndex = Math.floor(this.length / 8);
+			if (this.buffer.length <= bufIndex) this.buffer.push(0);
+			if (bit) this.buffer[bufIndex] |= 128 >>> this.length % 8;
+			this.length++;
+		}
+	};
+	module.exports = BitBuffer$1;
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/bit-matrix.js
+var require_bit_matrix = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/bit-matrix.js"(exports, module) {
+	/**
+	* Helper class to handle QR Code symbol modules
+	*
+	* @param {Number} size Symbol size
+	*/
+	function BitMatrix$1(size) {
+		if (!size || size < 1) throw new Error("BitMatrix size must be defined and greater than 0");
+		this.size = size;
+		this.data = new Uint8Array(size * size);
+		this.reservedBit = new Uint8Array(size * size);
+	}
+	/**
+	* Set bit value at specified location
+	* If reserved flag is set, this bit will be ignored during masking process
+	*
+	* @param {Number}  row
+	* @param {Number}  col
+	* @param {Boolean} value
+	* @param {Boolean} reserved
+	*/
+	BitMatrix$1.prototype.set = function(row, col, value, reserved) {
+		const index = row * this.size + col;
+		this.data[index] = value;
+		if (reserved) this.reservedBit[index] = true;
+	};
+	/**
+	* Returns bit value at specified location
+	*
+	* @param  {Number}  row
+	* @param  {Number}  col
+	* @return {Boolean}
+	*/
+	BitMatrix$1.prototype.get = function(row, col) {
+		return this.data[row * this.size + col];
+	};
+	/**
+	* Applies xor operator at specified location
+	* (used during masking process)
+	*
+	* @param {Number}  row
+	* @param {Number}  col
+	* @param {Boolean} value
+	*/
+	BitMatrix$1.prototype.xor = function(row, col, value) {
+		this.data[row * this.size + col] ^= value;
+	};
+	/**
+	* Check if bit at specified location is reserved
+	*
+	* @param {Number}   row
+	* @param {Number}   col
+	* @return {Boolean}
+	*/
+	BitMatrix$1.prototype.isReserved = function(row, col) {
+		return this.reservedBit[row * this.size + col];
+	};
+	module.exports = BitMatrix$1;
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/alignment-pattern.js
+var require_alignment_pattern = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/alignment-pattern.js"(exports) {
+	/**
+	* Alignment pattern are fixed reference pattern in defined positions
+	* in a matrix symbology, which enables the decode software to re-synchronise
+	* the coordinate mapping of the image modules in the event of moderate amounts
+	* of distortion of the image.
+	*
+	* Alignment patterns are present only in QR Code symbols of version 2 or larger
+	* and their number depends on the symbol version.
+	*/
+	const getSymbolSize$1 = require_utils$3().getSymbolSize;
+	/**
+	* Calculate the row/column coordinates of the center module of each alignment pattern
+	* for the specified QR Code version.
+	*
+	* The alignment patterns are positioned symmetrically on either side of the diagonal
+	* running from the top left corner of the symbol to the bottom right corner.
+	*
+	* Since positions are simmetrical only half of the coordinates are returned.
+	* Each item of the array will represent in turn the x and y coordinate.
+	* @see {@link getPositions}
+	*
+	* @param  {Number} version QR Code version
+	* @return {Array}          Array of coordinate
+	*/
+	exports.getRowColCoords = function getRowColCoords(version$1) {
+		if (version$1 === 1) return [];
+		const posCount = Math.floor(version$1 / 7) + 2;
+		const size = getSymbolSize$1(version$1);
+		const intervals = size === 145 ? 26 : Math.ceil((size - 13) / (2 * posCount - 2)) * 2;
+		const positions = [size - 7];
+		for (let i = 1; i < posCount - 1; i++) positions[i] = positions[i - 1] - intervals;
+		positions.push(6);
+		return positions.reverse();
+	};
+	/**
+	* Returns an array containing the positions of each alignment pattern.
+	* Each array's element represent the center point of the pattern as (x, y) coordinates
+	*
+	* Coordinates are calculated expanding the row/column coordinates returned by {@link getRowColCoords}
+	* and filtering out the items that overlaps with finder pattern
+	*
+	* @example
+	* For a Version 7 symbol {@link getRowColCoords} returns values 6, 22 and 38.
+	* The alignment patterns, therefore, are to be centered on (row, column)
+	* positions (6,22), (22,6), (22,22), (22,38), (38,22), (38,38).
+	* Note that the coordinates (6,6), (6,38), (38,6) are occupied by finder patterns
+	* and are not therefore used for alignment patterns.
+	*
+	* let pos = getPositions(7)
+	* // [[6,22], [22,6], [22,22], [22,38], [38,22], [38,38]]
+	*
+	* @param  {Number} version QR Code version
+	* @return {Array}          Array of coordinates
+	*/
+	exports.getPositions = function getPositions(version$1) {
+		const coords = [];
+		const pos = exports.getRowColCoords(version$1);
+		const posLength = pos.length;
+		for (let i = 0; i < posLength; i++) for (let j = 0; j < posLength; j++) {
+			if (i === 0 && j === 0 || i === 0 && j === posLength - 1 || i === posLength - 1 && j === 0) continue;
+			coords.push([pos[i], pos[j]]);
+		}
+		return coords;
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/finder-pattern.js
+var require_finder_pattern = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/finder-pattern.js"(exports) {
+	const getSymbolSize = require_utils$3().getSymbolSize;
+	const FINDER_PATTERN_SIZE = 7;
+	/**
+	* Returns an array containing the positions of each finder pattern.
+	* Each array's element represent the top-left point of the pattern as (x, y) coordinates
+	*
+	* @param  {Number} version QR Code version
+	* @return {Array}          Array of coordinates
+	*/
+	exports.getPositions = function getPositions(version$1) {
+		const size = getSymbolSize(version$1);
+		return [
+			[0, 0],
+			[size - FINDER_PATTERN_SIZE, 0],
+			[0, size - FINDER_PATTERN_SIZE]
+		];
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/mask-pattern.js
+var require_mask_pattern = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/mask-pattern.js"(exports) {
+	/**
+	* Data mask pattern reference
+	* @type {Object}
+	*/
+	exports.Patterns = {
+		PATTERN000: 0,
+		PATTERN001: 1,
+		PATTERN010: 2,
+		PATTERN011: 3,
+		PATTERN100: 4,
+		PATTERN101: 5,
+		PATTERN110: 6,
+		PATTERN111: 7
+	};
+	/**
+	* Weighted penalty scores for the undesirable features
+	* @type {Object}
+	*/
+	const PenaltyScores = {
+		N1: 3,
+		N2: 3,
+		N3: 40,
+		N4: 10
+	};
+	/**
+	* Check if mask pattern value is valid
+	*
+	* @param  {Number}  mask    Mask pattern
+	* @return {Boolean}         true if valid, false otherwise
+	*/
+	exports.isValid = function isValid(mask) {
+		return mask != null && mask !== "" && !isNaN(mask) && mask >= 0 && mask <= 7;
+	};
+	/**
+	* Returns mask pattern from a value.
+	* If value is not valid, returns undefined
+	*
+	* @param  {Number|String} value        Mask pattern value
+	* @return {Number}                     Valid mask pattern or undefined
+	*/
+	exports.from = function from(value) {
+		return exports.isValid(value) ? parseInt(value, 10) : void 0;
+	};
+	/**
+	* Find adjacent modules in row/column with the same color
+	* and assign a penalty value.
+	*
+	* Points: N1 + i
+	* i is the amount by which the number of adjacent modules of the same color exceeds 5
+	*/
+	exports.getPenaltyN1 = function getPenaltyN1(data) {
+		const size = data.size;
+		let points = 0;
+		let sameCountCol = 0;
+		let sameCountRow = 0;
+		let lastCol = null;
+		let lastRow = null;
+		for (let row = 0; row < size; row++) {
+			sameCountCol = sameCountRow = 0;
+			lastCol = lastRow = null;
+			for (let col = 0; col < size; col++) {
+				let module$1 = data.get(row, col);
+				if (module$1 === lastCol) sameCountCol++;
+				else {
+					if (sameCountCol >= 5) points += PenaltyScores.N1 + (sameCountCol - 5);
+					lastCol = module$1;
+					sameCountCol = 1;
+				}
+				module$1 = data.get(col, row);
+				if (module$1 === lastRow) sameCountRow++;
+				else {
+					if (sameCountRow >= 5) points += PenaltyScores.N1 + (sameCountRow - 5);
+					lastRow = module$1;
+					sameCountRow = 1;
+				}
+			}
+			if (sameCountCol >= 5) points += PenaltyScores.N1 + (sameCountCol - 5);
+			if (sameCountRow >= 5) points += PenaltyScores.N1 + (sameCountRow - 5);
+		}
+		return points;
+	};
+	/**
+	* Find 2x2 blocks with the same color and assign a penalty value
+	*
+	* Points: N2 * (m - 1) * (n - 1)
+	*/
+	exports.getPenaltyN2 = function getPenaltyN2(data) {
+		const size = data.size;
+		let points = 0;
+		for (let row = 0; row < size - 1; row++) for (let col = 0; col < size - 1; col++) {
+			const last = data.get(row, col) + data.get(row, col + 1) + data.get(row + 1, col) + data.get(row + 1, col + 1);
+			if (last === 4 || last === 0) points++;
+		}
+		return points * PenaltyScores.N2;
+	};
+	/**
+	* Find 1:1:3:1:1 ratio (dark:light:dark:light:dark) pattern in row/column,
+	* preceded or followed by light area 4 modules wide
+	*
+	* Points: N3 * number of pattern found
+	*/
+	exports.getPenaltyN3 = function getPenaltyN3(data) {
+		const size = data.size;
+		let points = 0;
+		let bitsCol = 0;
+		let bitsRow = 0;
+		for (let row = 0; row < size; row++) {
+			bitsCol = bitsRow = 0;
+			for (let col = 0; col < size; col++) {
+				bitsCol = bitsCol << 1 & 2047 | data.get(row, col);
+				if (col >= 10 && (bitsCol === 1488 || bitsCol === 93)) points++;
+				bitsRow = bitsRow << 1 & 2047 | data.get(col, row);
+				if (col >= 10 && (bitsRow === 1488 || bitsRow === 93)) points++;
+			}
+		}
+		return points * PenaltyScores.N3;
+	};
+	/**
+	* Calculate proportion of dark modules in entire symbol
+	*
+	* Points: N4 * k
+	*
+	* k is the rating of the deviation of the proportion of dark modules
+	* in the symbol from 50% in steps of 5%
+	*/
+	exports.getPenaltyN4 = function getPenaltyN4(data) {
+		let darkCount = 0;
+		const modulesCount = data.data.length;
+		for (let i = 0; i < modulesCount; i++) darkCount += data.data[i];
+		const k = Math.abs(Math.ceil(darkCount * 100 / modulesCount / 5) - 10);
+		return k * PenaltyScores.N4;
+	};
+	/**
+	* Return mask value at given position
+	*
+	* @param  {Number} maskPattern Pattern reference value
+	* @param  {Number} i           Row
+	* @param  {Number} j           Column
+	* @return {Boolean}            Mask value
+	*/
+	function getMaskAt(maskPattern, i, j) {
+		switch (maskPattern) {
+			case exports.Patterns.PATTERN000: return (i + j) % 2 === 0;
+			case exports.Patterns.PATTERN001: return i % 2 === 0;
+			case exports.Patterns.PATTERN010: return j % 3 === 0;
+			case exports.Patterns.PATTERN011: return (i + j) % 3 === 0;
+			case exports.Patterns.PATTERN100: return (Math.floor(i / 2) + Math.floor(j / 3)) % 2 === 0;
+			case exports.Patterns.PATTERN101: return i * j % 2 + i * j % 3 === 0;
+			case exports.Patterns.PATTERN110: return (i * j % 2 + i * j % 3) % 2 === 0;
+			case exports.Patterns.PATTERN111: return (i * j % 3 + (i + j) % 2) % 2 === 0;
+			default: throw new Error("bad maskPattern:" + maskPattern);
+		}
+	}
+	/**
+	* Apply a mask pattern to a BitMatrix
+	*
+	* @param  {Number}    pattern Pattern reference number
+	* @param  {BitMatrix} data    BitMatrix data
+	*/
+	exports.applyMask = function applyMask$1(pattern, data) {
+		const size = data.size;
+		for (let col = 0; col < size; col++) for (let row = 0; row < size; row++) {
+			if (data.isReserved(row, col)) continue;
+			data.xor(row, col, getMaskAt(pattern, row, col));
+		}
+	};
+	/**
+	* Returns the best mask pattern for data
+	*
+	* @param  {BitMatrix} data
+	* @return {Number} Mask pattern reference number
+	*/
+	exports.getBestMask = function getBestMask(data, setupFormatFunc) {
+		const numPatterns = Object.keys(exports.Patterns).length;
+		let bestPattern = 0;
+		let lowerPenalty = Infinity;
+		for (let p = 0; p < numPatterns; p++) {
+			setupFormatFunc(p);
+			exports.applyMask(p, data);
+			const penalty = exports.getPenaltyN1(data) + exports.getPenaltyN2(data) + exports.getPenaltyN3(data) + exports.getPenaltyN4(data);
+			exports.applyMask(p, data);
+			if (penalty < lowerPenalty) {
+				lowerPenalty = penalty;
+				bestPattern = p;
+			}
+		}
+		return bestPattern;
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/error-correction-code.js
+var require_error_correction_code = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/error-correction-code.js"(exports) {
+	const ECLevel$2 = require_error_correction_level();
+	const EC_BLOCKS_TABLE = [
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		2,
+		2,
+		1,
+		2,
+		2,
+		4,
+		1,
+		2,
+		4,
+		4,
+		2,
+		4,
+		4,
+		4,
+		2,
+		4,
+		6,
+		5,
+		2,
+		4,
+		6,
+		6,
+		2,
+		5,
+		8,
+		8,
+		4,
+		5,
+		8,
+		8,
+		4,
+		5,
+		8,
+		11,
+		4,
+		8,
+		10,
+		11,
+		4,
+		9,
+		12,
+		16,
+		4,
+		9,
+		16,
+		16,
+		6,
+		10,
+		12,
+		18,
+		6,
+		10,
+		17,
+		16,
+		6,
+		11,
+		16,
+		19,
+		6,
+		13,
+		18,
+		21,
+		7,
+		14,
+		21,
+		25,
+		8,
+		16,
+		20,
+		25,
+		8,
+		17,
+		23,
+		25,
+		9,
+		17,
+		23,
+		34,
+		9,
+		18,
+		25,
+		30,
+		10,
+		20,
+		27,
+		32,
+		12,
+		21,
+		29,
+		35,
+		12,
+		23,
+		34,
+		37,
+		12,
+		25,
+		34,
+		40,
+		13,
+		26,
+		35,
+		42,
+		14,
+		28,
+		38,
+		45,
+		15,
+		29,
+		40,
+		48,
+		16,
+		31,
+		43,
+		51,
+		17,
+		33,
+		45,
+		54,
+		18,
+		35,
+		48,
+		57,
+		19,
+		37,
+		51,
+		60,
+		19,
+		38,
+		53,
+		63,
+		20,
+		40,
+		56,
+		66,
+		21,
+		43,
+		59,
+		70,
+		22,
+		45,
+		62,
+		74,
+		24,
+		47,
+		65,
+		77,
+		25,
+		49,
+		68,
+		81
+	];
+	const EC_CODEWORDS_TABLE = [
+		7,
+		10,
+		13,
+		17,
+		10,
+		16,
+		22,
+		28,
+		15,
+		26,
+		36,
+		44,
+		20,
+		36,
+		52,
+		64,
+		26,
+		48,
+		72,
+		88,
+		36,
+		64,
+		96,
+		112,
+		40,
+		72,
+		108,
+		130,
+		48,
+		88,
+		132,
+		156,
+		60,
+		110,
+		160,
+		192,
+		72,
+		130,
+		192,
+		224,
+		80,
+		150,
+		224,
+		264,
+		96,
+		176,
+		260,
+		308,
+		104,
+		198,
+		288,
+		352,
+		120,
+		216,
+		320,
+		384,
+		132,
+		240,
+		360,
+		432,
+		144,
+		280,
+		408,
+		480,
+		168,
+		308,
+		448,
+		532,
+		180,
+		338,
+		504,
+		588,
+		196,
+		364,
+		546,
+		650,
+		224,
+		416,
+		600,
+		700,
+		224,
+		442,
+		644,
+		750,
+		252,
+		476,
+		690,
+		816,
+		270,
+		504,
+		750,
+		900,
+		300,
+		560,
+		810,
+		960,
+		312,
+		588,
+		870,
+		1050,
+		336,
+		644,
+		952,
+		1110,
+		360,
+		700,
+		1020,
+		1200,
+		390,
+		728,
+		1050,
+		1260,
+		420,
+		784,
+		1140,
+		1350,
+		450,
+		812,
+		1200,
+		1440,
+		480,
+		868,
+		1290,
+		1530,
+		510,
+		924,
+		1350,
+		1620,
+		540,
+		980,
+		1440,
+		1710,
+		570,
+		1036,
+		1530,
+		1800,
+		570,
+		1064,
+		1590,
+		1890,
+		600,
+		1120,
+		1680,
+		1980,
+		630,
+		1204,
+		1770,
+		2100,
+		660,
+		1260,
+		1860,
+		2220,
+		720,
+		1316,
+		1950,
+		2310,
+		750,
+		1372,
+		2040,
+		2430
+	];
+	/**
+
+	* Returns the number of error correction block that the QR Code should contain
+
+	* for the specified version and error correction level.
+
+	*
+
+	* @param  {Number} version              QR Code version
+
+	* @param  {Number} errorCorrectionLevel Error correction level
+
+	* @return {Number}                      Number of error correction blocks
+
+	*/
+	exports.getBlocksCount = function getBlocksCount(version$1, errorCorrectionLevel) {
+		switch (errorCorrectionLevel) {
+			case ECLevel$2.L: return EC_BLOCKS_TABLE[(version$1 - 1) * 4 + 0];
+			case ECLevel$2.M: return EC_BLOCKS_TABLE[(version$1 - 1) * 4 + 1];
+			case ECLevel$2.Q: return EC_BLOCKS_TABLE[(version$1 - 1) * 4 + 2];
+			case ECLevel$2.H: return EC_BLOCKS_TABLE[(version$1 - 1) * 4 + 3];
+			default: return void 0;
+		}
+	};
+	/**
+
+	* Returns the number of error correction codewords to use for the specified
+
+	* version and error correction level.
+
+	*
+
+	* @param  {Number} version              QR Code version
+
+	* @param  {Number} errorCorrectionLevel Error correction level
+
+	* @return {Number}                      Number of error correction codewords
+
+	*/
+	exports.getTotalCodewordsCount = function getTotalCodewordsCount(version$1, errorCorrectionLevel) {
+		switch (errorCorrectionLevel) {
+			case ECLevel$2.L: return EC_CODEWORDS_TABLE[(version$1 - 1) * 4 + 0];
+			case ECLevel$2.M: return EC_CODEWORDS_TABLE[(version$1 - 1) * 4 + 1];
+			case ECLevel$2.Q: return EC_CODEWORDS_TABLE[(version$1 - 1) * 4 + 2];
+			case ECLevel$2.H: return EC_CODEWORDS_TABLE[(version$1 - 1) * 4 + 3];
+			default: return void 0;
+		}
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/galois-field.js
+var require_galois_field = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/galois-field.js"(exports) {
+	const EXP_TABLE = new Uint8Array(512);
+	const LOG_TABLE = new Uint8Array(256);
+	(function initTables() {
+		let x = 1;
+		for (let i = 0; i < 255; i++) {
+			EXP_TABLE[i] = x;
+			LOG_TABLE[x] = i;
+			x <<= 1;
+			if (x & 256) x ^= 285;
+		}
+		for (let i = 255; i < 512; i++) EXP_TABLE[i] = EXP_TABLE[i - 255];
+	})();
+	/**
+	* Returns log value of n inside Galois Field
+	*
+	* @param  {Number} n
+	* @return {Number}
+	*/
+	exports.log = function log$1(n) {
+		if (n < 1) throw new Error("log(" + n + ")");
+		return LOG_TABLE[n];
+	};
+	/**
+	* Returns anti-log value of n inside Galois Field
+	*
+	* @param  {Number} n
+	* @return {Number}
+	*/
+	exports.exp = function exp(n) {
+		return EXP_TABLE[n];
+	};
+	/**
+	* Multiplies two number inside Galois Field
+	*
+	* @param  {Number} x
+	* @param  {Number} y
+	* @return {Number}
+	*/
+	exports.mul = function mul(x, y) {
+		if (x === 0 || y === 0) return 0;
+		return EXP_TABLE[LOG_TABLE[x] + LOG_TABLE[y]];
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/polynomial.js
+var require_polynomial = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/polynomial.js"(exports) {
+	const GF = require_galois_field();
+	/**
+	* Multiplies two polynomials inside Galois Field
+	*
+	* @param  {Uint8Array} p1 Polynomial
+	* @param  {Uint8Array} p2 Polynomial
+	* @return {Uint8Array}    Product of p1 and p2
+	*/
+	exports.mul = function mul(p1, p2) {
+		const coeff = new Uint8Array(p1.length + p2.length - 1);
+		for (let i = 0; i < p1.length; i++) for (let j = 0; j < p2.length; j++) coeff[i + j] ^= GF.mul(p1[i], p2[j]);
+		return coeff;
+	};
+	/**
+	* Calculate the remainder of polynomials division
+	*
+	* @param  {Uint8Array} divident Polynomial
+	* @param  {Uint8Array} divisor  Polynomial
+	* @return {Uint8Array}          Remainder
+	*/
+	exports.mod = function mod(divident, divisor) {
+		let result = new Uint8Array(divident);
+		while (result.length - divisor.length >= 0) {
+			const coeff = result[0];
+			for (let i = 0; i < divisor.length; i++) result[i] ^= GF.mul(divisor[i], coeff);
+			let offset = 0;
+			while (offset < result.length && result[offset] === 0) offset++;
+			result = result.slice(offset);
+		}
+		return result;
+	};
+	/**
+	* Generate an irreducible generator polynomial of specified degree
+	* (used by Reed-Solomon encoder)
+	*
+	* @param  {Number} degree Degree of the generator polynomial
+	* @return {Uint8Array}    Buffer containing polynomial coefficients
+	*/
+	exports.generateECPolynomial = function generateECPolynomial(degree) {
+		let poly = new Uint8Array([1]);
+		for (let i = 0; i < degree; i++) poly = exports.mul(poly, new Uint8Array([1, GF.exp(i)]));
+		return poly;
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/reed-solomon-encoder.js
+var require_reed_solomon_encoder = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/reed-solomon-encoder.js"(exports, module) {
+	const Polynomial = require_polynomial();
+	function ReedSolomonEncoder$1(degree) {
+		this.genPoly = void 0;
+		this.degree = degree;
+		if (this.degree) this.initialize(this.degree);
+	}
+	/**
+	* Initialize the encoder.
+	* The input param should correspond to the number of error correction codewords.
+	*
+	* @param  {Number} degree
+	*/
+	ReedSolomonEncoder$1.prototype.initialize = function initialize(degree) {
+		this.degree = degree;
+		this.genPoly = Polynomial.generateECPolynomial(this.degree);
+	};
+	/**
+	* Encodes a chunk of data
+	*
+	* @param  {Uint8Array} data Buffer containing input data
+	* @return {Uint8Array}      Buffer containing encoded data
+	*/
+	ReedSolomonEncoder$1.prototype.encode = function encode$5(data) {
+		if (!this.genPoly) throw new Error("Encoder not initialized");
+		const paddedData = new Uint8Array(data.length + this.degree);
+		paddedData.set(data);
+		const remainder = Polynomial.mod(paddedData, this.genPoly);
+		const start = this.degree - remainder.length;
+		if (start > 0) {
+			const buff = new Uint8Array(this.degree);
+			buff.set(remainder, start);
+			return buff;
+		}
+		return remainder;
+	};
+	module.exports = ReedSolomonEncoder$1;
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/version-check.js
+var require_version_check = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/version-check.js"(exports) {
+	/**
+	* Check if QR Code version is valid
+	*
+	* @param  {Number}  version QR Code version
+	* @return {Boolean}         true if valid version, false otherwise
+	*/
+	exports.isValid = function isValid(version$1) {
+		return !isNaN(version$1) && version$1 >= 1 && version$1 <= 40;
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/regex.js
+var require_regex = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/regex.js"(exports) {
+	const numeric = "[0-9]+";
+	const alphanumeric = "[A-Z $%*+\\-./:]+";
+	let kanji = "(?:[u3000-u303F]|[u3040-u309F]|[u30A0-u30FF]|[uFF00-uFFEF]|[u4E00-u9FAF]|[u2605-u2606]|[u2190-u2195]|u203B|[u2010u2015u2018u2019u2025u2026u201Cu201Du2225u2260]|[u0391-u0451]|[u00A7u00A8u00B1u00B4u00D7u00F7])+";
+	kanji = kanji.replace(/u/g, "\\u");
+	const byte = "(?:(?![A-Z0-9 $%*+\\-./:]|" + kanji + ")(?:.|[\r\n]))+";
+	exports.KANJI = new RegExp(kanji, "g");
+	exports.BYTE_KANJI = new RegExp("[^A-Z0-9 $%*+\\-./:]+", "g");
+	exports.BYTE = new RegExp(byte, "g");
+	exports.NUMERIC = new RegExp(numeric, "g");
+	exports.ALPHANUMERIC = new RegExp(alphanumeric, "g");
+	const TEST_KANJI = new RegExp("^" + kanji + "$");
+	const TEST_NUMERIC = new RegExp("^" + numeric + "$");
+	const TEST_ALPHANUMERIC = new RegExp("^[A-Z0-9 $%*+\\-./:]+$");
+	exports.testKanji = function testKanji(str$2) {
+		return TEST_KANJI.test(str$2);
+	};
+	exports.testNumeric = function testNumeric(str$2) {
+		return TEST_NUMERIC.test(str$2);
+	};
+	exports.testAlphanumeric = function testAlphanumeric(str$2) {
+		return TEST_ALPHANUMERIC.test(str$2);
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/mode.js
+var require_mode = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/mode.js"(exports) {
+	const VersionCheck$1 = require_version_check();
+	const Regex$1 = require_regex();
+	/**
+	* Numeric mode encodes data from the decimal digit set (0 - 9)
+	* (byte values 30HEX to 39HEX).
+	* Normally, 3 data characters are represented by 10 bits.
+	*
+	* @type {Object}
+	*/
+	exports.NUMERIC = {
+		id: "Numeric",
+		bit: 1,
+		ccBits: [
+			10,
+			12,
+			14
+		]
+	};
+	/**
+	* Alphanumeric mode encodes data from a set of 45 characters,
+	* i.e. 10 numeric digits (0 - 9),
+	*      26 alphabetic characters (A - Z),
+	*   and 9 symbols (SP, $, %, *, +, -, ., /, :).
+	* Normally, two input characters are represented by 11 bits.
+	*
+	* @type {Object}
+	*/
+	exports.ALPHANUMERIC = {
+		id: "Alphanumeric",
+		bit: 2,
+		ccBits: [
+			9,
+			11,
+			13
+		]
+	};
+	/**
+	* In byte mode, data is encoded at 8 bits per character.
+	*
+	* @type {Object}
+	*/
+	exports.BYTE = {
+		id: "Byte",
+		bit: 4,
+		ccBits: [
+			8,
+			16,
+			16
+		]
+	};
+	/**
+	* The Kanji mode efficiently encodes Kanji characters in accordance with
+	* the Shift JIS system based on JIS X 0208.
+	* The Shift JIS values are shifted from the JIS X 0208 values.
+	* JIS X 0208 gives details of the shift coded representation.
+	* Each two-byte character value is compacted to a 13-bit binary codeword.
+	*
+	* @type {Object}
+	*/
+	exports.KANJI = {
+		id: "Kanji",
+		bit: 8,
+		ccBits: [
+			8,
+			10,
+			12
+		]
+	};
+	/**
+	* Mixed mode will contain a sequences of data in a combination of any of
+	* the modes described above
+	*
+	* @type {Object}
+	*/
+	exports.MIXED = { bit: -1 };
+	/**
+	* Returns the number of bits needed to store the data length
+	* according to QR Code specifications.
+	*
+	* @param  {Mode}   mode    Data mode
+	* @param  {Number} version QR Code version
+	* @return {Number}         Number of bits
+	*/
+	exports.getCharCountIndicator = function getCharCountIndicator(mode, version$1) {
+		if (!mode.ccBits) throw new Error("Invalid mode: " + mode);
+		if (!VersionCheck$1.isValid(version$1)) throw new Error("Invalid version: " + version$1);
+		if (version$1 >= 1 && version$1 < 10) return mode.ccBits[0];
+		else if (version$1 < 27) return mode.ccBits[1];
+		return mode.ccBits[2];
+	};
+	/**
+	* Returns the most efficient mode to store the specified data
+	*
+	* @param  {String} dataStr Input data string
+	* @return {Mode}           Best mode
+	*/
+	exports.getBestModeForData = function getBestModeForData(dataStr) {
+		if (Regex$1.testNumeric(dataStr)) return exports.NUMERIC;
+		else if (Regex$1.testAlphanumeric(dataStr)) return exports.ALPHANUMERIC;
+		else if (Regex$1.testKanji(dataStr)) return exports.KANJI;
+		else return exports.BYTE;
+	};
+	/**
+	* Return mode name as string
+	*
+	* @param {Mode} mode Mode object
+	* @returns {String}  Mode name
+	*/
+	exports.toString = function toString(mode) {
+		if (mode && mode.id) return mode.id;
+		throw new Error("Invalid mode");
+	};
+	/**
+	* Check if input param is a valid mode object
+	*
+	* @param   {Mode}    mode Mode object
+	* @returns {Boolean} True if valid mode, false otherwise
+	*/
+	exports.isValid = function isValid(mode) {
+		return mode && mode.bit && mode.ccBits;
+	};
+	/**
+	* Get mode object from its name
+	*
+	* @param   {String} string Mode name
+	* @returns {Mode}          Mode object
+	*/
+	function fromString(string$1) {
+		if (typeof string$1 !== "string") throw new Error("Param is not a string");
+		const lcStr = string$1.toLowerCase();
+		switch (lcStr) {
+			case "numeric": return exports.NUMERIC;
+			case "alphanumeric": return exports.ALPHANUMERIC;
+			case "kanji": return exports.KANJI;
+			case "byte": return exports.BYTE;
+			default: throw new Error("Unknown mode: " + string$1);
+		}
+	}
+	/**
+	* Returns mode from a value.
+	* If value is not a valid mode, returns defaultValue
+	*
+	* @param  {Mode|String} value        Encoding mode
+	* @param  {Mode}        defaultValue Fallback value
+	* @return {Mode}                     Encoding mode
+	*/
+	exports.from = function from(value, defaultValue) {
+		if (exports.isValid(value)) return value;
+		try {
+			return fromString(value);
+		} catch (e) {
+			return defaultValue;
+		}
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/version.js
+var require_version$1 = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/version.js"(exports) {
+	const Utils$8 = require_utils$3();
+	const ECCode$1 = require_error_correction_code();
+	const ECLevel$1 = require_error_correction_level();
+	const Mode$6 = require_mode();
+	const VersionCheck = require_version_check();
+	const G18 = 7973;
+	const G18_BCH = Utils$8.getBCHDigit(G18);
+	function getBestVersionForDataLength(mode, length, errorCorrectionLevel) {
+		for (let currentVersion = 1; currentVersion <= 40; currentVersion++) if (length <= exports.getCapacity(currentVersion, errorCorrectionLevel, mode)) return currentVersion;
+		return void 0;
+	}
+	function getReservedBitsCount(mode, version$1) {
+		return Mode$6.getCharCountIndicator(mode, version$1) + 4;
+	}
+	function getTotalBitsFromDataArray(segments, version$1) {
+		let totalBits = 0;
+		segments.forEach(function(data) {
+			const reservedBits = getReservedBitsCount(data.mode, version$1);
+			totalBits += reservedBits + data.getBitsLength();
+		});
+		return totalBits;
+	}
+	function getBestVersionForMixedData(segments, errorCorrectionLevel) {
+		for (let currentVersion = 1; currentVersion <= 40; currentVersion++) {
+			const length = getTotalBitsFromDataArray(segments, currentVersion);
+			if (length <= exports.getCapacity(currentVersion, errorCorrectionLevel, Mode$6.MIXED)) return currentVersion;
+		}
+		return void 0;
+	}
+	/**
+	* Returns version number from a value.
+	* If value is not a valid version, returns defaultValue
+	*
+	* @param  {Number|String} value        QR Code version
+	* @param  {Number}        defaultValue Fallback value
+	* @return {Number}                     QR Code version number
+	*/
+	exports.from = function from(value, defaultValue) {
+		if (VersionCheck.isValid(value)) return parseInt(value, 10);
+		return defaultValue;
+	};
+	/**
+	* Returns how much data can be stored with the specified QR code version
+	* and error correction level
+	*
+	* @param  {Number} version              QR Code version (1-40)
+	* @param  {Number} errorCorrectionLevel Error correction level
+	* @param  {Mode}   mode                 Data mode
+	* @return {Number}                      Quantity of storable data
+	*/
+	exports.getCapacity = function getCapacity(version$1, errorCorrectionLevel, mode) {
+		if (!VersionCheck.isValid(version$1)) throw new Error("Invalid QR Code version");
+		if (typeof mode === "undefined") mode = Mode$6.BYTE;
+		const totalCodewords = Utils$8.getSymbolTotalCodewords(version$1);
+		const ecTotalCodewords = ECCode$1.getTotalCodewordsCount(version$1, errorCorrectionLevel);
+		const dataTotalCodewordsBits = (totalCodewords - ecTotalCodewords) * 8;
+		if (mode === Mode$6.MIXED) return dataTotalCodewordsBits;
+		const usableBits = dataTotalCodewordsBits - getReservedBitsCount(mode, version$1);
+		switch (mode) {
+			case Mode$6.NUMERIC: return Math.floor(usableBits / 10 * 3);
+			case Mode$6.ALPHANUMERIC: return Math.floor(usableBits / 11 * 2);
+			case Mode$6.KANJI: return Math.floor(usableBits / 13);
+			case Mode$6.BYTE:
+			default: return Math.floor(usableBits / 8);
+		}
+	};
+	/**
+	* Returns the minimum version needed to contain the amount of data
+	*
+	* @param  {Segment} data                    Segment of data
+	* @param  {Number} [errorCorrectionLevel=H] Error correction level
+	* @param  {Mode} mode                       Data mode
+	* @return {Number}                          QR Code version
+	*/
+	exports.getBestVersionForData = function getBestVersionForData(data, errorCorrectionLevel) {
+		let seg;
+		const ecl = ECLevel$1.from(errorCorrectionLevel, ECLevel$1.M);
+		if (Array.isArray(data)) {
+			if (data.length > 1) return getBestVersionForMixedData(data, ecl);
+			if (data.length === 0) return 1;
+			seg = data[0];
+		} else seg = data;
+		return getBestVersionForDataLength(seg.mode, seg.getLength(), ecl);
+	};
+	/**
+	* Returns version information with relative error correction bits
+	*
+	* The version information is included in QR Code symbols of version 7 or larger.
+	* It consists of an 18-bit sequence containing 6 data bits,
+	* with 12 error correction bits calculated using the (18, 6) Golay code.
+	*
+	* @param  {Number} version QR Code version
+	* @return {Number}         Encoded version info bits
+	*/
+	exports.getEncodedBits = function getEncodedBits(version$1) {
+		if (!VersionCheck.isValid(version$1) || version$1 < 7) throw new Error("Invalid QR Code version");
+		let d = version$1 << 12;
+		while (Utils$8.getBCHDigit(d) - G18_BCH >= 0) d ^= G18 << Utils$8.getBCHDigit(d) - G18_BCH;
+		return version$1 << 12 | d;
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/format-info.js
+var require_format_info = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/format-info.js"(exports) {
+	const Utils$7 = require_utils$3();
+	const G15 = 1335;
+	const G15_MASK = 21522;
+	const G15_BCH = Utils$7.getBCHDigit(G15);
+	/**
+	* Returns format information with relative error correction bits
+	*
+	* The format information is a 15-bit sequence containing 5 data bits,
+	* with 10 error correction bits calculated using the (15, 5) BCH code.
+	*
+	* @param  {Number} errorCorrectionLevel Error correction level
+	* @param  {Number} mask                 Mask pattern
+	* @return {Number}                      Encoded format information bits
+	*/
+	exports.getEncodedBits = function getEncodedBits(errorCorrectionLevel, mask) {
+		const data = errorCorrectionLevel.bit << 3 | mask;
+		let d = data << 10;
+		while (Utils$7.getBCHDigit(d) - G15_BCH >= 0) d ^= G15 << Utils$7.getBCHDigit(d) - G15_BCH;
+		return (data << 10 | d) ^ G15_MASK;
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/numeric-data.js
+var require_numeric_data = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/numeric-data.js"(exports, module) {
+	const Mode$5 = require_mode();
+	function NumericData$1(data) {
+		this.mode = Mode$5.NUMERIC;
+		this.data = data.toString();
+	}
+	NumericData$1.getBitsLength = function getBitsLength(length) {
+		return 10 * Math.floor(length / 3) + (length % 3 ? length % 3 * 3 + 1 : 0);
+	};
+	NumericData$1.prototype.getLength = function getLength() {
+		return this.data.length;
+	};
+	NumericData$1.prototype.getBitsLength = function getBitsLength() {
+		return NumericData$1.getBitsLength(this.data.length);
+	};
+	NumericData$1.prototype.write = function write(bitBuffer) {
+		let i, group, value;
+		for (i = 0; i + 3 <= this.data.length; i += 3) {
+			group = this.data.substr(i, 3);
+			value = parseInt(group, 10);
+			bitBuffer.put(value, 10);
+		}
+		const remainingNum = this.data.length - i;
+		if (remainingNum > 0) {
+			group = this.data.substr(i);
+			value = parseInt(group, 10);
+			bitBuffer.put(value, remainingNum * 3 + 1);
+		}
+	};
+	module.exports = NumericData$1;
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/alphanumeric-data.js
+var require_alphanumeric_data = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/alphanumeric-data.js"(exports, module) {
+	const Mode$4 = require_mode();
+	/**
+	* Array of characters available in alphanumeric mode
+	*
+	* As per QR Code specification, to each character
+	* is assigned a value from 0 to 44 which in this case coincides
+	* with the array index
+	*
+	* @type {Array}
+	*/
+	const ALPHA_NUM_CHARS = [
+		"0",
+		"1",
+		"2",
+		"3",
+		"4",
+		"5",
+		"6",
+		"7",
+		"8",
+		"9",
+		"A",
+		"B",
+		"C",
+		"D",
+		"E",
+		"F",
+		"G",
+		"H",
+		"I",
+		"J",
+		"K",
+		"L",
+		"M",
+		"N",
+		"O",
+		"P",
+		"Q",
+		"R",
+		"S",
+		"T",
+		"U",
+		"V",
+		"W",
+		"X",
+		"Y",
+		"Z",
+		" ",
+		"$",
+		"%",
+		"*",
+		"+",
+		"-",
+		".",
+		"/",
+		":"
+	];
+	function AlphanumericData$1(data) {
+		this.mode = Mode$4.ALPHANUMERIC;
+		this.data = data;
+	}
+	AlphanumericData$1.getBitsLength = function getBitsLength(length) {
+		return 11 * Math.floor(length / 2) + 6 * (length % 2);
+	};
+	AlphanumericData$1.prototype.getLength = function getLength() {
+		return this.data.length;
+	};
+	AlphanumericData$1.prototype.getBitsLength = function getBitsLength() {
+		return AlphanumericData$1.getBitsLength(this.data.length);
+	};
+	AlphanumericData$1.prototype.write = function write(bitBuffer) {
+		let i;
+		for (i = 0; i + 2 <= this.data.length; i += 2) {
+			let value = ALPHA_NUM_CHARS.indexOf(this.data[i]) * 45;
+			value += ALPHA_NUM_CHARS.indexOf(this.data[i + 1]);
+			bitBuffer.put(value, 11);
+		}
+		if (this.data.length % 2) bitBuffer.put(ALPHA_NUM_CHARS.indexOf(this.data[i]), 6);
+	};
+	module.exports = AlphanumericData$1;
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/byte-data.js
+var require_byte_data = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/byte-data.js"(exports, module) {
+	const Mode$3 = require_mode();
+	function ByteData$1(data) {
+		this.mode = Mode$3.BYTE;
+		if (typeof data === "string") this.data = new TextEncoder().encode(data);
+		else this.data = new Uint8Array(data);
+	}
+	ByteData$1.getBitsLength = function getBitsLength(length) {
+		return length * 8;
+	};
+	ByteData$1.prototype.getLength = function getLength() {
+		return this.data.length;
+	};
+	ByteData$1.prototype.getBitsLength = function getBitsLength() {
+		return ByteData$1.getBitsLength(this.data.length);
+	};
+	ByteData$1.prototype.write = function(bitBuffer) {
+		for (let i = 0, l = this.data.length; i < l; i++) bitBuffer.put(this.data[i], 8);
+	};
+	module.exports = ByteData$1;
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/kanji-data.js
+var require_kanji_data = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/kanji-data.js"(exports, module) {
+	const Mode$2 = require_mode();
+	const Utils$6 = require_utils$3();
+	function KanjiData$1(data) {
+		this.mode = Mode$2.KANJI;
+		this.data = data;
+	}
+	KanjiData$1.getBitsLength = function getBitsLength(length) {
+		return length * 13;
+	};
+	KanjiData$1.prototype.getLength = function getLength() {
+		return this.data.length;
+	};
+	KanjiData$1.prototype.getBitsLength = function getBitsLength() {
+		return KanjiData$1.getBitsLength(this.data.length);
+	};
+	KanjiData$1.prototype.write = function(bitBuffer) {
+		let i;
+		for (i = 0; i < this.data.length; i++) {
+			let value = Utils$6.toSJIS(this.data[i]);
+			if (value >= 33088 && value <= 40956) value -= 33088;
+			else if (value >= 57408 && value <= 60351) value -= 49472;
+			else throw new Error("Invalid SJIS character: " + this.data[i] + "\nMake sure your charset is UTF-8");
+			value = (value >>> 8 & 255) * 192 + (value & 255);
+			bitBuffer.put(value, 13);
+		}
+	};
+	module.exports = KanjiData$1;
+} });
+
+//#endregion
+//#region node_modules/.pnpm/dijkstrajs@1.0.3/node_modules/dijkstrajs/dijkstra.js
+var require_dijkstra = __commonJS({ "node_modules/.pnpm/dijkstrajs@1.0.3/node_modules/dijkstrajs/dijkstra.js"(exports, module) {
+	/******************************************************************************
+	* Created 2008-08-19.
+	*
+	* Dijkstra path-finding functions. Adapted from the Dijkstar Python project.
+	*
+	* Copyright (C) 2008
+	*   Wyatt Baldwin <self@wyattbaldwin.com>
+	*   All rights reserved
+	*
+	* Licensed under the MIT license.
+	*
+	*   http://www.opensource.org/licenses/mit-license.php
+	*
+	* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	* AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	* OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+	* THE SOFTWARE.
+	*****************************************************************************/
+	var dijkstra$1 = {
+		single_source_shortest_paths: function(graph, s, d) {
+			var predecessors = {};
+			var costs = {};
+			costs[s] = 0;
+			var open$1 = dijkstra$1.PriorityQueue.make();
+			open$1.push(s, 0);
+			var closest, u, v, cost_of_s_to_u, adjacent_nodes, cost_of_e, cost_of_s_to_u_plus_cost_of_e, cost_of_s_to_v, first_visit;
+			while (!open$1.empty()) {
+				closest = open$1.pop();
+				u = closest.value;
+				cost_of_s_to_u = closest.cost;
+				adjacent_nodes = graph[u] || {};
+				for (v in adjacent_nodes) if (adjacent_nodes.hasOwnProperty(v)) {
+					cost_of_e = adjacent_nodes[v];
+					cost_of_s_to_u_plus_cost_of_e = cost_of_s_to_u + cost_of_e;
+					cost_of_s_to_v = costs[v];
+					first_visit = typeof costs[v] === "undefined";
+					if (first_visit || cost_of_s_to_v > cost_of_s_to_u_plus_cost_of_e) {
+						costs[v] = cost_of_s_to_u_plus_cost_of_e;
+						open$1.push(v, cost_of_s_to_u_plus_cost_of_e);
+						predecessors[v] = u;
+					}
+				}
+			}
+			if (typeof d !== "undefined" && typeof costs[d] === "undefined") {
+				var msg = [
+					"Could not find a path from ",
+					s,
+					" to ",
+					d,
+					"."
+				].join("");
+				throw new Error(msg);
+			}
+			return predecessors;
+		},
+		extract_shortest_path_from_predecessor_list: function(predecessors, d) {
+			var nodes = [];
+			var u = d;
+			var predecessor;
+			while (u) {
+				nodes.push(u);
+				predecessor = predecessors[u];
+				u = predecessors[u];
+			}
+			nodes.reverse();
+			return nodes;
+		},
+		find_path: function(graph, s, d) {
+			var predecessors = dijkstra$1.single_source_shortest_paths(graph, s, d);
+			return dijkstra$1.extract_shortest_path_from_predecessor_list(predecessors, d);
+		},
+		PriorityQueue: {
+			make: function(opts) {
+				var T = dijkstra$1.PriorityQueue, t = {}, key;
+				opts = opts || {};
+				for (key in T) if (T.hasOwnProperty(key)) t[key] = T[key];
+				t.queue = [];
+				t.sorter = opts.sorter || T.default_sorter;
+				return t;
+			},
+			default_sorter: function(a, b) {
+				return a.cost - b.cost;
+			},
+			push: function(value, cost) {
+				var item = {
+					value,
+					cost
+				};
+				this.queue.push(item);
+				this.queue.sort(this.sorter);
+			},
+			pop: function() {
+				return this.queue.shift();
+			},
+			empty: function() {
+				return this.queue.length === 0;
+			}
+		}
+	};
+	if (typeof module !== "undefined") module.exports = dijkstra$1;
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/segments.js
+var require_segments = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/segments.js"(exports) {
+	const Mode$1 = require_mode();
+	const NumericData = require_numeric_data();
+	const AlphanumericData = require_alphanumeric_data();
+	const ByteData = require_byte_data();
+	const KanjiData = require_kanji_data();
+	const Regex = require_regex();
+	const Utils$5 = require_utils$3();
+	const dijkstra = require_dijkstra();
+	/**
+	* Returns UTF8 byte length
+	*
+	* @param  {String} str Input string
+	* @return {Number}     Number of byte
+	*/
+	function getStringByteLength(str$2) {
+		return unescape(encodeURIComponent(str$2)).length;
+	}
+	/**
+	* Get a list of segments of the specified mode
+	* from a string
+	*
+	* @param  {Mode}   mode Segment mode
+	* @param  {String} str  String to process
+	* @return {Array}       Array of object with segments data
+	*/
+	function getSegments(regex, mode, str$2) {
+		const segments = [];
+		let result;
+		while ((result = regex.exec(str$2)) !== null) segments.push({
+			data: result[0],
+			index: result.index,
+			mode,
+			length: result[0].length
+		});
+		return segments;
+	}
+	/**
+	* Extracts a series of segments with the appropriate
+	* modes from a string
+	*
+	* @param  {String} dataStr Input string
+	* @return {Array}          Array of object with segments data
+	*/
+	function getSegmentsFromString(dataStr) {
+		const numSegs = getSegments(Regex.NUMERIC, Mode$1.NUMERIC, dataStr);
+		const alphaNumSegs = getSegments(Regex.ALPHANUMERIC, Mode$1.ALPHANUMERIC, dataStr);
+		let byteSegs;
+		let kanjiSegs;
+		if (Utils$5.isKanjiModeEnabled()) {
+			byteSegs = getSegments(Regex.BYTE, Mode$1.BYTE, dataStr);
+			kanjiSegs = getSegments(Regex.KANJI, Mode$1.KANJI, dataStr);
+		} else {
+			byteSegs = getSegments(Regex.BYTE_KANJI, Mode$1.BYTE, dataStr);
+			kanjiSegs = [];
+		}
+		const segs = numSegs.concat(alphaNumSegs, byteSegs, kanjiSegs);
+		return segs.sort(function(s1, s2) {
+			return s1.index - s2.index;
+		}).map(function(obj$1) {
+			return {
+				data: obj$1.data,
+				mode: obj$1.mode,
+				length: obj$1.length
+			};
+		});
+	}
+	/**
+	* Returns how many bits are needed to encode a string of
+	* specified length with the specified mode
+	*
+	* @param  {Number} length String length
+	* @param  {Mode} mode     Segment mode
+	* @return {Number}        Bit length
+	*/
+	function getSegmentBitsLength(length, mode) {
+		switch (mode) {
+			case Mode$1.NUMERIC: return NumericData.getBitsLength(length);
+			case Mode$1.ALPHANUMERIC: return AlphanumericData.getBitsLength(length);
+			case Mode$1.KANJI: return KanjiData.getBitsLength(length);
+			case Mode$1.BYTE: return ByteData.getBitsLength(length);
+		}
+	}
+	/**
+	* Merges adjacent segments which have the same mode
+	*
+	* @param  {Array} segs Array of object with segments data
+	* @return {Array}      Array of object with segments data
+	*/
+	function mergeSegments(segs) {
+		return segs.reduce(function(acc, curr) {
+			const prevSeg = acc.length - 1 >= 0 ? acc[acc.length - 1] : null;
+			if (prevSeg && prevSeg.mode === curr.mode) {
+				acc[acc.length - 1].data += curr.data;
+				return acc;
+			}
+			acc.push(curr);
+			return acc;
+		}, []);
+	}
+	/**
+	* Generates a list of all possible nodes combination which
+	* will be used to build a segments graph.
+	*
+	* Nodes are divided by groups. Each group will contain a list of all the modes
+	* in which is possible to encode the given text.
+	*
+	* For example the text '12345' can be encoded as Numeric, Alphanumeric or Byte.
+	* The group for '12345' will contain then 3 objects, one for each
+	* possible encoding mode.
+	*
+	* Each node represents a possible segment.
+	*
+	* @param  {Array} segs Array of object with segments data
+	* @return {Array}      Array of object with segments data
+	*/
+	function buildNodes(segs) {
+		const nodes = [];
+		for (let i = 0; i < segs.length; i++) {
+			const seg = segs[i];
+			switch (seg.mode) {
+				case Mode$1.NUMERIC:
+					nodes.push([
+						seg,
+						{
+							data: seg.data,
+							mode: Mode$1.ALPHANUMERIC,
+							length: seg.length
+						},
+						{
+							data: seg.data,
+							mode: Mode$1.BYTE,
+							length: seg.length
+						}
+					]);
+					break;
+				case Mode$1.ALPHANUMERIC:
+					nodes.push([seg, {
+						data: seg.data,
+						mode: Mode$1.BYTE,
+						length: seg.length
+					}]);
+					break;
+				case Mode$1.KANJI:
+					nodes.push([seg, {
+						data: seg.data,
+						mode: Mode$1.BYTE,
+						length: getStringByteLength(seg.data)
+					}]);
+					break;
+				case Mode$1.BYTE: nodes.push([{
+					data: seg.data,
+					mode: Mode$1.BYTE,
+					length: getStringByteLength(seg.data)
+				}]);
+			}
+		}
+		return nodes;
+	}
+	/**
+	* Builds a graph from a list of nodes.
+	* All segments in each node group will be connected with all the segments of
+	* the next group and so on.
+	*
+	* At each connection will be assigned a weight depending on the
+	* segment's byte length.
+	*
+	* @param  {Array} nodes    Array of object with segments data
+	* @param  {Number} version QR Code version
+	* @return {Object}         Graph of all possible segments
+	*/
+	function buildGraph(nodes, version$1) {
+		const table = {};
+		const graph = { start: {} };
+		let prevNodeIds = ["start"];
+		for (let i = 0; i < nodes.length; i++) {
+			const nodeGroup = nodes[i];
+			const currentNodeIds = [];
+			for (let j = 0; j < nodeGroup.length; j++) {
+				const node$1 = nodeGroup[j];
+				const key = "" + i + j;
+				currentNodeIds.push(key);
+				table[key] = {
+					node: node$1,
+					lastCount: 0
+				};
+				graph[key] = {};
+				for (let n = 0; n < prevNodeIds.length; n++) {
+					const prevNodeId = prevNodeIds[n];
+					if (table[prevNodeId] && table[prevNodeId].node.mode === node$1.mode) {
+						graph[prevNodeId][key] = getSegmentBitsLength(table[prevNodeId].lastCount + node$1.length, node$1.mode) - getSegmentBitsLength(table[prevNodeId].lastCount, node$1.mode);
+						table[prevNodeId].lastCount += node$1.length;
+					} else {
+						if (table[prevNodeId]) table[prevNodeId].lastCount = node$1.length;
+						graph[prevNodeId][key] = getSegmentBitsLength(node$1.length, node$1.mode) + 4 + Mode$1.getCharCountIndicator(node$1.mode, version$1);
+					}
+				}
+			}
+			prevNodeIds = currentNodeIds;
+		}
+		for (let n = 0; n < prevNodeIds.length; n++) graph[prevNodeIds[n]].end = 0;
+		return {
+			map: graph,
+			table
+		};
+	}
+	/**
+	* Builds a segment from a specified data and mode.
+	* If a mode is not specified, the more suitable will be used.
+	*
+	* @param  {String} data             Input data
+	* @param  {Mode | String} modesHint Data mode
+	* @return {Segment}                 Segment
+	*/
+	function buildSingleSegment(data, modesHint) {
+		let mode;
+		const bestMode = Mode$1.getBestModeForData(data);
+		mode = Mode$1.from(modesHint, bestMode);
+		if (mode !== Mode$1.BYTE && mode.bit < bestMode.bit) throw new Error("\"" + data + "\" cannot be encoded with mode " + Mode$1.toString(mode) + ".\n Suggested mode is: " + Mode$1.toString(bestMode));
+		if (mode === Mode$1.KANJI && !Utils$5.isKanjiModeEnabled()) mode = Mode$1.BYTE;
+		switch (mode) {
+			case Mode$1.NUMERIC: return new NumericData(data);
+			case Mode$1.ALPHANUMERIC: return new AlphanumericData(data);
+			case Mode$1.KANJI: return new KanjiData(data);
+			case Mode$1.BYTE: return new ByteData(data);
+		}
+	}
+	/**
+	* Builds a list of segments from an array.
+	* Array can contain Strings or Objects with segment's info.
+	*
+	* For each item which is a string, will be generated a segment with the given
+	* string and the more appropriate encoding mode.
+	*
+	* For each item which is an object, will be generated a segment with the given
+	* data and mode.
+	* Objects must contain at least the property "data".
+	* If property "mode" is not present, the more suitable mode will be used.
+	*
+	* @param  {Array} array Array of objects with segments data
+	* @return {Array}       Array of Segments
+	*/
+	exports.fromArray = function fromArray(array$1) {
+		return array$1.reduce(function(acc, seg) {
+			if (typeof seg === "string") acc.push(buildSingleSegment(seg, null));
+			else if (seg.data) acc.push(buildSingleSegment(seg.data, seg.mode));
+			return acc;
+		}, []);
+	};
+	/**
+	* Builds an optimized sequence of segments from a string,
+	* which will produce the shortest possible bitstream.
+	*
+	* @param  {String} data    Input string
+	* @param  {Number} version QR Code version
+	* @return {Array}          Array of segments
+	*/
+	exports.fromString = function fromString$2(data, version$1) {
+		const segs = getSegmentsFromString(data, Utils$5.isKanjiModeEnabled());
+		const nodes = buildNodes(segs);
+		const graph = buildGraph(nodes, version$1);
+		const path$4 = dijkstra.find_path(graph.map, "start", "end");
+		const optimizedSegs = [];
+		for (let i = 1; i < path$4.length - 1; i++) optimizedSegs.push(graph.table[path$4[i]].node);
+		return exports.fromArray(mergeSegments(optimizedSegs));
+	};
+	/**
+	* Splits a string in various segments with the modes which
+	* best represent their content.
+	* The produced segments are far from being optimized.
+	* The output of this function is only used to estimate a QR Code version
+	* which may contain the data.
+	*
+	* @param  {string} data Input string
+	* @return {Array}       Array of segments
+	*/
+	exports.rawSplit = function rawSplit(data) {
+		return exports.fromArray(getSegmentsFromString(data, Utils$5.isKanjiModeEnabled()));
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/qrcode.js
+var require_qrcode = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/core/qrcode.js"(exports) {
+	const Utils$4 = require_utils$3();
+	const ECLevel = require_error_correction_level();
+	const BitBuffer = require_bit_buffer();
+	const BitMatrix = require_bit_matrix();
+	const AlignmentPattern = require_alignment_pattern();
+	const FinderPattern = require_finder_pattern();
+	const MaskPattern = require_mask_pattern();
+	const ECCode = require_error_correction_code();
+	const ReedSolomonEncoder = require_reed_solomon_encoder();
+	const Version = require_version$1();
+	const FormatInfo = require_format_info();
+	const Mode = require_mode();
+	const Segments = require_segments();
+	/**
+	* QRCode for JavaScript
+	*
+	* modified by Ryan Day for nodejs support
+	* Copyright (c) 2011 Ryan Day
+	*
+	* Licensed under the MIT license:
+	*   http://www.opensource.org/licenses/mit-license.php
+	*
+	//---------------------------------------------------------------------
+	// QRCode for JavaScript
+	//
+	// Copyright (c) 2009 Kazuhiko Arase
+	//
+	// URL: http://www.d-project.com/
+	//
+	// Licensed under the MIT license:
+	//   http://www.opensource.org/licenses/mit-license.php
+	//
+	// The word "QR Code" is registered trademark of
+	// DENSO WAVE INCORPORATED
+	//   http://www.denso-wave.com/qrcode/faqpatent-e.html
+	//
+	//---------------------------------------------------------------------
+	*/
+	/**
+	* Add finder patterns bits to matrix
+	*
+	* @param  {BitMatrix} matrix  Modules matrix
+	* @param  {Number}    version QR Code version
+	*/
+	function setupFinderPattern(matrix, version$1) {
+		const size = matrix.size;
+		const pos = FinderPattern.getPositions(version$1);
+		for (let i = 0; i < pos.length; i++) {
+			const row = pos[i][0];
+			const col = pos[i][1];
+			for (let r = -1; r <= 7; r++) {
+				if (row + r <= -1 || size <= row + r) continue;
+				for (let c = -1; c <= 7; c++) {
+					if (col + c <= -1 || size <= col + c) continue;
+					if (r >= 0 && r <= 6 && (c === 0 || c === 6) || c >= 0 && c <= 6 && (r === 0 || r === 6) || r >= 2 && r <= 4 && c >= 2 && c <= 4) matrix.set(row + r, col + c, true, true);
+					else matrix.set(row + r, col + c, false, true);
+				}
+			}
+		}
+	}
+	/**
+	* Add timing pattern bits to matrix
+	*
+	* Note: this function must be called before {@link setupAlignmentPattern}
+	*
+	* @param  {BitMatrix} matrix Modules matrix
+	*/
+	function setupTimingPattern(matrix) {
+		const size = matrix.size;
+		for (let r = 8; r < size - 8; r++) {
+			const value = r % 2 === 0;
+			matrix.set(r, 6, value, true);
+			matrix.set(6, r, value, true);
+		}
+	}
+	/**
+	* Add alignment patterns bits to matrix
+	*
+	* Note: this function must be called after {@link setupTimingPattern}
+	*
+	* @param  {BitMatrix} matrix  Modules matrix
+	* @param  {Number}    version QR Code version
+	*/
+	function setupAlignmentPattern(matrix, version$1) {
+		const pos = AlignmentPattern.getPositions(version$1);
+		for (let i = 0; i < pos.length; i++) {
+			const row = pos[i][0];
+			const col = pos[i][1];
+			for (let r = -2; r <= 2; r++) for (let c = -2; c <= 2; c++) if (r === -2 || r === 2 || c === -2 || c === 2 || r === 0 && c === 0) matrix.set(row + r, col + c, true, true);
+			else matrix.set(row + r, col + c, false, true);
+		}
+	}
+	/**
+	* Add version info bits to matrix
+	*
+	* @param  {BitMatrix} matrix  Modules matrix
+	* @param  {Number}    version QR Code version
+	*/
+	function setupVersionInfo(matrix, version$1) {
+		const size = matrix.size;
+		const bits = Version.getEncodedBits(version$1);
+		let row, col, mod;
+		for (let i = 0; i < 18; i++) {
+			row = Math.floor(i / 3);
+			col = i % 3 + size - 8 - 3;
+			mod = (bits >> i & 1) === 1;
+			matrix.set(row, col, mod, true);
+			matrix.set(col, row, mod, true);
+		}
+	}
+	/**
+	* Add format info bits to matrix
+	*
+	* @param  {BitMatrix} matrix               Modules matrix
+	* @param  {ErrorCorrectionLevel}    errorCorrectionLevel Error correction level
+	* @param  {Number}    maskPattern          Mask pattern reference value
+	*/
+	function setupFormatInfo(matrix, errorCorrectionLevel, maskPattern) {
+		const size = matrix.size;
+		const bits = FormatInfo.getEncodedBits(errorCorrectionLevel, maskPattern);
+		let i, mod;
+		for (i = 0; i < 15; i++) {
+			mod = (bits >> i & 1) === 1;
+			if (i < 6) matrix.set(i, 8, mod, true);
+			else if (i < 8) matrix.set(i + 1, 8, mod, true);
+			else matrix.set(size - 15 + i, 8, mod, true);
+			if (i < 8) matrix.set(8, size - i - 1, mod, true);
+			else if (i < 9) matrix.set(8, 15 - i - 1 + 1, mod, true);
+			else matrix.set(8, 15 - i - 1, mod, true);
+		}
+		matrix.set(size - 8, 8, 1, true);
+	}
+	/**
+	* Add encoded data bits to matrix
+	*
+	* @param  {BitMatrix}  matrix Modules matrix
+	* @param  {Uint8Array} data   Data codewords
+	*/
+	function setupData(matrix, data) {
+		const size = matrix.size;
+		let inc = -1;
+		let row = size - 1;
+		let bitIndex = 7;
+		let byteIndex = 0;
+		for (let col = size - 1; col > 0; col -= 2) {
+			if (col === 6) col--;
+			while (true) {
+				for (let c = 0; c < 2; c++) if (!matrix.isReserved(row, col - c)) {
+					let dark = false;
+					if (byteIndex < data.length) dark = (data[byteIndex] >>> bitIndex & 1) === 1;
+					matrix.set(row, col - c, dark);
+					bitIndex--;
+					if (bitIndex === -1) {
+						byteIndex++;
+						bitIndex = 7;
+					}
+				}
+				row += inc;
+				if (row < 0 || size <= row) {
+					row -= inc;
+					inc = -inc;
+					break;
+				}
+			}
+		}
+	}
+	/**
+	* Create encoded codewords from data input
+	*
+	* @param  {Number}   version              QR Code version
+	* @param  {ErrorCorrectionLevel}   errorCorrectionLevel Error correction level
+	* @param  {ByteData} data                 Data input
+	* @return {Uint8Array}                    Buffer containing encoded codewords
+	*/
+	function createData(version$1, errorCorrectionLevel, segments) {
+		const buffer = new BitBuffer();
+		segments.forEach(function(data) {
+			buffer.put(data.mode.bit, 4);
+			buffer.put(data.getLength(), Mode.getCharCountIndicator(data.mode, version$1));
+			data.write(buffer);
+		});
+		const totalCodewords = Utils$4.getSymbolTotalCodewords(version$1);
+		const ecTotalCodewords = ECCode.getTotalCodewordsCount(version$1, errorCorrectionLevel);
+		const dataTotalCodewordsBits = (totalCodewords - ecTotalCodewords) * 8;
+		if (buffer.getLengthInBits() + 4 <= dataTotalCodewordsBits) buffer.put(0, 4);
+		while (buffer.getLengthInBits() % 8 !== 0) buffer.putBit(0);
+		const remainingByte = (dataTotalCodewordsBits - buffer.getLengthInBits()) / 8;
+		for (let i = 0; i < remainingByte; i++) buffer.put(i % 2 ? 17 : 236, 8);
+		return createCodewords(buffer, version$1, errorCorrectionLevel);
+	}
+	/**
+	* Encode input data with Reed-Solomon and return codewords with
+	* relative error correction bits
+	*
+	* @param  {BitBuffer} bitBuffer            Data to encode
+	* @param  {Number}    version              QR Code version
+	* @param  {ErrorCorrectionLevel} errorCorrectionLevel Error correction level
+	* @return {Uint8Array}                     Buffer containing encoded codewords
+	*/
+	function createCodewords(bitBuffer, version$1, errorCorrectionLevel) {
+		const totalCodewords = Utils$4.getSymbolTotalCodewords(version$1);
+		const ecTotalCodewords = ECCode.getTotalCodewordsCount(version$1, errorCorrectionLevel);
+		const dataTotalCodewords = totalCodewords - ecTotalCodewords;
+		const ecTotalBlocks = ECCode.getBlocksCount(version$1, errorCorrectionLevel);
+		const blocksInGroup2 = totalCodewords % ecTotalBlocks;
+		const blocksInGroup1 = ecTotalBlocks - blocksInGroup2;
+		const totalCodewordsInGroup1 = Math.floor(totalCodewords / ecTotalBlocks);
+		const dataCodewordsInGroup1 = Math.floor(dataTotalCodewords / ecTotalBlocks);
+		const dataCodewordsInGroup2 = dataCodewordsInGroup1 + 1;
+		const ecCount = totalCodewordsInGroup1 - dataCodewordsInGroup1;
+		const rs = new ReedSolomonEncoder(ecCount);
+		let offset = 0;
+		const dcData = new Array(ecTotalBlocks);
+		const ecData = new Array(ecTotalBlocks);
+		let maxDataSize = 0;
+		const buffer = new Uint8Array(bitBuffer.buffer);
+		for (let b = 0; b < ecTotalBlocks; b++) {
+			const dataSize = b < blocksInGroup1 ? dataCodewordsInGroup1 : dataCodewordsInGroup2;
+			dcData[b] = buffer.slice(offset, offset + dataSize);
+			ecData[b] = rs.encode(dcData[b]);
+			offset += dataSize;
+			maxDataSize = Math.max(maxDataSize, dataSize);
+		}
+		const data = new Uint8Array(totalCodewords);
+		let index = 0;
+		let i, r;
+		for (i = 0; i < maxDataSize; i++) for (r = 0; r < ecTotalBlocks; r++) if (i < dcData[r].length) data[index++] = dcData[r][i];
+		for (i = 0; i < ecCount; i++) for (r = 0; r < ecTotalBlocks; r++) data[index++] = ecData[r][i];
+		return data;
+	}
+	/**
+	* Build QR Code symbol
+	*
+	* @param  {String} data                 Input string
+	* @param  {Number} version              QR Code version
+	* @param  {ErrorCorretionLevel} errorCorrectionLevel Error level
+	* @param  {MaskPattern} maskPattern     Mask pattern
+	* @return {Object}                      Object containing symbol data
+	*/
+	function createSymbol(data, version$1, errorCorrectionLevel, maskPattern) {
+		let segments;
+		if (Array.isArray(data)) segments = Segments.fromArray(data);
+		else if (typeof data === "string") {
+			let estimatedVersion = version$1;
+			if (!estimatedVersion) {
+				const rawSegments = Segments.rawSplit(data);
+				estimatedVersion = Version.getBestVersionForData(rawSegments, errorCorrectionLevel);
+			}
+			segments = Segments.fromString(data, estimatedVersion || 40);
+		} else throw new Error("Invalid data");
+		const bestVersion = Version.getBestVersionForData(segments, errorCorrectionLevel);
+		if (!bestVersion) throw new Error("The amount of data is too big to be stored in a QR Code");
+		if (!version$1) version$1 = bestVersion;
+		else if (version$1 < bestVersion) throw new Error("\nThe chosen QR Code version cannot contain this amount of data.\nMinimum version required to store current data is: " + bestVersion + ".\n");
+		const dataBits = createData(version$1, errorCorrectionLevel, segments);
+		const moduleCount = Utils$4.getSymbolSize(version$1);
+		const modules = new BitMatrix(moduleCount);
+		setupFinderPattern(modules, version$1);
+		setupTimingPattern(modules);
+		setupAlignmentPattern(modules, version$1);
+		setupFormatInfo(modules, errorCorrectionLevel, 0);
+		if (version$1 >= 7) setupVersionInfo(modules, version$1);
+		setupData(modules, dataBits);
+		if (isNaN(maskPattern)) maskPattern = MaskPattern.getBestMask(modules, setupFormatInfo.bind(null, modules, errorCorrectionLevel));
+		MaskPattern.applyMask(maskPattern, modules);
+		setupFormatInfo(modules, errorCorrectionLevel, maskPattern);
+		return {
+			modules,
+			version: version$1,
+			errorCorrectionLevel,
+			maskPattern,
+			segments
+		};
+	}
+	/**
+	* QR Code
+	*
+	* @param {String | Array} data                 Input data
+	* @param {Object} options                      Optional configurations
+	* @param {Number} options.version              QR Code version
+	* @param {String} options.errorCorrectionLevel Error correction level
+	* @param {Function} options.toSJISFunc         Helper func to convert utf8 to sjis
+	*/
+	exports.create = function create(data, options) {
+		if (typeof data === "undefined" || data === "") throw new Error("No input text");
+		let errorCorrectionLevel = ECLevel.M;
+		let version$1;
+		let mask;
+		if (typeof options !== "undefined") {
+			errorCorrectionLevel = ECLevel.from(options.errorCorrectionLevel, ECLevel.M);
+			version$1 = Version.from(options.version);
+			mask = MaskPattern.from(options.maskPattern);
+			if (options.toSJISFunc) Utils$4.setToSJISFunction(options.toSJISFunc);
+		}
+		return createSymbol(data, version$1, errorCorrectionLevel, mask);
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/chunkstream.js
+var require_chunkstream = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/chunkstream.js"(exports, module) {
+	let util$5 = __require("util");
+	let Stream$4 = __require("stream");
+	let ChunkStream$2 = module.exports = function() {
+		Stream$4.call(this);
+		this._buffers = [];
+		this._buffered = 0;
+		this._reads = [];
+		this._paused = false;
+		this._encoding = "utf8";
+		this.writable = true;
+	};
+	util$5.inherits(ChunkStream$2, Stream$4);
+	ChunkStream$2.prototype.read = function(length, callback) {
+		this._reads.push({
+			length: Math.abs(length),
+			allowLess: length < 0,
+			func: callback
+		});
+		process.nextTick(function() {
+			this._process();
+			if (this._paused && this._reads && this._reads.length > 0) {
+				this._paused = false;
+				this.emit("drain");
+			}
+		}.bind(this));
+	};
+	ChunkStream$2.prototype.write = function(data, encoding) {
+		if (!this.writable) {
+			this.emit("error", new Error("Stream not writable"));
+			return false;
+		}
+		let dataBuffer;
+		if (Buffer.isBuffer(data)) dataBuffer = data;
+		else dataBuffer = Buffer.from(data, encoding || this._encoding);
+		this._buffers.push(dataBuffer);
+		this._buffered += dataBuffer.length;
+		this._process();
+		if (this._reads && this._reads.length === 0) this._paused = true;
+		return this.writable && !this._paused;
+	};
+	ChunkStream$2.prototype.end = function(data, encoding) {
+		if (data) this.write(data, encoding);
+		this.writable = false;
+		if (!this._buffers) return;
+		if (this._buffers.length === 0) this._end();
+		else {
+			this._buffers.push(null);
+			this._process();
+		}
+	};
+	ChunkStream$2.prototype.destroySoon = ChunkStream$2.prototype.end;
+	ChunkStream$2.prototype._end = function() {
+		if (this._reads.length > 0) this.emit("error", new Error("Unexpected end of input"));
+		this.destroy();
+	};
+	ChunkStream$2.prototype.destroy = function() {
+		if (!this._buffers) return;
+		this.writable = false;
+		this._reads = null;
+		this._buffers = null;
+		this.emit("close");
+	};
+	ChunkStream$2.prototype._processReadAllowingLess = function(read) {
+		this._reads.shift();
+		let smallerBuf = this._buffers[0];
+		if (smallerBuf.length > read.length) {
+			this._buffered -= read.length;
+			this._buffers[0] = smallerBuf.slice(read.length);
+			read.func.call(this, smallerBuf.slice(0, read.length));
+		} else {
+			this._buffered -= smallerBuf.length;
+			this._buffers.shift();
+			read.func.call(this, smallerBuf);
+		}
+	};
+	ChunkStream$2.prototype._processRead = function(read) {
+		this._reads.shift();
+		let pos = 0;
+		let count = 0;
+		let data = Buffer.alloc(read.length);
+		while (pos < read.length) {
+			let buf = this._buffers[count++];
+			let len = Math.min(buf.length, read.length - pos);
+			buf.copy(data, pos, 0, len);
+			pos += len;
+			if (len !== buf.length) this._buffers[--count] = buf.slice(len);
+		}
+		if (count > 0) this._buffers.splice(0, count);
+		this._buffered -= read.length;
+		read.func.call(this, data);
+	};
+	ChunkStream$2.prototype._process = function() {
+		try {
+			while (this._buffered > 0 && this._reads && this._reads.length > 0) {
+				let read = this._reads[0];
+				if (read.allowLess) this._processReadAllowingLess(read);
+				else if (this._buffered >= read.length) this._processRead(read);
+				else break;
+			}
+			if (this._buffers && !this.writable) this._end();
+		} catch (ex) {
+			this.emit("error", ex);
+		}
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/interlace.js
+var require_interlace = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/interlace.js"(exports) {
+	let imagePasses = [
+		{
+			x: [0],
+			y: [0]
+		},
+		{
+			x: [4],
+			y: [0]
+		},
+		{
+			x: [0, 4],
+			y: [4]
+		},
+		{
+			x: [2, 6],
+			y: [0, 4]
+		},
+		{
+			x: [
+				0,
+				2,
+				4,
+				6
+			],
+			y: [2, 6]
+		},
+		{
+			x: [
+				1,
+				3,
+				5,
+				7
+			],
+			y: [
+				0,
+				2,
+				4,
+				6
+			]
+		},
+		{
+			x: [
+				0,
+				1,
+				2,
+				3,
+				4,
+				5,
+				6,
+				7
+			],
+			y: [
+				1,
+				3,
+				5,
+				7
+			]
+		}
+	];
+	exports.getImagePasses = function(width, height) {
+		let images = [];
+		let xLeftOver = width % 8;
+		let yLeftOver = height % 8;
+		let xRepeats = (width - xLeftOver) / 8;
+		let yRepeats = (height - yLeftOver) / 8;
+		for (let i = 0; i < imagePasses.length; i++) {
+			let pass = imagePasses[i];
+			let passWidth = xRepeats * pass.x.length;
+			let passHeight = yRepeats * pass.y.length;
+			for (let j = 0; j < pass.x.length; j++) if (pass.x[j] < xLeftOver) passWidth++;
+			else break;
+			for (let j = 0; j < pass.y.length; j++) if (pass.y[j] < yLeftOver) passHeight++;
+			else break;
+			if (passWidth > 0 && passHeight > 0) images.push({
+				width: passWidth,
+				height: passHeight,
+				index: i
+			});
+		}
+		return images;
+	};
+	exports.getInterlaceIterator = function(width) {
+		return function(x, y, pass) {
+			let outerXLeftOver = x % imagePasses[pass].x.length;
+			let outerX = (x - outerXLeftOver) / imagePasses[pass].x.length * 8 + imagePasses[pass].x[outerXLeftOver];
+			let outerYLeftOver = y % imagePasses[pass].y.length;
+			let outerY = (y - outerYLeftOver) / imagePasses[pass].y.length * 8 + imagePasses[pass].y[outerYLeftOver];
+			return outerX * 4 + outerY * width * 4;
+		};
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/paeth-predictor.js
+var require_paeth_predictor = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/paeth-predictor.js"(exports, module) {
+	module.exports = function paethPredictor$2(left, above, upLeft) {
+		let paeth = left + above - upLeft;
+		let pLeft = Math.abs(paeth - left);
+		let pAbove = Math.abs(paeth - above);
+		let pUpLeft = Math.abs(paeth - upLeft);
+		if (pLeft <= pAbove && pLeft <= pUpLeft) return left;
+		if (pAbove <= pUpLeft) return above;
+		return upLeft;
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/filter-parse.js
+var require_filter_parse = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/filter-parse.js"(exports, module) {
+	let interlaceUtils$1 = require_interlace();
+	let paethPredictor$1 = require_paeth_predictor();
+	function getByteWidth(width, bpp, depth) {
+		let byteWidth = width * bpp;
+		if (depth !== 8) byteWidth = Math.ceil(byteWidth / (8 / depth));
+		return byteWidth;
+	}
+	let Filter$2 = module.exports = function(bitmapInfo, dependencies) {
+		let width = bitmapInfo.width;
+		let height = bitmapInfo.height;
+		let interlace = bitmapInfo.interlace;
+		let bpp = bitmapInfo.bpp;
+		let depth = bitmapInfo.depth;
+		this.read = dependencies.read;
+		this.write = dependencies.write;
+		this.complete = dependencies.complete;
+		this._imageIndex = 0;
+		this._images = [];
+		if (interlace) {
+			let passes = interlaceUtils$1.getImagePasses(width, height);
+			for (let i = 0; i < passes.length; i++) this._images.push({
+				byteWidth: getByteWidth(passes[i].width, bpp, depth),
+				height: passes[i].height,
+				lineIndex: 0
+			});
+		} else this._images.push({
+			byteWidth: getByteWidth(width, bpp, depth),
+			height,
+			lineIndex: 0
+		});
+		if (depth === 8) this._xComparison = bpp;
+		else if (depth === 16) this._xComparison = bpp * 2;
+		else this._xComparison = 1;
+	};
+	Filter$2.prototype.start = function() {
+		this.read(this._images[this._imageIndex].byteWidth + 1, this._reverseFilterLine.bind(this));
+	};
+	Filter$2.prototype._unFilterType1 = function(rawData, unfilteredLine, byteWidth) {
+		let xComparison = this._xComparison;
+		let xBiggerThan = xComparison - 1;
+		for (let x = 0; x < byteWidth; x++) {
+			let rawByte = rawData[1 + x];
+			let f1Left = x > xBiggerThan ? unfilteredLine[x - xComparison] : 0;
+			unfilteredLine[x] = rawByte + f1Left;
+		}
+	};
+	Filter$2.prototype._unFilterType2 = function(rawData, unfilteredLine, byteWidth) {
+		let lastLine = this._lastLine;
+		for (let x = 0; x < byteWidth; x++) {
+			let rawByte = rawData[1 + x];
+			let f2Up = lastLine ? lastLine[x] : 0;
+			unfilteredLine[x] = rawByte + f2Up;
+		}
+	};
+	Filter$2.prototype._unFilterType3 = function(rawData, unfilteredLine, byteWidth) {
+		let xComparison = this._xComparison;
+		let xBiggerThan = xComparison - 1;
+		let lastLine = this._lastLine;
+		for (let x = 0; x < byteWidth; x++) {
+			let rawByte = rawData[1 + x];
+			let f3Up = lastLine ? lastLine[x] : 0;
+			let f3Left = x > xBiggerThan ? unfilteredLine[x - xComparison] : 0;
+			let f3Add = Math.floor((f3Left + f3Up) / 2);
+			unfilteredLine[x] = rawByte + f3Add;
+		}
+	};
+	Filter$2.prototype._unFilterType4 = function(rawData, unfilteredLine, byteWidth) {
+		let xComparison = this._xComparison;
+		let xBiggerThan = xComparison - 1;
+		let lastLine = this._lastLine;
+		for (let x = 0; x < byteWidth; x++) {
+			let rawByte = rawData[1 + x];
+			let f4Up = lastLine ? lastLine[x] : 0;
+			let f4Left = x > xBiggerThan ? unfilteredLine[x - xComparison] : 0;
+			let f4UpLeft = x > xBiggerThan && lastLine ? lastLine[x - xComparison] : 0;
+			let f4Add = paethPredictor$1(f4Left, f4Up, f4UpLeft);
+			unfilteredLine[x] = rawByte + f4Add;
+		}
+	};
+	Filter$2.prototype._reverseFilterLine = function(rawData) {
+		let filter$1 = rawData[0];
+		let unfilteredLine;
+		let currentImage = this._images[this._imageIndex];
+		let byteWidth = currentImage.byteWidth;
+		if (filter$1 === 0) unfilteredLine = rawData.slice(1, byteWidth + 1);
+		else {
+			unfilteredLine = Buffer.alloc(byteWidth);
+			switch (filter$1) {
+				case 1:
+					this._unFilterType1(rawData, unfilteredLine, byteWidth);
+					break;
+				case 2:
+					this._unFilterType2(rawData, unfilteredLine, byteWidth);
+					break;
+				case 3:
+					this._unFilterType3(rawData, unfilteredLine, byteWidth);
+					break;
+				case 4:
+					this._unFilterType4(rawData, unfilteredLine, byteWidth);
+					break;
+				default: throw new Error("Unrecognised filter type - " + filter$1);
+			}
+		}
+		this.write(unfilteredLine);
+		currentImage.lineIndex++;
+		if (currentImage.lineIndex >= currentImage.height) {
+			this._lastLine = null;
+			this._imageIndex++;
+			currentImage = this._images[this._imageIndex];
+		} else this._lastLine = unfilteredLine;
+		if (currentImage) this.read(currentImage.byteWidth + 1, this._reverseFilterLine.bind(this));
+		else {
+			this._lastLine = null;
+			this.complete();
+		}
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/filter-parse-async.js
+var require_filter_parse_async = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/filter-parse-async.js"(exports, module) {
+	let util$4 = __require("util");
+	let ChunkStream$1 = require_chunkstream();
+	let Filter$1 = require_filter_parse();
+	let FilterAsync$1 = module.exports = function(bitmapInfo) {
+		ChunkStream$1.call(this);
+		let buffers = [];
+		let that = this;
+		this._filter = new Filter$1(bitmapInfo, {
+			read: this.read.bind(this),
+			write: function(buffer) {
+				buffers.push(buffer);
+			},
+			complete: function() {
+				that.emit("complete", Buffer.concat(buffers));
+			}
+		});
+		this._filter.start();
+	};
+	util$4.inherits(FilterAsync$1, ChunkStream$1);
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/constants.js
+var require_constants$1 = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/constants.js"(exports, module) {
+	module.exports = {
+		PNG_SIGNATURE: [
+			137,
+			80,
+			78,
+			71,
+			13,
+			10,
+			26,
+			10
+		],
+		TYPE_IHDR: 1229472850,
+		TYPE_IEND: 1229278788,
+		TYPE_IDAT: 1229209940,
+		TYPE_PLTE: 1347179589,
+		TYPE_tRNS: 1951551059,
+		TYPE_gAMA: 1732332865,
+		COLORTYPE_GRAYSCALE: 0,
+		COLORTYPE_PALETTE: 1,
+		COLORTYPE_COLOR: 2,
+		COLORTYPE_ALPHA: 4,
+		COLORTYPE_PALETTE_COLOR: 3,
+		COLORTYPE_COLOR_ALPHA: 6,
+		COLORTYPE_TO_BPP_MAP: {
+			0: 1,
+			2: 3,
+			3: 1,
+			4: 2,
+			6: 4
+		},
+		GAMMA_DIVISION: 1e5
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/crc.js
+var require_crc = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/crc.js"(exports, module) {
+	let crcTable = [];
+	(function() {
+		for (let i = 0; i < 256; i++) {
+			let currentCrc = i;
+			for (let j = 0; j < 8; j++) if (currentCrc & 1) currentCrc = 3988292384 ^ currentCrc >>> 1;
+			else currentCrc = currentCrc >>> 1;
+			crcTable[i] = currentCrc;
+		}
+	})();
+	let CrcCalculator$1 = module.exports = function() {
+		this._crc = -1;
+	};
+	CrcCalculator$1.prototype.write = function(data) {
+		for (let i = 0; i < data.length; i++) this._crc = crcTable[(this._crc ^ data[i]) & 255] ^ this._crc >>> 8;
+		return true;
+	};
+	CrcCalculator$1.prototype.crc32 = function() {
+		return this._crc ^ -1;
+	};
+	CrcCalculator$1.crc32 = function(buf) {
+		let crc = -1;
+		for (let i = 0; i < buf.length; i++) crc = crcTable[(crc ^ buf[i]) & 255] ^ crc >>> 8;
+		return crc ^ -1;
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/parser.js
+var require_parser = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/parser.js"(exports, module) {
+	let constants$5 = require_constants$1();
+	let CrcCalculator = require_crc();
+	let Parser$3 = module.exports = function(options, dependencies) {
+		this._options = options;
+		options.checkCRC = options.checkCRC !== false;
+		this._hasIHDR = false;
+		this._hasIEND = false;
+		this._emittedHeadersFinished = false;
+		this._palette = [];
+		this._colorType = 0;
+		this._chunks = {};
+		this._chunks[constants$5.TYPE_IHDR] = this._handleIHDR.bind(this);
+		this._chunks[constants$5.TYPE_IEND] = this._handleIEND.bind(this);
+		this._chunks[constants$5.TYPE_IDAT] = this._handleIDAT.bind(this);
+		this._chunks[constants$5.TYPE_PLTE] = this._handlePLTE.bind(this);
+		this._chunks[constants$5.TYPE_tRNS] = this._handleTRNS.bind(this);
+		this._chunks[constants$5.TYPE_gAMA] = this._handleGAMA.bind(this);
+		this.read = dependencies.read;
+		this.error = dependencies.error;
+		this.metadata = dependencies.metadata;
+		this.gamma = dependencies.gamma;
+		this.transColor = dependencies.transColor;
+		this.palette = dependencies.palette;
+		this.parsed = dependencies.parsed;
+		this.inflateData = dependencies.inflateData;
+		this.finished = dependencies.finished;
+		this.simpleTransparency = dependencies.simpleTransparency;
+		this.headersFinished = dependencies.headersFinished || function() {};
+	};
+	Parser$3.prototype.start = function() {
+		this.read(constants$5.PNG_SIGNATURE.length, this._parseSignature.bind(this));
+	};
+	Parser$3.prototype._parseSignature = function(data) {
+		let signature = constants$5.PNG_SIGNATURE;
+		for (let i = 0; i < signature.length; i++) if (data[i] !== signature[i]) {
+			this.error(new Error("Invalid file signature"));
+			return;
+		}
+		this.read(8, this._parseChunkBegin.bind(this));
+	};
+	Parser$3.prototype._parseChunkBegin = function(data) {
+		let length = data.readUInt32BE(0);
+		let type = data.readUInt32BE(4);
+		let name = "";
+		for (let i = 4; i < 8; i++) name += String.fromCharCode(data[i]);
+		let ancillary = Boolean(data[4] & 32);
+		if (!this._hasIHDR && type !== constants$5.TYPE_IHDR) {
+			this.error(new Error("Expected IHDR on beggining"));
+			return;
+		}
+		this._crc = new CrcCalculator();
+		this._crc.write(Buffer.from(name));
+		if (this._chunks[type]) return this._chunks[type](length);
+		if (!ancillary) {
+			this.error(new Error("Unsupported critical chunk type " + name));
+			return;
+		}
+		this.read(length + 4, this._skipChunk.bind(this));
+	};
+	Parser$3.prototype._skipChunk = function() {
+		this.read(8, this._parseChunkBegin.bind(this));
+	};
+	Parser$3.prototype._handleChunkEnd = function() {
+		this.read(4, this._parseChunkEnd.bind(this));
+	};
+	Parser$3.prototype._parseChunkEnd = function(data) {
+		let fileCrc = data.readInt32BE(0);
+		let calcCrc = this._crc.crc32();
+		if (this._options.checkCRC && calcCrc !== fileCrc) {
+			this.error(new Error("Crc error - " + fileCrc + " - " + calcCrc));
+			return;
+		}
+		if (!this._hasIEND) this.read(8, this._parseChunkBegin.bind(this));
+	};
+	Parser$3.prototype._handleIHDR = function(length) {
+		this.read(length, this._parseIHDR.bind(this));
+	};
+	Parser$3.prototype._parseIHDR = function(data) {
+		this._crc.write(data);
+		let width = data.readUInt32BE(0);
+		let height = data.readUInt32BE(4);
+		let depth = data[8];
+		let colorType = data[9];
+		let compr = data[10];
+		let filter$1 = data[11];
+		let interlace = data[12];
+		if (depth !== 8 && depth !== 4 && depth !== 2 && depth !== 1 && depth !== 16) {
+			this.error(new Error("Unsupported bit depth " + depth));
+			return;
+		}
+		if (!(colorType in constants$5.COLORTYPE_TO_BPP_MAP)) {
+			this.error(new Error("Unsupported color type"));
+			return;
+		}
+		if (compr !== 0) {
+			this.error(new Error("Unsupported compression method"));
+			return;
+		}
+		if (filter$1 !== 0) {
+			this.error(new Error("Unsupported filter method"));
+			return;
+		}
+		if (interlace !== 0 && interlace !== 1) {
+			this.error(new Error("Unsupported interlace method"));
+			return;
+		}
+		this._colorType = colorType;
+		let bpp = constants$5.COLORTYPE_TO_BPP_MAP[this._colorType];
+		this._hasIHDR = true;
+		this.metadata({
+			width,
+			height,
+			depth,
+			interlace: Boolean(interlace),
+			palette: Boolean(colorType & constants$5.COLORTYPE_PALETTE),
+			color: Boolean(colorType & constants$5.COLORTYPE_COLOR),
+			alpha: Boolean(colorType & constants$5.COLORTYPE_ALPHA),
+			bpp,
+			colorType
+		});
+		this._handleChunkEnd();
+	};
+	Parser$3.prototype._handlePLTE = function(length) {
+		this.read(length, this._parsePLTE.bind(this));
+	};
+	Parser$3.prototype._parsePLTE = function(data) {
+		this._crc.write(data);
+		let entries = Math.floor(data.length / 3);
+		for (let i = 0; i < entries; i++) this._palette.push([
+			data[i * 3],
+			data[i * 3 + 1],
+			data[i * 3 + 2],
+			255
+		]);
+		this.palette(this._palette);
+		this._handleChunkEnd();
+	};
+	Parser$3.prototype._handleTRNS = function(length) {
+		this.simpleTransparency();
+		this.read(length, this._parseTRNS.bind(this));
+	};
+	Parser$3.prototype._parseTRNS = function(data) {
+		this._crc.write(data);
+		if (this._colorType === constants$5.COLORTYPE_PALETTE_COLOR) {
+			if (this._palette.length === 0) {
+				this.error(new Error("Transparency chunk must be after palette"));
+				return;
+			}
+			if (data.length > this._palette.length) {
+				this.error(new Error("More transparent colors than palette size"));
+				return;
+			}
+			for (let i = 0; i < data.length; i++) this._palette[i][3] = data[i];
+			this.palette(this._palette);
+		}
+		if (this._colorType === constants$5.COLORTYPE_GRAYSCALE) this.transColor([data.readUInt16BE(0)]);
+		if (this._colorType === constants$5.COLORTYPE_COLOR) this.transColor([
+			data.readUInt16BE(0),
+			data.readUInt16BE(2),
+			data.readUInt16BE(4)
+		]);
+		this._handleChunkEnd();
+	};
+	Parser$3.prototype._handleGAMA = function(length) {
+		this.read(length, this._parseGAMA.bind(this));
+	};
+	Parser$3.prototype._parseGAMA = function(data) {
+		this._crc.write(data);
+		this.gamma(data.readUInt32BE(0) / constants$5.GAMMA_DIVISION);
+		this._handleChunkEnd();
+	};
+	Parser$3.prototype._handleIDAT = function(length) {
+		if (!this._emittedHeadersFinished) {
+			this._emittedHeadersFinished = true;
+			this.headersFinished();
+		}
+		this.read(-length, this._parseIDAT.bind(this, length));
+	};
+	Parser$3.prototype._parseIDAT = function(length, data) {
+		this._crc.write(data);
+		if (this._colorType === constants$5.COLORTYPE_PALETTE_COLOR && this._palette.length === 0) throw new Error("Expected palette not found");
+		this.inflateData(data);
+		let leftOverLength = length - data.length;
+		if (leftOverLength > 0) this._handleIDAT(leftOverLength);
+		else this._handleChunkEnd();
+	};
+	Parser$3.prototype._handleIEND = function(length) {
+		this.read(length, this._parseIEND.bind(this));
+	};
+	Parser$3.prototype._parseIEND = function(data) {
+		this._crc.write(data);
+		this._hasIEND = true;
+		this._handleChunkEnd();
+		if (this.finished) this.finished();
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/bitmapper.js
+var require_bitmapper = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/bitmapper.js"(exports) {
+	let interlaceUtils = require_interlace();
+	let pixelBppMapper = [
+		function() {},
+		function(pxData, data, pxPos, rawPos) {
+			if (rawPos === data.length) throw new Error("Ran out of data");
+			let pixel = data[rawPos];
+			pxData[pxPos] = pixel;
+			pxData[pxPos + 1] = pixel;
+			pxData[pxPos + 2] = pixel;
+			pxData[pxPos + 3] = 255;
+		},
+		function(pxData, data, pxPos, rawPos) {
+			if (rawPos + 1 >= data.length) throw new Error("Ran out of data");
+			let pixel = data[rawPos];
+			pxData[pxPos] = pixel;
+			pxData[pxPos + 1] = pixel;
+			pxData[pxPos + 2] = pixel;
+			pxData[pxPos + 3] = data[rawPos + 1];
+		},
+		function(pxData, data, pxPos, rawPos) {
+			if (rawPos + 2 >= data.length) throw new Error("Ran out of data");
+			pxData[pxPos] = data[rawPos];
+			pxData[pxPos + 1] = data[rawPos + 1];
+			pxData[pxPos + 2] = data[rawPos + 2];
+			pxData[pxPos + 3] = 255;
+		},
+		function(pxData, data, pxPos, rawPos) {
+			if (rawPos + 3 >= data.length) throw new Error("Ran out of data");
+			pxData[pxPos] = data[rawPos];
+			pxData[pxPos + 1] = data[rawPos + 1];
+			pxData[pxPos + 2] = data[rawPos + 2];
+			pxData[pxPos + 3] = data[rawPos + 3];
+		}
+	];
+	let pixelBppCustomMapper = [
+		function() {},
+		function(pxData, pixelData, pxPos, maxBit) {
+			let pixel = pixelData[0];
+			pxData[pxPos] = pixel;
+			pxData[pxPos + 1] = pixel;
+			pxData[pxPos + 2] = pixel;
+			pxData[pxPos + 3] = maxBit;
+		},
+		function(pxData, pixelData, pxPos) {
+			let pixel = pixelData[0];
+			pxData[pxPos] = pixel;
+			pxData[pxPos + 1] = pixel;
+			pxData[pxPos + 2] = pixel;
+			pxData[pxPos + 3] = pixelData[1];
+		},
+		function(pxData, pixelData, pxPos, maxBit) {
+			pxData[pxPos] = pixelData[0];
+			pxData[pxPos + 1] = pixelData[1];
+			pxData[pxPos + 2] = pixelData[2];
+			pxData[pxPos + 3] = maxBit;
+		},
+		function(pxData, pixelData, pxPos) {
+			pxData[pxPos] = pixelData[0];
+			pxData[pxPos + 1] = pixelData[1];
+			pxData[pxPos + 2] = pixelData[2];
+			pxData[pxPos + 3] = pixelData[3];
+		}
+	];
+	function bitRetriever(data, depth) {
+		let leftOver = [];
+		let i = 0;
+		function split() {
+			if (i === data.length) throw new Error("Ran out of data");
+			let byte$1 = data[i];
+			i++;
+			let byte8, byte7, byte6, byte5, byte4, byte3, byte2, byte1;
+			switch (depth) {
+				default: throw new Error("unrecognised depth");
+				case 16:
+					byte2 = data[i];
+					i++;
+					leftOver.push((byte$1 << 8) + byte2);
+					break;
+				case 4:
+					byte2 = byte$1 & 15;
+					byte1 = byte$1 >> 4;
+					leftOver.push(byte1, byte2);
+					break;
+				case 2:
+					byte4 = byte$1 & 3;
+					byte3 = byte$1 >> 2 & 3;
+					byte2 = byte$1 >> 4 & 3;
+					byte1 = byte$1 >> 6 & 3;
+					leftOver.push(byte1, byte2, byte3, byte4);
+					break;
+				case 1:
+					byte8 = byte$1 & 1;
+					byte7 = byte$1 >> 1 & 1;
+					byte6 = byte$1 >> 2 & 1;
+					byte5 = byte$1 >> 3 & 1;
+					byte4 = byte$1 >> 4 & 1;
+					byte3 = byte$1 >> 5 & 1;
+					byte2 = byte$1 >> 6 & 1;
+					byte1 = byte$1 >> 7 & 1;
+					leftOver.push(byte1, byte2, byte3, byte4, byte5, byte6, byte7, byte8);
+					break;
+			}
+		}
+		return {
+			get: function(count) {
+				while (leftOver.length < count) split();
+				let returner = leftOver.slice(0, count);
+				leftOver = leftOver.slice(count);
+				return returner;
+			},
+			resetAfterLine: function() {
+				leftOver.length = 0;
+			},
+			end: function() {
+				if (i !== data.length) throw new Error("extra data found");
+			}
+		};
+	}
+	function mapImage8Bit(image, pxData, getPxPos, bpp, data, rawPos) {
+		let imageWidth = image.width;
+		let imageHeight = image.height;
+		let imagePass = image.index;
+		for (let y = 0; y < imageHeight; y++) for (let x = 0; x < imageWidth; x++) {
+			let pxPos = getPxPos(x, y, imagePass);
+			pixelBppMapper[bpp](pxData, data, pxPos, rawPos);
+			rawPos += bpp;
+		}
+		return rawPos;
+	}
+	function mapImageCustomBit(image, pxData, getPxPos, bpp, bits, maxBit) {
+		let imageWidth = image.width;
+		let imageHeight = image.height;
+		let imagePass = image.index;
+		for (let y = 0; y < imageHeight; y++) {
+			for (let x = 0; x < imageWidth; x++) {
+				let pixelData = bits.get(bpp);
+				let pxPos = getPxPos(x, y, imagePass);
+				pixelBppCustomMapper[bpp](pxData, pixelData, pxPos, maxBit);
+			}
+			bits.resetAfterLine();
+		}
+	}
+	exports.dataToBitMap = function(data, bitmapInfo) {
+		let width = bitmapInfo.width;
+		let height = bitmapInfo.height;
+		let depth = bitmapInfo.depth;
+		let bpp = bitmapInfo.bpp;
+		let interlace = bitmapInfo.interlace;
+		let bits;
+		if (depth !== 8) bits = bitRetriever(data, depth);
+		let pxData;
+		if (depth <= 8) pxData = Buffer.alloc(width * height * 4);
+		else pxData = new Uint16Array(width * height * 4);
+		let maxBit = Math.pow(2, depth) - 1;
+		let rawPos = 0;
+		let images;
+		let getPxPos;
+		if (interlace) {
+			images = interlaceUtils.getImagePasses(width, height);
+			getPxPos = interlaceUtils.getInterlaceIterator(width, height);
+		} else {
+			let nonInterlacedPxPos = 0;
+			getPxPos = function() {
+				let returner = nonInterlacedPxPos;
+				nonInterlacedPxPos += 4;
+				return returner;
+			};
+			images = [{
+				width,
+				height
+			}];
+		}
+		for (let imageIndex = 0; imageIndex < images.length; imageIndex++) if (depth === 8) rawPos = mapImage8Bit(images[imageIndex], pxData, getPxPos, bpp, data, rawPos);
+		else mapImageCustomBit(images[imageIndex], pxData, getPxPos, bpp, bits, maxBit);
+		if (depth === 8) {
+			if (rawPos !== data.length) throw new Error("extra data found");
+		} else bits.end();
+		return pxData;
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/format-normaliser.js
+var require_format_normaliser = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/format-normaliser.js"(exports, module) {
+	function dePalette(indata, outdata, width, height, palette) {
+		let pxPos = 0;
+		for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+			let color = palette[indata[pxPos]];
+			if (!color) throw new Error("index " + indata[pxPos] + " not in palette");
+			for (let i = 0; i < 4; i++) outdata[pxPos + i] = color[i];
+			pxPos += 4;
+		}
+	}
+	function replaceTransparentColor(indata, outdata, width, height, transColor) {
+		let pxPos = 0;
+		for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+			let makeTrans = false;
+			if (transColor.length === 1) {
+				if (transColor[0] === indata[pxPos]) makeTrans = true;
+			} else if (transColor[0] === indata[pxPos] && transColor[1] === indata[pxPos + 1] && transColor[2] === indata[pxPos + 2]) makeTrans = true;
+			if (makeTrans) for (let i = 0; i < 4; i++) outdata[pxPos + i] = 0;
+			pxPos += 4;
+		}
+	}
+	function scaleDepth(indata, outdata, width, height, depth) {
+		let maxOutSample = 255;
+		let maxInSample = Math.pow(2, depth) - 1;
+		let pxPos = 0;
+		for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+			for (let i = 0; i < 4; i++) outdata[pxPos + i] = Math.floor(indata[pxPos + i] * maxOutSample / maxInSample + .5);
+			pxPos += 4;
+		}
+	}
+	module.exports = function(indata, imageData) {
+		let depth = imageData.depth;
+		let width = imageData.width;
+		let height = imageData.height;
+		let colorType = imageData.colorType;
+		let transColor = imageData.transColor;
+		let palette = imageData.palette;
+		let outdata = indata;
+		if (colorType === 3) dePalette(indata, outdata, width, height, palette);
+		else {
+			if (transColor) replaceTransparentColor(indata, outdata, width, height, transColor);
+			if (depth !== 8) {
+				if (depth === 16) outdata = Buffer.alloc(width * height * 4);
+				scaleDepth(indata, outdata, width, height, depth);
+			}
+		}
+		return outdata;
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/parser-async.js
+var require_parser_async = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/parser-async.js"(exports, module) {
+	let util$3 = __require("util");
+	let zlib$5 = __require("zlib");
+	let ChunkStream = require_chunkstream();
+	let FilterAsync = require_filter_parse_async();
+	let Parser$2 = require_parser();
+	let bitmapper$1 = require_bitmapper();
+	let formatNormaliser$1 = require_format_normaliser();
+	let ParserAsync = module.exports = function(options) {
+		ChunkStream.call(this);
+		this._parser = new Parser$2(options, {
+			read: this.read.bind(this),
+			error: this._handleError.bind(this),
+			metadata: this._handleMetaData.bind(this),
+			gamma: this.emit.bind(this, "gamma"),
+			palette: this._handlePalette.bind(this),
+			transColor: this._handleTransColor.bind(this),
+			finished: this._finished.bind(this),
+			inflateData: this._inflateData.bind(this),
+			simpleTransparency: this._simpleTransparency.bind(this),
+			headersFinished: this._headersFinished.bind(this)
+		});
+		this._options = options;
+		this.writable = true;
+		this._parser.start();
+	};
+	util$3.inherits(ParserAsync, ChunkStream);
+	ParserAsync.prototype._handleError = function(err) {
+		this.emit("error", err);
+		this.writable = false;
+		this.destroy();
+		if (this._inflate && this._inflate.destroy) this._inflate.destroy();
+		if (this._filter) {
+			this._filter.destroy();
+			this._filter.on("error", function() {});
+		}
+		this.errord = true;
+	};
+	ParserAsync.prototype._inflateData = function(data) {
+		if (!this._inflate) if (this._bitmapInfo.interlace) {
+			this._inflate = zlib$5.createInflate();
+			this._inflate.on("error", this.emit.bind(this, "error"));
+			this._filter.on("complete", this._complete.bind(this));
+			this._inflate.pipe(this._filter);
+		} else {
+			let rowSize = (this._bitmapInfo.width * this._bitmapInfo.bpp * this._bitmapInfo.depth + 7 >> 3) + 1;
+			let imageSize = rowSize * this._bitmapInfo.height;
+			let chunkSize = Math.max(imageSize, zlib$5.Z_MIN_CHUNK);
+			this._inflate = zlib$5.createInflate({ chunkSize });
+			let leftToInflate = imageSize;
+			let emitError = this.emit.bind(this, "error");
+			this._inflate.on("error", function(err) {
+				if (!leftToInflate) return;
+				emitError(err);
+			});
+			this._filter.on("complete", this._complete.bind(this));
+			let filterWrite = this._filter.write.bind(this._filter);
+			this._inflate.on("data", function(chunk) {
+				if (!leftToInflate) return;
+				if (chunk.length > leftToInflate) chunk = chunk.slice(0, leftToInflate);
+				leftToInflate -= chunk.length;
+				filterWrite(chunk);
+			});
+			this._inflate.on("end", this._filter.end.bind(this._filter));
+		}
+		this._inflate.write(data);
+	};
+	ParserAsync.prototype._handleMetaData = function(metaData) {
+		this._metaData = metaData;
+		this._bitmapInfo = Object.create(metaData);
+		this._filter = new FilterAsync(this._bitmapInfo);
+	};
+	ParserAsync.prototype._handleTransColor = function(transColor) {
+		this._bitmapInfo.transColor = transColor;
+	};
+	ParserAsync.prototype._handlePalette = function(palette) {
+		this._bitmapInfo.palette = palette;
+	};
+	ParserAsync.prototype._simpleTransparency = function() {
+		this._metaData.alpha = true;
+	};
+	ParserAsync.prototype._headersFinished = function() {
+		this.emit("metadata", this._metaData);
+	};
+	ParserAsync.prototype._finished = function() {
+		if (this.errord) return;
+		if (!this._inflate) this.emit("error", "No Inflate block");
+		else this._inflate.end();
+	};
+	ParserAsync.prototype._complete = function(filteredData) {
+		if (this.errord) return;
+		let normalisedBitmapData;
+		try {
+			let bitmapData = bitmapper$1.dataToBitMap(filteredData, this._bitmapInfo);
+			normalisedBitmapData = formatNormaliser$1(bitmapData, this._bitmapInfo);
+			bitmapData = null;
+		} catch (ex) {
+			this._handleError(ex);
+			return;
+		}
+		this.emit("parsed", normalisedBitmapData);
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/bitpacker.js
+var require_bitpacker = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/bitpacker.js"(exports, module) {
+	let constants$4 = require_constants$1();
+	module.exports = function(dataIn, width, height, options) {
+		let outHasAlpha = [constants$4.COLORTYPE_COLOR_ALPHA, constants$4.COLORTYPE_ALPHA].indexOf(options.colorType) !== -1;
+		if (options.colorType === options.inputColorType) {
+			let bigEndian = function() {
+				let buffer = new ArrayBuffer(2);
+				new DataView(buffer).setInt16(
+					0,
+					256,
+					true
+					/* littleEndian */
+);
+				return new Int16Array(buffer)[0] !== 256;
+			}();
+			if (options.bitDepth === 8 || options.bitDepth === 16 && bigEndian) return dataIn;
+		}
+		let data = options.bitDepth !== 16 ? dataIn : new Uint16Array(dataIn.buffer);
+		let maxValue = 255;
+		let inBpp = constants$4.COLORTYPE_TO_BPP_MAP[options.inputColorType];
+		if (inBpp === 4 && !options.inputHasAlpha) inBpp = 3;
+		let outBpp = constants$4.COLORTYPE_TO_BPP_MAP[options.colorType];
+		if (options.bitDepth === 16) {
+			maxValue = 65535;
+			outBpp *= 2;
+		}
+		let outData = Buffer.alloc(width * height * outBpp);
+		let inIndex = 0;
+		let outIndex = 0;
+		let bgColor = options.bgColor || {};
+		if (bgColor.red === void 0) bgColor.red = maxValue;
+		if (bgColor.green === void 0) bgColor.green = maxValue;
+		if (bgColor.blue === void 0) bgColor.blue = maxValue;
+		function getRGBA() {
+			let red;
+			let green;
+			let blue;
+			let alpha = maxValue;
+			switch (options.inputColorType) {
+				case constants$4.COLORTYPE_COLOR_ALPHA:
+					alpha = data[inIndex + 3];
+					red = data[inIndex];
+					green = data[inIndex + 1];
+					blue = data[inIndex + 2];
+					break;
+				case constants$4.COLORTYPE_COLOR:
+					red = data[inIndex];
+					green = data[inIndex + 1];
+					blue = data[inIndex + 2];
+					break;
+				case constants$4.COLORTYPE_ALPHA:
+					alpha = data[inIndex + 1];
+					red = data[inIndex];
+					green = red;
+					blue = red;
+					break;
+				case constants$4.COLORTYPE_GRAYSCALE:
+					red = data[inIndex];
+					green = red;
+					blue = red;
+					break;
+				default: throw new Error("input color type:" + options.inputColorType + " is not supported at present");
+			}
+			if (options.inputHasAlpha) {
+				if (!outHasAlpha) {
+					alpha /= maxValue;
+					red = Math.min(Math.max(Math.round((1 - alpha) * bgColor.red + alpha * red), 0), maxValue);
+					green = Math.min(Math.max(Math.round((1 - alpha) * bgColor.green + alpha * green), 0), maxValue);
+					blue = Math.min(Math.max(Math.round((1 - alpha) * bgColor.blue + alpha * blue), 0), maxValue);
+				}
+			}
+			return {
+				red,
+				green,
+				blue,
+				alpha
+			};
+		}
+		for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+			let rgba = getRGBA(data, inIndex);
+			switch (options.colorType) {
+				case constants$4.COLORTYPE_COLOR_ALPHA:
+				case constants$4.COLORTYPE_COLOR:
+					if (options.bitDepth === 8) {
+						outData[outIndex] = rgba.red;
+						outData[outIndex + 1] = rgba.green;
+						outData[outIndex + 2] = rgba.blue;
+						if (outHasAlpha) outData[outIndex + 3] = rgba.alpha;
+					} else {
+						outData.writeUInt16BE(rgba.red, outIndex);
+						outData.writeUInt16BE(rgba.green, outIndex + 2);
+						outData.writeUInt16BE(rgba.blue, outIndex + 4);
+						if (outHasAlpha) outData.writeUInt16BE(rgba.alpha, outIndex + 6);
+					}
+					break;
+				case constants$4.COLORTYPE_ALPHA:
+				case constants$4.COLORTYPE_GRAYSCALE: {
+					let grayscale = (rgba.red + rgba.green + rgba.blue) / 3;
+					if (options.bitDepth === 8) {
+						outData[outIndex] = grayscale;
+						if (outHasAlpha) outData[outIndex + 1] = rgba.alpha;
+					} else {
+						outData.writeUInt16BE(grayscale, outIndex);
+						if (outHasAlpha) outData.writeUInt16BE(rgba.alpha, outIndex + 2);
+					}
+					break;
+				}
+				default: throw new Error("unrecognised color Type " + options.colorType);
+			}
+			inIndex += inBpp;
+			outIndex += outBpp;
+		}
+		return outData;
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/filter-pack.js
+var require_filter_pack = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/filter-pack.js"(exports, module) {
+	let paethPredictor = require_paeth_predictor();
+	function filterNone(pxData, pxPos, byteWidth, rawData, rawPos) {
+		for (let x = 0; x < byteWidth; x++) rawData[rawPos + x] = pxData[pxPos + x];
+	}
+	function filterSumNone(pxData, pxPos, byteWidth) {
+		let sum = 0;
+		let length = pxPos + byteWidth;
+		for (let i = pxPos; i < length; i++) sum += Math.abs(pxData[i]);
+		return sum;
+	}
+	function filterSub(pxData, pxPos, byteWidth, rawData, rawPos, bpp) {
+		for (let x = 0; x < byteWidth; x++) {
+			let left = x >= bpp ? pxData[pxPos + x - bpp] : 0;
+			let val = pxData[pxPos + x] - left;
+			rawData[rawPos + x] = val;
+		}
+	}
+	function filterSumSub(pxData, pxPos, byteWidth, bpp) {
+		let sum = 0;
+		for (let x = 0; x < byteWidth; x++) {
+			let left = x >= bpp ? pxData[pxPos + x - bpp] : 0;
+			let val = pxData[pxPos + x] - left;
+			sum += Math.abs(val);
+		}
+		return sum;
+	}
+	function filterUp(pxData, pxPos, byteWidth, rawData, rawPos) {
+		for (let x = 0; x < byteWidth; x++) {
+			let up = pxPos > 0 ? pxData[pxPos + x - byteWidth] : 0;
+			let val = pxData[pxPos + x] - up;
+			rawData[rawPos + x] = val;
+		}
+	}
+	function filterSumUp(pxData, pxPos, byteWidth) {
+		let sum = 0;
+		let length = pxPos + byteWidth;
+		for (let x = pxPos; x < length; x++) {
+			let up = pxPos > 0 ? pxData[x - byteWidth] : 0;
+			let val = pxData[x] - up;
+			sum += Math.abs(val);
+		}
+		return sum;
+	}
+	function filterAvg(pxData, pxPos, byteWidth, rawData, rawPos, bpp) {
+		for (let x = 0; x < byteWidth; x++) {
+			let left = x >= bpp ? pxData[pxPos + x - bpp] : 0;
+			let up = pxPos > 0 ? pxData[pxPos + x - byteWidth] : 0;
+			let val = pxData[pxPos + x] - (left + up >> 1);
+			rawData[rawPos + x] = val;
+		}
+	}
+	function filterSumAvg(pxData, pxPos, byteWidth, bpp) {
+		let sum = 0;
+		for (let x = 0; x < byteWidth; x++) {
+			let left = x >= bpp ? pxData[pxPos + x - bpp] : 0;
+			let up = pxPos > 0 ? pxData[pxPos + x - byteWidth] : 0;
+			let val = pxData[pxPos + x] - (left + up >> 1);
+			sum += Math.abs(val);
+		}
+		return sum;
+	}
+	function filterPaeth(pxData, pxPos, byteWidth, rawData, rawPos, bpp) {
+		for (let x = 0; x < byteWidth; x++) {
+			let left = x >= bpp ? pxData[pxPos + x - bpp] : 0;
+			let up = pxPos > 0 ? pxData[pxPos + x - byteWidth] : 0;
+			let upleft = pxPos > 0 && x >= bpp ? pxData[pxPos + x - (byteWidth + bpp)] : 0;
+			let val = pxData[pxPos + x] - paethPredictor(left, up, upleft);
+			rawData[rawPos + x] = val;
+		}
+	}
+	function filterSumPaeth(pxData, pxPos, byteWidth, bpp) {
+		let sum = 0;
+		for (let x = 0; x < byteWidth; x++) {
+			let left = x >= bpp ? pxData[pxPos + x - bpp] : 0;
+			let up = pxPos > 0 ? pxData[pxPos + x - byteWidth] : 0;
+			let upleft = pxPos > 0 && x >= bpp ? pxData[pxPos + x - (byteWidth + bpp)] : 0;
+			let val = pxData[pxPos + x] - paethPredictor(left, up, upleft);
+			sum += Math.abs(val);
+		}
+		return sum;
+	}
+	let filters = {
+		0: filterNone,
+		1: filterSub,
+		2: filterUp,
+		3: filterAvg,
+		4: filterPaeth
+	};
+	let filterSums = {
+		0: filterSumNone,
+		1: filterSumSub,
+		2: filterSumUp,
+		3: filterSumAvg,
+		4: filterSumPaeth
+	};
+	module.exports = function(pxData, width, height, options, bpp) {
+		let filterTypes;
+		if (!("filterType" in options) || options.filterType === -1) filterTypes = [
+			0,
+			1,
+			2,
+			3,
+			4
+		];
+		else if (typeof options.filterType === "number") filterTypes = [options.filterType];
+		else throw new Error("unrecognised filter types");
+		if (options.bitDepth === 16) bpp *= 2;
+		let byteWidth = width * bpp;
+		let rawPos = 0;
+		let pxPos = 0;
+		let rawData = Buffer.alloc((byteWidth + 1) * height);
+		let sel = filterTypes[0];
+		for (let y = 0; y < height; y++) {
+			if (filterTypes.length > 1) {
+				let min = Infinity;
+				for (let i = 0; i < filterTypes.length; i++) {
+					let sum = filterSums[filterTypes[i]](pxData, pxPos, byteWidth, bpp);
+					if (sum < min) {
+						sel = filterTypes[i];
+						min = sum;
+					}
+				}
+			}
+			rawData[rawPos] = sel;
+			rawPos++;
+			filters[sel](pxData, pxPos, byteWidth, rawData, rawPos, bpp);
+			rawPos += byteWidth;
+			pxPos += byteWidth;
+		}
+		return rawData;
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/packer.js
+var require_packer = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/packer.js"(exports, module) {
+	let constants$3 = require_constants$1();
+	let CrcStream = require_crc();
+	let bitPacker = require_bitpacker();
+	let filter = require_filter_pack();
+	let zlib$4 = __require("zlib");
+	let Packer$3 = module.exports = function(options) {
+		this._options = options;
+		options.deflateChunkSize = options.deflateChunkSize || 32 * 1024;
+		options.deflateLevel = options.deflateLevel != null ? options.deflateLevel : 9;
+		options.deflateStrategy = options.deflateStrategy != null ? options.deflateStrategy : 3;
+		options.inputHasAlpha = options.inputHasAlpha != null ? options.inputHasAlpha : true;
+		options.deflateFactory = options.deflateFactory || zlib$4.createDeflate;
+		options.bitDepth = options.bitDepth || 8;
+		options.colorType = typeof options.colorType === "number" ? options.colorType : constants$3.COLORTYPE_COLOR_ALPHA;
+		options.inputColorType = typeof options.inputColorType === "number" ? options.inputColorType : constants$3.COLORTYPE_COLOR_ALPHA;
+		if ([
+			constants$3.COLORTYPE_GRAYSCALE,
+			constants$3.COLORTYPE_COLOR,
+			constants$3.COLORTYPE_COLOR_ALPHA,
+			constants$3.COLORTYPE_ALPHA
+		].indexOf(options.colorType) === -1) throw new Error("option color type:" + options.colorType + " is not supported at present");
+		if ([
+			constants$3.COLORTYPE_GRAYSCALE,
+			constants$3.COLORTYPE_COLOR,
+			constants$3.COLORTYPE_COLOR_ALPHA,
+			constants$3.COLORTYPE_ALPHA
+		].indexOf(options.inputColorType) === -1) throw new Error("option input color type:" + options.inputColorType + " is not supported at present");
+		if (options.bitDepth !== 8 && options.bitDepth !== 16) throw new Error("option bit depth:" + options.bitDepth + " is not supported at present");
+	};
+	Packer$3.prototype.getDeflateOptions = function() {
+		return {
+			chunkSize: this._options.deflateChunkSize,
+			level: this._options.deflateLevel,
+			strategy: this._options.deflateStrategy
+		};
+	};
+	Packer$3.prototype.createDeflate = function() {
+		return this._options.deflateFactory(this.getDeflateOptions());
+	};
+	Packer$3.prototype.filterData = function(data, width, height) {
+		let packedData = bitPacker(data, width, height, this._options);
+		let bpp = constants$3.COLORTYPE_TO_BPP_MAP[this._options.colorType];
+		let filteredData = filter(packedData, width, height, this._options, bpp);
+		return filteredData;
+	};
+	Packer$3.prototype._packChunk = function(type, data) {
+		let len = data ? data.length : 0;
+		let buf = Buffer.alloc(len + 12);
+		buf.writeUInt32BE(len, 0);
+		buf.writeUInt32BE(type, 4);
+		if (data) data.copy(buf, 8);
+		buf.writeInt32BE(CrcStream.crc32(buf.slice(4, buf.length - 4)), buf.length - 4);
+		return buf;
+	};
+	Packer$3.prototype.packGAMA = function(gamma) {
+		let buf = Buffer.alloc(4);
+		buf.writeUInt32BE(Math.floor(gamma * constants$3.GAMMA_DIVISION), 0);
+		return this._packChunk(constants$3.TYPE_gAMA, buf);
+	};
+	Packer$3.prototype.packIHDR = function(width, height) {
+		let buf = Buffer.alloc(13);
+		buf.writeUInt32BE(width, 0);
+		buf.writeUInt32BE(height, 4);
+		buf[8] = this._options.bitDepth;
+		buf[9] = this._options.colorType;
+		buf[10] = 0;
+		buf[11] = 0;
+		buf[12] = 0;
+		return this._packChunk(constants$3.TYPE_IHDR, buf);
+	};
+	Packer$3.prototype.packIDAT = function(data) {
+		return this._packChunk(constants$3.TYPE_IDAT, data);
+	};
+	Packer$3.prototype.packIEND = function() {
+		return this._packChunk(constants$3.TYPE_IEND, null);
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/packer-async.js
+var require_packer_async = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/packer-async.js"(exports, module) {
+	let util$2 = __require("util");
+	let Stream$3 = __require("stream");
+	let constants$2 = require_constants$1();
+	let Packer$2 = require_packer();
+	let PackerAsync = module.exports = function(opt) {
+		Stream$3.call(this);
+		let options = opt || {};
+		this._packer = new Packer$2(options);
+		this._deflate = this._packer.createDeflate();
+		this.readable = true;
+	};
+	util$2.inherits(PackerAsync, Stream$3);
+	PackerAsync.prototype.pack = function(data, width, height, gamma) {
+		this.emit("data", Buffer.from(constants$2.PNG_SIGNATURE));
+		this.emit("data", this._packer.packIHDR(width, height));
+		if (gamma) this.emit("data", this._packer.packGAMA(gamma));
+		let filteredData = this._packer.filterData(data, width, height);
+		this._deflate.on("error", this.emit.bind(this, "error"));
+		this._deflate.on("data", function(compressedData) {
+			this.emit("data", this._packer.packIDAT(compressedData));
+		}.bind(this));
+		this._deflate.on("end", function() {
+			this.emit("data", this._packer.packIEND());
+			this.emit("end");
+		}.bind(this));
+		this._deflate.end(filteredData);
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/sync-inflate.js
+var require_sync_inflate = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/sync-inflate.js"(exports, module) {
+	let assert$1 = __require("assert").ok;
+	let zlib$3 = __require("zlib");
+	let util$1 = __require("util");
+	let kMaxLength = __require("buffer").kMaxLength;
+	function Inflate(opts) {
+		if (!(this instanceof Inflate)) return new Inflate(opts);
+		if (opts && opts.chunkSize < zlib$3.Z_MIN_CHUNK) opts.chunkSize = zlib$3.Z_MIN_CHUNK;
+		zlib$3.Inflate.call(this, opts);
+		this._offset = this._offset === void 0 ? this._outOffset : this._offset;
+		this._buffer = this._buffer || this._outBuffer;
+		if (opts && opts.maxLength != null) this._maxLength = opts.maxLength;
+	}
+	function createInflate(opts) {
+		return new Inflate(opts);
+	}
+	function _close(engine, callback) {
+		if (callback) process.nextTick(callback);
+		if (!engine._handle) return;
+		engine._handle.close();
+		engine._handle = null;
+	}
+	Inflate.prototype._processChunk = function(chunk, flushFlag, asyncCb) {
+		if (typeof asyncCb === "function") return zlib$3.Inflate._processChunk.call(this, chunk, flushFlag, asyncCb);
+		let self$1 = this;
+		let availInBefore = chunk && chunk.length;
+		let availOutBefore = this._chunkSize - this._offset;
+		let leftToInflate = this._maxLength;
+		let inOff = 0;
+		let buffers = [];
+		let nread = 0;
+		let error$1;
+		this.on("error", function(err) {
+			error$1 = err;
+		});
+		function handleChunk(availInAfter, availOutAfter) {
+			if (self$1._hadError) return;
+			let have = availOutBefore - availOutAfter;
+			assert$1(have >= 0, "have should not go down");
+			if (have > 0) {
+				let out = self$1._buffer.slice(self$1._offset, self$1._offset + have);
+				self$1._offset += have;
+				if (out.length > leftToInflate) out = out.slice(0, leftToInflate);
+				buffers.push(out);
+				nread += out.length;
+				leftToInflate -= out.length;
+				if (leftToInflate === 0) return false;
+			}
+			if (availOutAfter === 0 || self$1._offset >= self$1._chunkSize) {
+				availOutBefore = self$1._chunkSize;
+				self$1._offset = 0;
+				self$1._buffer = Buffer.allocUnsafe(self$1._chunkSize);
+			}
+			if (availOutAfter === 0) {
+				inOff += availInBefore - availInAfter;
+				availInBefore = availInAfter;
+				return true;
+			}
+			return false;
+		}
+		assert$1(this._handle, "zlib binding closed");
+		let res;
+		do {
+			res = this._handle.writeSync(flushFlag, chunk, inOff, availInBefore, this._buffer, this._offset, availOutBefore);
+			res = res || this._writeState;
+		} while (!this._hadError && handleChunk(res[0], res[1]));
+		if (this._hadError) throw error$1;
+		if (nread >= kMaxLength) {
+			_close(this);
+			throw new RangeError("Cannot create final Buffer. It would be larger than 0x" + kMaxLength.toString(16) + " bytes");
+		}
+		let buf = Buffer.concat(buffers, nread);
+		_close(this);
+		return buf;
+	};
+	util$1.inherits(Inflate, zlib$3.Inflate);
+	function zlibBufferSync(engine, buffer) {
+		if (typeof buffer === "string") buffer = Buffer.from(buffer);
+		if (!(buffer instanceof Buffer)) throw new TypeError("Not a string or buffer");
+		let flushFlag = engine._finishFlushFlag;
+		if (flushFlag == null) flushFlag = zlib$3.Z_FINISH;
+		return engine._processChunk(buffer, flushFlag);
+	}
+	function inflateSync$1(buffer, opts) {
+		return zlibBufferSync(new Inflate(opts), buffer);
+	}
+	module.exports = exports = inflateSync$1;
+	exports.Inflate = Inflate;
+	exports.createInflate = createInflate;
+	exports.inflateSync = inflateSync$1;
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/sync-reader.js
+var require_sync_reader = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/sync-reader.js"(exports, module) {
+	let SyncReader$2 = module.exports = function(buffer) {
+		this._buffer = buffer;
+		this._reads = [];
+	};
+	SyncReader$2.prototype.read = function(length, callback) {
+		this._reads.push({
+			length: Math.abs(length),
+			allowLess: length < 0,
+			func: callback
+		});
+	};
+	SyncReader$2.prototype.process = function() {
+		while (this._reads.length > 0 && this._buffer.length) {
+			let read = this._reads[0];
+			if (this._buffer.length && (this._buffer.length >= read.length || read.allowLess)) {
+				this._reads.shift();
+				let buf = this._buffer;
+				this._buffer = buf.slice(read.length);
+				read.func.call(this, buf.slice(0, read.length));
+			} else break;
+		}
+		if (this._reads.length > 0) return new Error("There are some read requests waitng on finished stream");
+		if (this._buffer.length > 0) return new Error("unrecognised content at end of stream");
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/filter-parse-sync.js
+var require_filter_parse_sync = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/filter-parse-sync.js"(exports) {
+	let SyncReader$1 = require_sync_reader();
+	let Filter = require_filter_parse();
+	exports.process = function(inBuffer, bitmapInfo) {
+		let outBuffers = [];
+		let reader = new SyncReader$1(inBuffer);
+		let filter$1 = new Filter(bitmapInfo, {
+			read: reader.read.bind(reader),
+			write: function(bufferPart) {
+				outBuffers.push(bufferPart);
+			},
+			complete: function() {}
+		});
+		filter$1.start();
+		reader.process();
+		return Buffer.concat(outBuffers);
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/parser-sync.js
+var require_parser_sync = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/parser-sync.js"(exports, module) {
+	let hasSyncZlib$1 = true;
+	let zlib$2 = __require("zlib");
+	let inflateSync = require_sync_inflate();
+	if (!zlib$2.deflateSync) hasSyncZlib$1 = false;
+	let SyncReader = require_sync_reader();
+	let FilterSync = require_filter_parse_sync();
+	let Parser$1 = require_parser();
+	let bitmapper = require_bitmapper();
+	let formatNormaliser = require_format_normaliser();
+	module.exports = function(buffer, options) {
+		if (!hasSyncZlib$1) throw new Error("To use the sync capability of this library in old node versions, please pin pngjs to v2.3.0");
+		let err;
+		function handleError(_err_) {
+			err = _err_;
+		}
+		let metaData;
+		function handleMetaData(_metaData_) {
+			metaData = _metaData_;
+		}
+		function handleTransColor(transColor) {
+			metaData.transColor = transColor;
+		}
+		function handlePalette(palette) {
+			metaData.palette = palette;
+		}
+		function handleSimpleTransparency() {
+			metaData.alpha = true;
+		}
+		let gamma;
+		function handleGamma(_gamma_) {
+			gamma = _gamma_;
+		}
+		let inflateDataList = [];
+		function handleInflateData(inflatedData$1) {
+			inflateDataList.push(inflatedData$1);
+		}
+		let reader = new SyncReader(buffer);
+		let parser = new Parser$1(options, {
+			read: reader.read.bind(reader),
+			error: handleError,
+			metadata: handleMetaData,
+			gamma: handleGamma,
+			palette: handlePalette,
+			transColor: handleTransColor,
+			inflateData: handleInflateData,
+			simpleTransparency: handleSimpleTransparency
+		});
+		parser.start();
+		reader.process();
+		if (err) throw err;
+		let inflateData = Buffer.concat(inflateDataList);
+		inflateDataList.length = 0;
+		let inflatedData;
+		if (metaData.interlace) inflatedData = zlib$2.inflateSync(inflateData);
+		else {
+			let rowSize = (metaData.width * metaData.bpp * metaData.depth + 7 >> 3) + 1;
+			let imageSize = rowSize * metaData.height;
+			inflatedData = inflateSync(inflateData, {
+				chunkSize: imageSize,
+				maxLength: imageSize
+			});
+		}
+		inflateData = null;
+		if (!inflatedData || !inflatedData.length) throw new Error("bad png - invalid inflate data response");
+		let unfilteredData = FilterSync.process(inflatedData, metaData);
+		inflateData = null;
+		let bitmapData = bitmapper.dataToBitMap(unfilteredData, metaData);
+		unfilteredData = null;
+		let normalisedBitmapData = formatNormaliser(bitmapData, metaData);
+		metaData.data = normalisedBitmapData;
+		metaData.gamma = gamma || 0;
+		return metaData;
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/packer-sync.js
+var require_packer_sync = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/packer-sync.js"(exports, module) {
+	let hasSyncZlib = true;
+	let zlib$1 = __require("zlib");
+	if (!zlib$1.deflateSync) hasSyncZlib = false;
+	let constants$1 = require_constants$1();
+	let Packer$1 = require_packer();
+	module.exports = function(metaData, opt) {
+		if (!hasSyncZlib) throw new Error("To use the sync capability of this library in old node versions, please pin pngjs to v2.3.0");
+		let options = opt || {};
+		let packer = new Packer$1(options);
+		let chunks = [];
+		chunks.push(Buffer.from(constants$1.PNG_SIGNATURE));
+		chunks.push(packer.packIHDR(metaData.width, metaData.height));
+		if (metaData.gamma) chunks.push(packer.packGAMA(metaData.gamma));
+		let filteredData = packer.filterData(metaData.data, metaData.width, metaData.height);
+		let compressedData = zlib$1.deflateSync(filteredData, packer.getDeflateOptions());
+		filteredData = null;
+		if (!compressedData || !compressedData.length) throw new Error("bad png - invalid compressed data response");
+		chunks.push(packer.packIDAT(compressedData));
+		chunks.push(packer.packIEND());
+		return Buffer.concat(chunks);
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/png-sync.js
+var require_png_sync = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/png-sync.js"(exports) {
+	let parse$5 = require_parser_sync();
+	let pack = require_packer_sync();
+	exports.read = function(buffer, options) {
+		return parse$5(buffer, options || {});
+	};
+	exports.write = function(png, options) {
+		return pack(png, options);
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/png.js
+var require_png$1 = __commonJS({ "node_modules/.pnpm/pngjs@5.0.0/node_modules/pngjs/lib/png.js"(exports) {
+	let util = __require("util");
+	let Stream$2 = __require("stream");
+	let Parser = require_parser_async();
+	let Packer = require_packer_async();
+	let PNGSync = require_png_sync();
+	let PNG$1 = exports.PNG = function(options) {
+		Stream$2.call(this);
+		options = options || {};
+		this.width = options.width | 0;
+		this.height = options.height | 0;
+		this.data = this.width > 0 && this.height > 0 ? Buffer.alloc(4 * this.width * this.height) : null;
+		if (options.fill && this.data) this.data.fill(0);
+		this.gamma = 0;
+		this.readable = this.writable = true;
+		this._parser = new Parser(options);
+		this._parser.on("error", this.emit.bind(this, "error"));
+		this._parser.on("close", this._handleClose.bind(this));
+		this._parser.on("metadata", this._metadata.bind(this));
+		this._parser.on("gamma", this._gamma.bind(this));
+		this._parser.on("parsed", function(data) {
+			this.data = data;
+			this.emit("parsed", data);
+		}.bind(this));
+		this._packer = new Packer(options);
+		this._packer.on("data", this.emit.bind(this, "data"));
+		this._packer.on("end", this.emit.bind(this, "end"));
+		this._parser.on("close", this._handleClose.bind(this));
+		this._packer.on("error", this.emit.bind(this, "error"));
+	};
+	util.inherits(PNG$1, Stream$2);
+	PNG$1.sync = PNGSync;
+	PNG$1.prototype.pack = function() {
+		if (!this.data || !this.data.length) {
+			this.emit("error", "No data provided");
+			return this;
+		}
+		process.nextTick(function() {
+			this._packer.pack(this.data, this.width, this.height, this.gamma);
+		}.bind(this));
+		return this;
+	};
+	PNG$1.prototype.parse = function(data, callback) {
+		if (callback) {
+			let onParsed, onError$1;
+			onParsed = function(parsedData) {
+				this.removeListener("error", onError$1);
+				this.data = parsedData;
+				callback(null, this);
+			}.bind(this);
+			onError$1 = function(err) {
+				this.removeListener("parsed", onParsed);
+				callback(err, null);
+			}.bind(this);
+			this.once("parsed", onParsed);
+			this.once("error", onError$1);
+		}
+		this.end(data);
+		return this;
+	};
+	PNG$1.prototype.write = function(data) {
+		this._parser.write(data);
+		return true;
+	};
+	PNG$1.prototype.end = function(data) {
+		this._parser.end(data);
+	};
+	PNG$1.prototype._metadata = function(metadata) {
+		this.width = metadata.width;
+		this.height = metadata.height;
+		this.emit("metadata", metadata);
+	};
+	PNG$1.prototype._gamma = function(gamma) {
+		this.gamma = gamma;
+	};
+	PNG$1.prototype._handleClose = function() {
+		if (!this._parser.writable && !this._packer.readable) this.emit("close");
+	};
+	PNG$1.bitblt = function(src, dst, srcX, srcY, width, height, deltaX, deltaY) {
+		srcX |= 0;
+		srcY |= 0;
+		width |= 0;
+		height |= 0;
+		deltaX |= 0;
+		deltaY |= 0;
+		if (srcX > src.width || srcY > src.height || srcX + width > src.width || srcY + height > src.height) throw new Error("bitblt reading outside image");
+		if (deltaX > dst.width || deltaY > dst.height || deltaX + width > dst.width || deltaY + height > dst.height) throw new Error("bitblt writing outside image");
+		for (let y = 0; y < height; y++) src.data.copy(dst.data, (deltaY + y) * dst.width + deltaX << 2, (srcY + y) * src.width + srcX << 2, (srcY + y) * src.width + srcX + width << 2);
+	};
+	PNG$1.prototype.bitblt = function(dst, srcX, srcY, width, height, deltaX, deltaY) {
+		PNG$1.bitblt(this, dst, srcX, srcY, width, height, deltaX, deltaY);
+		return this;
+	};
+	PNG$1.adjustGamma = function(src) {
+		if (src.gamma) {
+			for (let y = 0; y < src.height; y++) for (let x = 0; x < src.width; x++) {
+				let idx = src.width * y + x << 2;
+				for (let i = 0; i < 3; i++) {
+					let sample = src.data[idx + i] / 255;
+					sample = Math.pow(sample, 1 / 2.2 / src.gamma);
+					src.data[idx + i] = Math.round(sample * 255);
+				}
+			}
+			src.gamma = 0;
+		}
+	};
+	PNG$1.prototype.adjustGamma = function() {
+		PNG$1.adjustGamma(this);
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/renderer/utils.js
+var require_utils$2 = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/renderer/utils.js"(exports) {
+	function hex2rgba(hex) {
+		if (typeof hex === "number") hex = hex.toString();
+		if (typeof hex !== "string") throw new Error("Color should be defined as hex string");
+		let hexCode = hex.slice().replace("#", "").split("");
+		if (hexCode.length < 3 || hexCode.length === 5 || hexCode.length > 8) throw new Error("Invalid hex color: " + hex);
+		if (hexCode.length === 3 || hexCode.length === 4) hexCode = Array.prototype.concat.apply([], hexCode.map(function(c) {
+			return [c, c];
+		}));
+		if (hexCode.length === 6) hexCode.push("F", "F");
+		const hexValue = parseInt(hexCode.join(""), 16);
+		return {
+			r: hexValue >> 24 & 255,
+			g: hexValue >> 16 & 255,
+			b: hexValue >> 8 & 255,
+			a: hexValue & 255,
+			hex: "#" + hexCode.slice(0, 6).join("")
+		};
+	}
+	exports.getOptions = function getOptions(options) {
+		if (!options) options = {};
+		if (!options.color) options.color = {};
+		const margin = typeof options.margin === "undefined" || options.margin === null || options.margin < 0 ? 4 : options.margin;
+		const width = options.width && options.width >= 21 ? options.width : void 0;
+		const scale = options.scale || 4;
+		return {
+			width,
+			scale: width ? 4 : scale,
+			margin,
+			color: {
+				dark: hex2rgba(options.color.dark || "#000000ff"),
+				light: hex2rgba(options.color.light || "#ffffffff")
+			},
+			type: options.type,
+			rendererOpts: options.rendererOpts || {}
+		};
+	};
+	exports.getScale = function getScale(qrSize, opts) {
+		return opts.width && opts.width >= qrSize + opts.margin * 2 ? opts.width / (qrSize + opts.margin * 2) : opts.scale;
+	};
+	exports.getImageWidth = function getImageWidth(qrSize, opts) {
+		const scale = exports.getScale(qrSize, opts);
+		return Math.floor((qrSize + opts.margin * 2) * scale);
+	};
+	exports.qrToImageData = function qrToImageData(imgData, qr, opts) {
+		const size = qr.modules.size;
+		const data = qr.modules.data;
+		const scale = exports.getScale(size, opts);
+		const symbolSize = Math.floor((size + opts.margin * 2) * scale);
+		const scaledMargin = opts.margin * scale;
+		const palette = [opts.color.light, opts.color.dark];
+		for (let i = 0; i < symbolSize; i++) for (let j = 0; j < symbolSize; j++) {
+			let posDst = (i * symbolSize + j) * 4;
+			let pxColor = opts.color.light;
+			if (i >= scaledMargin && j >= scaledMargin && i < symbolSize - scaledMargin && j < symbolSize - scaledMargin) {
+				const iSrc = Math.floor((i - scaledMargin) / scale);
+				const jSrc = Math.floor((j - scaledMargin) / scale);
+				pxColor = palette[data[iSrc * size + jSrc] ? 1 : 0];
+			}
+			imgData[posDst++] = pxColor.r;
+			imgData[posDst++] = pxColor.g;
+			imgData[posDst++] = pxColor.b;
+			imgData[posDst] = pxColor.a;
+		}
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/renderer/png.js
+var require_png = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/renderer/png.js"(exports) {
+	const fs$4 = __require("fs");
+	const PNG = require_png$1().PNG;
+	const Utils$3 = require_utils$2();
+	exports.render = function render$1(qrData, options) {
+		const opts = Utils$3.getOptions(options);
+		const pngOpts = opts.rendererOpts;
+		const size = Utils$3.getImageWidth(qrData.modules.size, opts);
+		pngOpts.width = size;
+		pngOpts.height = size;
+		const pngImage = new PNG(pngOpts);
+		Utils$3.qrToImageData(pngImage.data, qrData, opts);
+		return pngImage;
+	};
+	exports.renderToDataURL = function renderToDataURL(qrData, options, cb) {
+		if (typeof cb === "undefined") {
+			cb = options;
+			options = void 0;
+		}
+		exports.renderToBuffer(qrData, options, function(err, output) {
+			if (err) cb(err);
+			let url = "data:image/png;base64,";
+			url += output.toString("base64");
+			cb(null, url);
+		});
+	};
+	exports.renderToBuffer = function renderToBuffer(qrData, options, cb) {
+		if (typeof cb === "undefined") {
+			cb = options;
+			options = void 0;
+		}
+		const png = exports.render(qrData, options);
+		const buffer = [];
+		png.on("error", cb);
+		png.on("data", function(data) {
+			buffer.push(data);
+		});
+		png.on("end", function() {
+			cb(null, Buffer.concat(buffer));
+		});
+		png.pack();
+	};
+	exports.renderToFile = function renderToFile(path$4, qrData, options, cb) {
+		if (typeof cb === "undefined") {
+			cb = options;
+			options = void 0;
+		}
+		let called = false;
+		const done = (...args) => {
+			if (called) return;
+			called = true;
+			cb.apply(null, args);
+		};
+		const stream = fs$4.createWriteStream(path$4);
+		stream.on("error", done);
+		stream.on("close", done);
+		exports.renderToFileStream(stream, qrData, options);
+	};
+	exports.renderToFileStream = function renderToFileStream(stream, qrData, options) {
+		const png = exports.render(qrData, options);
+		png.pack().pipe(stream);
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/renderer/utf8.js
+var require_utf8 = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/renderer/utf8.js"(exports) {
+	const Utils$2 = require_utils$2();
+	const BLOCK_CHAR = {
+		WW: " ",
+		WB: "▄",
+		BB: "█",
+		BW: "▀"
+	};
+	const INVERTED_BLOCK_CHAR = {
+		BB: " ",
+		BW: "▄",
+		WW: "█",
+		WB: "▀"
+	};
+	function getBlockChar(top, bottom, blocks) {
+		if (top && bottom) return blocks.BB;
+		if (top && !bottom) return blocks.BW;
+		if (!top && bottom) return blocks.WB;
+		return blocks.WW;
+	}
+	exports.render = function(qrData, options, cb) {
+		const opts = Utils$2.getOptions(options);
+		let blocks = BLOCK_CHAR;
+		if (opts.color.dark.hex === "#ffffff" || opts.color.light.hex === "#000000") blocks = INVERTED_BLOCK_CHAR;
+		const size = qrData.modules.size;
+		const data = qrData.modules.data;
+		let output = "";
+		let hMargin = Array(size + opts.margin * 2 + 1).join(blocks.WW);
+		hMargin = Array(opts.margin / 2 + 1).join(hMargin + "\n");
+		const vMargin = Array(opts.margin + 1).join(blocks.WW);
+		output += hMargin;
+		for (let i = 0; i < size; i += 2) {
+			output += vMargin;
+			for (let j = 0; j < size; j++) {
+				const topModule = data[i * size + j];
+				const bottomModule = data[(i + 1) * size + j];
+				output += getBlockChar(topModule, bottomModule, blocks);
+			}
+			output += vMargin + "\n";
+		}
+		output += hMargin.slice(0, -1);
+		if (typeof cb === "function") cb(null, output);
+		return output;
+	};
+	exports.renderToFile = function renderToFile(path$4, qrData, options, cb) {
+		if (typeof cb === "undefined") {
+			cb = options;
+			options = void 0;
+		}
+		const fs$5 = __require("fs");
+		const utf8 = exports.render(qrData, options);
+		fs$5.writeFile(path$4, utf8, cb);
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/renderer/terminal/terminal.js
+var require_terminal$1 = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/renderer/terminal/terminal.js"(exports) {
+	exports.render = function(qrData, options, cb) {
+		const size = qrData.modules.size;
+		const data = qrData.modules.data;
+		const black = "\x1B[40m  \x1B[0m";
+		const white = "\x1B[47m  \x1B[0m";
+		let output = "";
+		const hMargin = Array(size + 3).join(white);
+		const vMargin = Array(2).join(white);
+		output += hMargin + "\n";
+		for (let i = 0; i < size; ++i) {
+			output += white;
+			for (let j = 0; j < size; j++) output += data[i * size + j] ? black : white;
+			output += vMargin + "\n";
+		}
+		output += hMargin + "\n";
+		if (typeof cb === "function") cb(null, output);
+		return output;
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/renderer/terminal/terminal-small.js
+var require_terminal_small = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/renderer/terminal/terminal-small.js"(exports) {
+	const backgroundWhite = "\x1B[47m";
+	const backgroundBlack = "\x1B[40m";
+	const foregroundWhite = "\x1B[37m";
+	const foregroundBlack = "\x1B[30m";
+	const reset = "\x1B[0m";
+	const lineSetupNormal = backgroundWhite + foregroundBlack;
+	const lineSetupInverse = backgroundBlack + foregroundWhite;
+	const createPalette = function(lineSetup, foregroundWhite$1, foregroundBlack$1) {
+		return {
+			"00": reset + " " + lineSetup,
+			"01": reset + foregroundWhite$1 + "▄" + lineSetup,
+			"02": reset + foregroundBlack$1 + "▄" + lineSetup,
+			10: reset + foregroundWhite$1 + "▀" + lineSetup,
+			11: " ",
+			12: "▄",
+			20: reset + foregroundBlack$1 + "▀" + lineSetup,
+			21: "▀",
+			22: "█"
+		};
+	};
+	/**
+	* Returns code for QR pixel
+	* @param {boolean[][]} modules
+	* @param {number} size
+	* @param {number} x
+	* @param {number} y
+	* @return {'0' | '1' | '2'}
+	*/
+	const mkCodePixel = function(modules, size, x, y) {
+		const sizePlus = size + 1;
+		if (x >= sizePlus || y >= sizePlus || y < -1 || x < -1) return "0";
+		if (x >= size || y >= size || y < 0 || x < 0) return "1";
+		const idx = y * size + x;
+		return modules[idx] ? "2" : "1";
+	};
+	/**
+	* Returns code for four QR pixels. Suitable as key in palette.
+	* @param {boolean[][]} modules
+	* @param {number} size
+	* @param {number} x
+	* @param {number} y
+	* @return {keyof palette}
+	*/
+	const mkCode = function(modules, size, x, y) {
+		return mkCodePixel(modules, size, x, y) + mkCodePixel(modules, size, x, y + 1);
+	};
+	exports.render = function(qrData, options, cb) {
+		const size = qrData.modules.size;
+		const data = qrData.modules.data;
+		const inverse = !!(options && options.inverse);
+		const lineSetup = options && options.inverse ? lineSetupInverse : lineSetupNormal;
+		const white = inverse ? foregroundBlack : foregroundWhite;
+		const black = inverse ? foregroundWhite : foregroundBlack;
+		const palette = createPalette(lineSetup, white, black);
+		const newLine = reset + "\n" + lineSetup;
+		let output = lineSetup;
+		for (let y = -1; y < size + 1; y += 2) {
+			for (let x = -1; x < size; x++) output += palette[mkCode(data, size, x, y)];
+			output += palette[mkCode(data, size, size, y)] + newLine;
+		}
+		output += reset;
+		if (typeof cb === "function") cb(null, output);
+		return output;
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/renderer/terminal.js
+var require_terminal = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/renderer/terminal.js"(exports) {
+	const big = require_terminal$1();
+	const small = require_terminal_small();
+	exports.render = function(qrData, options, cb) {
+		if (options && options.small) return small.render(qrData, options, cb);
+		return big.render(qrData, options, cb);
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/renderer/svg-tag.js
+var require_svg_tag = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/renderer/svg-tag.js"(exports) {
+	const Utils$1 = require_utils$2();
+	function getColorAttrib(color, attrib) {
+		const alpha = color.a / 255;
+		const str$2 = attrib + "=\"" + color.hex + "\"";
+		return alpha < 1 ? str$2 + " " + attrib + "-opacity=\"" + alpha.toFixed(2).slice(1) + "\"" : str$2;
+	}
+	function svgCmd(cmd, x, y) {
+		let str$2 = cmd + x;
+		if (typeof y !== "undefined") str$2 += " " + y;
+		return str$2;
+	}
+	function qrToPath(data, size, margin) {
+		let path$4 = "";
+		let moveBy = 0;
+		let newRow = false;
+		let lineLength = 0;
+		for (let i = 0; i < data.length; i++) {
+			const col = Math.floor(i % size);
+			const row = Math.floor(i / size);
+			if (!col && !newRow) newRow = true;
+			if (data[i]) {
+				lineLength++;
+				if (!(i > 0 && col > 0 && data[i - 1])) {
+					path$4 += newRow ? svgCmd("M", col + margin, .5 + row + margin) : svgCmd("m", moveBy, 0);
+					moveBy = 0;
+					newRow = false;
+				}
+				if (!(col + 1 < size && data[i + 1])) {
+					path$4 += svgCmd("h", lineLength);
+					lineLength = 0;
+				}
+			} else moveBy++;
+		}
+		return path$4;
+	}
+	exports.render = function render$1(qrData, options, cb) {
+		const opts = Utils$1.getOptions(options);
+		const size = qrData.modules.size;
+		const data = qrData.modules.data;
+		const qrcodesize = size + opts.margin * 2;
+		const bg = !opts.color.light.a ? "" : "<path " + getColorAttrib(opts.color.light, "fill") + " d=\"M0 0h" + qrcodesize + "v" + qrcodesize + "H0z\"/>";
+		const path$4 = "<path " + getColorAttrib(opts.color.dark, "stroke") + " d=\"" + qrToPath(data, size, opts.margin) + "\"/>";
+		const viewBox = "viewBox=\"0 0 " + qrcodesize + " " + qrcodesize + "\"";
+		const width = !opts.width ? "" : "width=\"" + opts.width + "\" height=\"" + opts.width + "\" ";
+		const svgTag = "<svg xmlns=\"http://www.w3.org/2000/svg\" " + width + viewBox + " shape-rendering=\"crispEdges\">" + bg + path$4 + "</svg>\n";
+		if (typeof cb === "function") cb(null, svgTag);
+		return svgTag;
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/renderer/svg.js
+var require_svg = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/renderer/svg.js"(exports) {
+	const svgTagRenderer = require_svg_tag();
+	exports.render = svgTagRenderer.render;
+	exports.renderToFile = function renderToFile(path$4, qrData, options, cb) {
+		if (typeof cb === "undefined") {
+			cb = options;
+			options = void 0;
+		}
+		const fs$5 = __require("fs");
+		const svgTag = exports.render(qrData, options);
+		const xmlStr = "<?xml version=\"1.0\" encoding=\"utf-8\"?><!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">" + svgTag;
+		fs$5.writeFile(path$4, xmlStr, cb);
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/renderer/canvas.js
+var require_canvas = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/renderer/canvas.js"(exports) {
+	const Utils = require_utils$2();
+	function clearCanvas(ctx, canvas, size) {
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+		if (!canvas.style) canvas.style = {};
+		canvas.height = size;
+		canvas.width = size;
+		canvas.style.height = size + "px";
+		canvas.style.width = size + "px";
+	}
+	function getCanvasElement() {
+		try {
+			return document.createElement("canvas");
+		} catch (e) {
+			throw new Error("You need to specify a canvas element");
+		}
+	}
+	exports.render = function render$1(qrData, canvas, options) {
+		let opts = options;
+		let canvasEl = canvas;
+		if (typeof opts === "undefined" && (!canvas || !canvas.getContext)) {
+			opts = canvas;
+			canvas = void 0;
+		}
+		if (!canvas) canvasEl = getCanvasElement();
+		opts = Utils.getOptions(opts);
+		const size = Utils.getImageWidth(qrData.modules.size, opts);
+		const ctx = canvasEl.getContext("2d");
+		const image = ctx.createImageData(size, size);
+		Utils.qrToImageData(image.data, qrData, opts);
+		clearCanvas(ctx, canvasEl, size);
+		ctx.putImageData(image, 0, 0);
+		return canvasEl;
+	};
+	exports.renderToDataURL = function renderToDataURL(qrData, canvas, options) {
+		let opts = options;
+		if (typeof opts === "undefined" && (!canvas || !canvas.getContext)) {
+			opts = canvas;
+			canvas = void 0;
+		}
+		if (!opts) opts = {};
+		const canvasEl = exports.render(qrData, canvas, opts);
+		const type = opts.type || "image/png";
+		const rendererOpts = opts.rendererOpts || {};
+		return canvasEl.toDataURL(type, rendererOpts.quality);
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/browser.js
+var require_browser = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/browser.js"(exports) {
+	const canPromise$1 = require_can_promise();
+	const QRCode$1 = require_qrcode();
+	const CanvasRenderer = require_canvas();
+	const SvgRenderer$1 = require_svg_tag();
+	function renderCanvas(renderFunc, canvas, text$3, opts, cb) {
+		const args = [].slice.call(arguments, 1);
+		const argsNum = args.length;
+		const isLastArgCb = typeof args[argsNum - 1] === "function";
+		if (!isLastArgCb && !canPromise$1()) throw new Error("Callback required as last argument");
+		if (isLastArgCb) {
+			if (argsNum < 2) throw new Error("Too few arguments provided");
+			if (argsNum === 2) {
+				cb = text$3;
+				text$3 = canvas;
+				canvas = opts = void 0;
+			} else if (argsNum === 3) if (canvas.getContext && typeof cb === "undefined") {
+				cb = opts;
+				opts = void 0;
+			} else {
+				cb = opts;
+				opts = text$3;
+				text$3 = canvas;
+				canvas = void 0;
+			}
+		} else {
+			if (argsNum < 1) throw new Error("Too few arguments provided");
+			if (argsNum === 1) {
+				text$3 = canvas;
+				canvas = opts = void 0;
+			} else if (argsNum === 2 && !canvas.getContext) {
+				opts = text$3;
+				text$3 = canvas;
+				canvas = void 0;
+			}
+			return new Promise(function(resolve$1, reject) {
+				try {
+					const data = QRCode$1.create(text$3, opts);
+					resolve$1(renderFunc(data, canvas, opts));
+				} catch (e) {
+					reject(e);
+				}
+			});
+		}
+		try {
+			const data = QRCode$1.create(text$3, opts);
+			cb(null, renderFunc(data, canvas, opts));
+		} catch (e) {
+			cb(e);
+		}
+	}
+	exports.create = QRCode$1.create;
+	exports.toCanvas = renderCanvas.bind(null, CanvasRenderer.render);
+	exports.toDataURL = renderCanvas.bind(null, CanvasRenderer.renderToDataURL);
+	exports.toString = renderCanvas.bind(null, function(data, _, opts) {
+		return SvgRenderer$1.render(data, opts);
+	});
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/server.js
+var require_server = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/server.js"(exports) {
+	const canPromise = require_can_promise();
+	const QRCode = require_qrcode();
+	const PngRenderer = require_png();
+	const Utf8Renderer = require_utf8();
+	const TerminalRenderer = require_terminal();
+	const SvgRenderer = require_svg();
+	function checkParams(text$3, opts, cb) {
+		if (typeof text$3 === "undefined") throw new Error("String required as first argument");
+		if (typeof cb === "undefined") {
+			cb = opts;
+			opts = {};
+		}
+		if (typeof cb !== "function") if (!canPromise()) throw new Error("Callback required as last argument");
+		else {
+			opts = cb || {};
+			cb = null;
+		}
+		return {
+			opts,
+			cb
+		};
+	}
+	function getTypeFromFilename(path$4) {
+		return path$4.slice((path$4.lastIndexOf(".") - 1 >>> 0) + 2).toLowerCase();
+	}
+	function getRendererFromType(type) {
+		switch (type) {
+			case "svg": return SvgRenderer;
+			case "txt":
+			case "utf8": return Utf8Renderer;
+			case "png":
+			case "image/png":
+			default: return PngRenderer;
+		}
+	}
+	function getStringRendererFromType(type) {
+		switch (type) {
+			case "svg": return SvgRenderer;
+			case "terminal": return TerminalRenderer;
+			case "utf8":
+			default: return Utf8Renderer;
+		}
+	}
+	function render(renderFunc, text$3, params) {
+		if (!params.cb) return new Promise(function(resolve$1, reject) {
+			try {
+				const data = QRCode.create(text$3, params.opts);
+				return renderFunc(data, params.opts, function(err, data$1) {
+					return err ? reject(err) : resolve$1(data$1);
+				});
+			} catch (e) {
+				reject(e);
+			}
+		});
+		try {
+			const data = QRCode.create(text$3, params.opts);
+			return renderFunc(data, params.opts, params.cb);
+		} catch (e) {
+			params.cb(e);
+		}
+	}
+	exports.create = QRCode.create;
+	exports.toCanvas = require_browser().toCanvas;
+	exports.toString = function toString(text$3, opts, cb) {
+		const params = checkParams(text$3, opts, cb);
+		const type = params.opts ? params.opts.type : void 0;
+		const renderer = getStringRendererFromType(type);
+		return render(renderer.render, text$3, params);
+	};
+	exports.toDataURL = function toDataURL(text$3, opts, cb) {
+		const params = checkParams(text$3, opts, cb);
+		const renderer = getRendererFromType(params.opts.type);
+		return render(renderer.renderToDataURL, text$3, params);
+	};
+	exports.toBuffer = function toBuffer$3(text$3, opts, cb) {
+		const params = checkParams(text$3, opts, cb);
+		const renderer = getRendererFromType(params.opts.type);
+		return render(renderer.renderToBuffer, text$3, params);
+	};
+	exports.toFile = function toFile$2(path$4, text$3, opts, cb) {
+		if (typeof path$4 !== "string" || !(typeof text$3 === "string" || typeof text$3 === "object")) throw new Error("Invalid argument");
+		if (arguments.length < 3 && !canPromise()) throw new Error("Too few arguments provided");
+		const params = checkParams(text$3, opts, cb);
+		const type = params.opts.type || getTypeFromFilename(path$4);
+		const renderer = getRendererFromType(type);
+		const renderToFile = renderer.renderToFile.bind(null, path$4);
+		return render(renderToFile, text$3, params);
+	};
+	exports.toFileStream = function toFileStream(stream, text$3, opts) {
+		if (arguments.length < 2) throw new Error("Too few arguments provided");
+		const params = checkParams(text$3, opts, stream.emit.bind(stream, "error"));
+		const renderer = getRendererFromType("png");
+		const renderToFileStream = renderer.renderToFileStream.bind(null, stream);
+		render(renderToFileStream, text$3, params);
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/index.js
+var require_lib = __commonJS({ "node_modules/.pnpm/qrcode@1.5.4/node_modules/qrcode/lib/index.js"(exports, module) {
+	module.exports = require_server();
+} });
+var import_lib = __toESM(require_lib(), 1);
+
+//#endregion
+//#region src/host/im/wechat.ts
+var WechatRuntime = class {
+	#api;
+	#auth;
+	#store;
+	#chat;
+	#log;
+	#status = {
+		state: "idle",
+		connected: false,
+		messagesReceived: 0,
+		messagesReplied: 0
+	};
+	#controller = null;
+	#loop = null;
+	constructor(options) {
+		this.#api = options.api;
+		this.#auth = options.auth;
+		this.#store = options.store;
+		this.#chat = options.chat;
+		this.#log = options.log;
+	}
+	status() {
+		return { ...this.#status };
+	}
+	async start() {
+		if (this.#loop) return;
+		this.#status = {
+			...this.#status,
+			state: "connecting",
+			connected: false,
+			accountId: this.#auth.accountId,
+			ownerUserId: this.#auth.ownerUserId,
+			lastError: void 0
+		};
+		const controller = new AbortController();
+		this.#controller = controller;
+		try {
+			await this.#api.notifyStart({
+				baseUrl: this.#auth.baseUrl,
+				token: this.#auth.token,
+				signal: controller.signal
+			});
+			if (controller.signal.aborted) return;
+			this.#status.state = "connected";
+			this.#status.connected = true;
+			this.#status.lastCheckedAt = Date.now();
+			this.#loop = this.#run(controller.signal).finally(() => {
+				this.#loop = null;
+				if (this.#controller === controller) this.#controller = null;
+				this.#status.connected = false;
+				if (this.#status.state === "connected") this.#status.state = "idle";
+			});
+		} catch (e) {
+			this.#controller = null;
+			this.#status.state = "error";
+			this.#status.connected = false;
+			this.#status.lastError = e instanceof Error ? e.message : String(e);
+			throw e;
+		}
+	}
+	async stop() {
+		const controller = this.#controller;
+		this.#controller = null;
+		controller?.abort();
+		await this.#loop?.catch(() => void 0);
+		this.#loop = null;
+		if (this.#status.connected || this.#status.state === "connecting") try {
+			await this.#api.notifyStop({
+				baseUrl: this.#auth.baseUrl,
+				token: this.#auth.token,
+				signal: AbortSignal.timeout(5e3)
+			});
+		} catch {}
+		this.#status.state = "idle";
+		this.#status.connected = false;
+	}
+	async #run(signal) {
+		let failures = 0;
+		while (!signal.aborted) try {
+			const response = await this.#api.getUpdates({
+				baseUrl: this.#auth.baseUrl,
+				token: this.#auth.token,
+				getUpdatesBuf: this.#store.state.wechat.getUpdatesBuf,
+				signal
+			});
+			if (signal.aborted) return;
+			const providerCode = rejectedProviderResponse(response, ["errcode", "ret"]);
+			if (providerCode) throw new WeixinApiError(providerCode === "-14" ? "stale-token" : "updates-rejected", providerCode === "-14" ? "微信登录凭据已失效，请重新扫码。" : "微信消息同步请求被拒绝。", { providerCode });
+			failures = 0;
+			this.#status.state = "connected";
+			this.#status.connected = true;
+			this.#status.lastCheckedAt = Date.now();
+			this.#status.lastError = void 0;
+			for (const raw of orderWeixinMessages(Array.isArray(response.msgs) ? response.msgs : [])) await this.#handle(raw).catch((error$1) => {
+				this.#log.error(`[dsh-pet] 微信消息处理失败：${error$1 instanceof Error ? error$1.message : String(error$1)}`);
+			});
+			if (typeof response.get_updates_buf === "string" && response.get_updates_buf) {
+				this.#store.state.wechat.getUpdatesBuf = response.get_updates_buf;
+				await this.#store.saveState();
+			}
+		} catch (error$1) {
+			if (signal.aborted) return;
+			failures += 1;
+			this.#status.lastError = error$1 instanceof Error ? error$1.message : String(error$1);
+			if (error$1 instanceof WeixinApiError && error$1.code === "stale-token") {
+				this.#status.state = "error";
+				this.#status.connected = false;
+				return;
+			}
+			if (failures >= 3) {
+				this.#status.state = "error";
+				this.#status.connected = false;
+				return;
+			}
+			await new Promise((resolve$1) => setTimeout(resolve$1, Math.min(2e3 * 2 ** (failures - 1), 1e4)));
+		}
+	}
+	async #handle(raw) {
+		const message = raw;
+		const senderId = typeof message.from_user_id === "string" ? message.from_user_id.trim() : "";
+		const messageId = weixinMessageId(message);
+		const text$3 = extractWeixinText(message)?.trim() ?? "";
+		if (!senderId || !messageId || !text$3) return;
+		if (this.#store.state.wechat.seenMessageIds.includes(messageId)) return;
+		this.#status.messagesReceived += 1;
+		const contextToken = typeof message.context_token === "string" ? message.context_token : void 0;
+		if (contextToken) {
+			this.#store.state.wechat.contextTokens[senderId] = {
+				token: contextToken,
+				at: Date.now()
+			};
+			await this.#store.saveState();
+		}
+		const result = await this.#chat({
+			platform: "wechat",
+			senderId,
+			text: text$3,
+			messageId,
+			isGroup: false
+		});
+		if (result.reply) try {
+			await this.#api.sendText({
+				baseUrl: this.#auth.baseUrl,
+				token: this.#auth.token,
+				toUserId: senderId,
+				text: result.reply,
+				contextToken: this.#store.state.wechat.contextTokens[senderId]?.token
+			});
+			this.#status.messagesReplied += 1;
+		} catch (error$1) {
+			this.#log.warn(`[dsh-pet] 微信回复发送失败：${error$1 instanceof Error ? error$1.message : String(error$1)}`);
+		}
+		this.#store.state.wechat.seenMessageIds.push(messageId);
+		if (this.#store.state.wechat.seenMessageIds.length > 1e3) this.#store.state.wechat.seenMessageIds.splice(0, this.#store.state.wechat.seenMessageIds.length - 1e3);
+		await this.#store.saveState();
+	}
+};
+const QR_TTL_MS = 5 * 6e4;
+var WechatLogin = class {
+	#api;
+	#store;
+	#onAuth;
+	#attempt = null;
+	#controller = null;
+	#qrcode = "";
+	#baseUrl = "https://ilinkai.weixin.qq.com/";
+	#verifyCode = "";
+	constructor(api, store, onAuth) {
+		this.#api = api;
+		this.#store = store;
+		this.#onAuth = onAuth;
+	}
+	status() {
+		return this.#attempt ? { ...this.#attempt } : null;
+	}
+	async start() {
+		this.cancel();
+		const attempt = {
+			id: randomUUID(),
+			status: "starting",
+			expiresAt: Date.now() + QR_TTL_MS
+		};
+		this.#attempt = attempt;
+		const controller = new AbortController();
+		this.#controller = controller;
+		try {
+			const login = await this.#api.beginLogin({
+				localTokens: this.#store.auth.wechat?.token ? [this.#store.auth.wechat.token] : [],
+				signal: controller.signal
+			});
+			if (controller.signal.aborted) throw new Error("cancelled");
+			this.#qrcode = login.qrcode;
+			this.#baseUrl = "https://ilinkai.weixin.qq.com/";
+			attempt.qrCodeDataUrl = await import_lib.toDataURL(login.qrcodeUrl, {
+				margin: 1,
+				width: 280
+			});
+			attempt.verificationUrl = login.qrcodeUrl;
+			attempt.status = "pending";
+			this.#loop(attempt, controller.signal);
+			return { ...attempt };
+		} catch (error$1) {
+			attempt.status = "failed";
+			attempt.error = {
+				code: "qr-start-failed",
+				message: error$1 instanceof Error ? error$1.message : String(error$1)
+			};
+			this.#controller = null;
+			throw error$1;
+		}
+	}
+	cancel() {
+		this.#controller?.abort();
+		this.#controller = null;
+		if (this.#attempt && ![
+			"connected",
+			"failed",
+			"expired"
+		].includes(this.#attempt.status)) this.#attempt.status = "expired";
+	}
+	submitVerifyCode(code) {
+		this.#verifyCode = code.trim();
+		return this.status();
+	}
+	async #loop(attempt, signal) {
+		try {
+			while (!signal.aborted && Date.now() < attempt.expiresAt) {
+				const response = await this.#api.pollLogin({
+					qrcode: this.#qrcode,
+					baseUrl: this.#baseUrl,
+					verifyCode: this.#verifyCode,
+					signal
+				});
+				if (signal.aborted) return;
+				switch (response.status) {
+					case "wait":
+						attempt.status = "pending";
+						break;
+					case "scaned":
+						this.#verifyCode = "";
+						attempt.status = "scanned";
+						break;
+					case "need_verifycode":
+						this.#verifyCode = "";
+						attempt.status = "needs_verification";
+						attempt.verificationRequired = true;
+						break;
+					case "verify_code_blocked":
+						attempt.status = "failed";
+						attempt.error = {
+							code: "verification-blocked",
+							message: "配对码多次错误，请重新生成二维码。"
+						};
+						return;
+					case "expired":
+						attempt.status = "expired";
+						attempt.error = {
+							code: "expired",
+							message: "二维码已过期，请重新生成。"
+						};
+						return;
+					case "scaned_but_redirect":
+						if (typeof response.redirect_host === "string" && response.redirect_host.trim()) this.#baseUrl = normalizeWeixinApiBaseUrl(response.redirect_host.includes("://") ? response.redirect_host : `https://${response.redirect_host}`);
+						attempt.status = "scanned";
+						break;
+					case "binded_redirect": {
+						const existing = this.#store.auth.wechat;
+						if (existing) {
+							attempt.status = "connected";
+							attempt.accountId = existing.accountId;
+							await this.#onAuth(existing);
+						} else {
+							attempt.status = "failed";
+							attempt.error = {
+								code: "already-bound",
+								message: "该微信账号已绑定，但本机没有可恢复的凭据。"
+							};
+						}
+						return;
+					}
+					case "confirmed": {
+						const token = typeof response.bot_token === "string" ? response.bot_token.trim() : "";
+						const accountId = typeof response.ilink_bot_id === "string" ? response.ilink_bot_id.trim() : "";
+						const ownerUserId = typeof response.ilink_user_id === "string" ? response.ilink_user_id.trim() : "";
+						if (!token || !accountId || !ownerUserId) {
+							attempt.status = "failed";
+							attempt.error = {
+								code: "incomplete-login",
+								message: "微信授权成功，但返回的账号凭据不完整。"
+							};
+							return;
+						}
+						attempt.status = "connecting";
+						const baseUrl = normalizeWeixinApiBaseUrl(typeof response.baseurl === "string" && response.baseurl.trim() ? response.baseurl : this.#baseUrl);
+						const auth = {
+							botId: accountId,
+							accountId,
+							ownerUserId,
+							token,
+							baseUrl,
+							connectedAt: new Date().toISOString()
+						};
+						this.#store.auth.wechat = auth;
+						await this.#store.saveAuth();
+						await this.#onAuth(auth);
+						attempt.status = "connected";
+						attempt.accountId = accountId;
+						attempt.verificationRequired = false;
+						return;
+					}
+					default:
+						attempt.status = "failed";
+						attempt.error = {
+							code: "invalid-login-status",
+							message: "微信返回了无法识别的扫码状态。"
+						};
+						return;
+				}
+			}
+			if (!signal.aborted && attempt.status !== "connected") {
+				attempt.status = "expired";
+				attempt.error = {
+					code: "expired",
+					message: "二维码已过期，请重新生成。"
+				};
+			}
+		} catch (error$1) {
+			if (signal.aborted) return;
+			attempt.status = "failed";
+			attempt.error = {
+				code: "login-failed",
+				message: error$1 instanceof Error ? error$1.message : String(error$1)
+			};
+		}
+	}
+};
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/middleware/types.js
+async function runMiddlewareChain(middlewares, ctx) {
+	let index = -1;
+	const dispatch = async (i) => {
+		if (i <= index) throw new Error("next() called multiple times");
+		index = i;
+		if (ctx.stopped) return;
+		if (i >= middlewares.length) return;
+		const fn = middlewares[i];
+		if (!fn) return;
+		await fn(ctx, () => dispatch(i + 1));
+	};
+	await dispatch(0);
+	return !ctx.stopped;
+}
+function createMiddlewareContext$1(params) {
+	const receivedAt = Date.now();
+	let stopped = false;
+	let stopReason;
+	const ac = new AbortController();
+	const ctx = {
+		bot: params.bot,
+		message: params.message,
+		replyTarget: params.message.replyTarget,
+		state: {},
+		log: params.log,
+		stop(reason) {
+			stopped = true;
+			stopReason = reason;
+		},
+		get stopped() {
+			return stopped;
+		},
+		get stopReason() {
+			return stopReason;
+		},
+		get signal() {
+			return ac.signal;
+		},
+		abort(reason) {
+			ac.abort(reason);
+			stopped = true;
+			stopReason = reason ?? "aborted";
+		},
+		get aborted() {
+			return ac.signal.aborted;
+		},
+		receivedAt
+	};
+	return ctx;
+}
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/protocol/types.js
+var ApiError = class extends Error {
+	httpStatus;
+	path;
+	bizCode;
+	bizMessage;
+	name = "ApiError";
+	constructor(message, httpStatus, path$4, bizCode, bizMessage) {
+		super(message);
+		this.httpStatus = httpStatus;
+		this.path = path$4;
+		this.bizCode = bizCode;
+		this.bizMessage = bizMessage;
+	}
+};
+var MediaFileType;
+(function(MediaFileType$1) {
+	MediaFileType$1[MediaFileType$1["IMAGE"] = 1] = "IMAGE";
+	MediaFileType$1[MediaFileType$1["VIDEO"] = 2] = "VIDEO";
+	MediaFileType$1[MediaFileType$1["VOICE"] = 3] = "VOICE";
+	MediaFileType$1[MediaFileType$1["FILE"] = 4] = "FILE";
+})(MediaFileType || (MediaFileType = {}));
+const StreamInputMode = { REPLACE: "replace" };
+const StreamInputState = {
+	GENERATING: 1,
+	DONE: 10
+};
+const StreamContentType = { MARKDOWN: "markdown" };
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/protocol/utils/format.js
+function formatErrorMessage(err) {
+	if (err instanceof Error) {
+		let formatted = err.message || err.name || "Error";
+		let cause = err.cause;
+		const seen = new Set([err]);
+		while (cause && !seen.has(cause)) {
+			seen.add(cause);
+			if (cause instanceof Error) {
+				if (cause.message) formatted += ` | ${cause.message}`;
+				cause = cause.cause;
+			} else if (typeof cause === "string") {
+				formatted += ` | ${cause}`;
+				break;
+			} else break;
+		}
+		return formatted;
+	}
+	if (typeof err === "string") return err;
+	if (err === null || err === void 0 || typeof err === "number" || typeof err === "boolean" || typeof err === "bigint") return String(err);
+	try {
+		return JSON.stringify(err);
+	} catch {
+		return Object.prototype.toString.call(err);
+	}
+}
+function formatFileSize(bytes) {
+	if (bytes < 1024) return `${bytes} B`;
+	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
+	if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+	return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/protocol/api/api-client.js
+const DEFAULT_BASE_URL = "https://api.sgroup.qq.com";
+const DEFAULT_TIMEOUT_MS = 3e4;
+const FILE_UPLOAD_TIMEOUT_MS = 12e4;
+var ApiClient = class {
+	baseUrl;
+	defaultTimeoutMs;
+	fileUploadTimeoutMs;
+	logger;
+	resolveUserAgent;
+	constructor(config$1 = {}) {
+		this.baseUrl = config$1.baseUrl ?? DEFAULT_BASE_URL;
+		this.defaultTimeoutMs = config$1.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS;
+		this.fileUploadTimeoutMs = config$1.fileUploadTimeoutMs ?? FILE_UPLOAD_TIMEOUT_MS;
+		this.logger = config$1.logger;
+		const ua = config$1.userAgent ?? "qqbot-nodejs/unknown";
+		this.resolveUserAgent = typeof ua === "function" ? ua : () => ua;
+	}
+	async request(accessToken, method, path$4, body, options) {
+		const url = `${this.baseUrl}${path$4}`;
+		const headers = {
+			Authorization: `QQBot ${accessToken}`,
+			"Content-Type": "application/json",
+			"User-Agent": this.resolveUserAgent()
+		};
+		const isFileUpload = options?.uploadRequest === true || path$4.includes("/files") || path$4.includes("/upload_prepare") || path$4.includes("/upload_part_finish");
+		const timeout = options?.timeoutMs ?? (isFileUpload ? this.fileUploadTimeoutMs : this.defaultTimeoutMs);
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), timeout);
+		const fetchInit = {
+			method,
+			headers,
+			signal: controller.signal
+		};
+		if (body) fetchInit.body = JSON.stringify(body);
+		this.logger?.debug?.(`[qqbot:api] >>> ${method} ${url} (timeout: ${timeout}ms)`);
+		if (body && this.logger?.debug) {
+			const logBody = { ...body };
+			for (const key of options?.redactBodyKeys ?? ["file_data"]) if (typeof logBody[key] === "string") logBody[key] = `<redacted ${logBody[key].length} chars>`;
+			this.logger.debug(`[qqbot:api] >>> Body: ${JSON.stringify(logBody)}`);
+		}
+		let res;
+		try {
+			res = await fetch(url, fetchInit);
+		} catch (err) {
+			clearTimeout(timeoutId);
+			if (err instanceof Error && err.name === "AbortError") {
+				this.logger?.error?.(`[qqbot:api] <<< Timeout after ${timeout}ms`);
+				throw new ApiError(`Request timeout [${path$4}]: exceeded ${timeout}ms`, 0, path$4);
+			}
+			this.logger?.error?.(`[qqbot:api] <<< Network error: ${formatErrorMessage(err)}`);
+			throw new ApiError(`Network error [${path$4}]: ${formatErrorMessage(err)}`, 0, path$4);
+		} finally {
+			clearTimeout(timeoutId);
+		}
+		const traceId = res.headers.get("x-tps-trace-id") ?? "";
+		this.logger?.info?.(`[qqbot:api] <<< Status: ${res.status} ${res.statusText}${traceId ? ` | TraceId: ${traceId}` : ""}`);
+		let rawBody;
+		try {
+			rawBody = await res.text();
+		} catch (err) {
+			throw new ApiError(`Failed to read response [${path$4}]: ${formatErrorMessage(err)}`, res.status, path$4);
+		}
+		this.logger?.debug?.(`[qqbot:api] <<< Body: ${rawBody}`);
+		const contentType = res.headers.get("content-type") ?? "";
+		const isHtmlResponse = contentType.includes("text/html") || rawBody.trimStart().startsWith("<");
+		if (!res.ok) {
+			if (isHtmlResponse) {
+				const statusHint = res.status === 502 || res.status === 503 || res.status === 504 ? "调用发生异常，请稍候重试" : res.status === 429 ? "请求过于频繁，已被限流" : `开放平台返回 HTTP ${res.status}`;
+				throw new ApiError(`${statusHint}（${path$4}），请稍后重试`, res.status, path$4);
+			}
+			try {
+				const error$1 = JSON.parse(rawBody);
+				const bizCode = error$1.code ?? error$1.err_code;
+				throw new ApiError(`API Error [${path$4}]: ${error$1.message ?? rawBody}`, res.status, path$4, bizCode, error$1.message);
+			} catch (parseErr) {
+				if (parseErr instanceof ApiError) throw parseErr;
+				throw new ApiError(`API Error [${path$4}] HTTP ${res.status}: ${rawBody.slice(0, 200)}`, res.status, path$4);
+			}
+		}
+		if (isHtmlResponse) throw new ApiError(`QQ 服务端返回了非 JSON 响应（${path$4}），可能是临时故障，请稍后重试`, res.status, path$4);
+		try {
+			return JSON.parse(rawBody);
+		} catch {
+			throw new ApiError(`开放平台响应格式异常（${path$4}），请稍后重试`, res.status, path$4);
+		}
+	}
+};
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/protocol/api/retry.js
+async function withRetry(fn, policy, persistentPolicy, logger) {
+	let lastError = null;
+	for (let attempt = 0; attempt <= policy.maxRetries; attempt++) try {
+		return await fn();
+	} catch (err) {
+		lastError = err instanceof Error ? err : new Error(formatErrorMessage(err));
+		if (persistentPolicy?.shouldPersistRetry(lastError)) {
+			(logger?.warn ?? logger?.error)?.(`[qqbot:retry] Hit persistent-retry trigger, entering persistent loop (timeout=${persistentPolicy.timeoutMs / 1e3}s)`);
+			return await persistentRetryLoop(fn, persistentPolicy, logger);
+		}
+		if (policy.shouldRetry?.(lastError, attempt) === false) throw lastError;
+		if (attempt < policy.maxRetries) {
+			const delay = policy.backoff === "exponential" ? policy.baseDelayMs * 2 ** attempt : policy.baseDelayMs;
+			logger?.debug?.(`[qqbot:retry] Attempt ${attempt + 1} failed, retrying in ${delay}ms: ${lastError.message.slice(0, 100)}`);
+			await sleep$3(delay);
+		}
+	}
+	throw lastError;
+}
+async function persistentRetryLoop(fn, policy, logger) {
+	const deadline = Date.now() + policy.timeoutMs;
+	let attempt = 0;
+	let lastError = null;
+	while (Date.now() < deadline) try {
+		const result = await fn();
+		logger?.debug?.(`[qqbot:retry] Persistent retry succeeded after ${attempt} retries`);
+		return result;
+	} catch (err) {
+		lastError = err instanceof Error ? err : new Error(formatErrorMessage(err));
+		if (!policy.shouldPersistRetry(lastError)) {
+			logger?.error?.(`[qqbot:retry] Persistent retry: error is no longer retryable, aborting`);
+			throw lastError;
+		}
+		attempt++;
+		const remaining = deadline - Date.now();
+		if (remaining <= 0) break;
+		const actualDelay = Math.min(policy.intervalMs, remaining);
+		(logger?.warn ?? logger?.error)?.(`[qqbot:retry] Persistent retry #${attempt}: retrying in ${actualDelay}ms (remaining=${Math.round(remaining / 1e3)}s)`);
+		await sleep$3(actualDelay);
+	}
+	logger?.error?.(`[qqbot:retry] Persistent retry timed out after ${policy.timeoutMs / 1e3}s (${attempt} attempts)`);
+	throw lastError ?? new Error(`Persistent retry timed out (${policy.timeoutMs / 1e3}s)`);
+}
+function sleep$3(ms) {
+	return new Promise((resolve$1) => setTimeout(resolve$1, ms));
+}
+const UPLOAD_RETRY_POLICY = {
+	maxRetries: 2,
+	baseDelayMs: 1e3,
+	backoff: "exponential",
+	shouldRetry: (error$1) => {
+		const msg = error$1.message;
+		return !(msg.includes("400") || msg.includes("401") || msg.includes("Invalid") || msg.includes("timeout") || msg.includes("Timeout"));
+	}
+};
+const COMPLETE_UPLOAD_RETRY_POLICY = {
+	maxRetries: 2,
+	baseDelayMs: 2e3,
+	backoff: "exponential"
+};
+const PART_FINISH_RETRY_POLICY = {
+	maxRetries: 2,
+	baseDelayMs: 1e3,
+	backoff: "exponential"
+};
+function buildPartFinishPersistentPolicy(retryTimeoutMs, retryableCodes = PART_FINISH_RETRYABLE_CODES) {
+	return {
+		timeoutMs: retryTimeoutMs ?? 2 * 60 * 1e3,
+		intervalMs: 1e3,
+		shouldPersistRetry: (error$1) => {
+			if (retryableCodes.size === 0) return false;
+			if ("bizCode" in error$1 && typeof error$1.bizCode === "number") return retryableCodes.has(error$1.bizCode);
+			return false;
+		}
+	};
+}
+const PART_FINISH_RETRYABLE_CODES = new Set([40093001]);
+const UPLOAD_PREPARE_FALLBACK_CODE = 40093002;
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/protocol/api/routes.js
+function messagePath(scope, targetId) {
+	return scope === "c2c" ? `/v2/users/${targetId}/messages` : `/v2/groups/${targetId}/messages`;
+}
+function channelMessagePath(channelId) {
+	return `/channels/${channelId}/messages`;
+}
+function dmMessagePath(guildId) {
+	return `/dms/${guildId}/messages`;
+}
+function mediaUploadPath(scope, targetId) {
+	return scope === "c2c" ? `/v2/users/${targetId}/files` : `/v2/groups/${targetId}/files`;
+}
+function uploadPreparePath(scope, targetId) {
+	return scope === "c2c" ? `/v2/users/${targetId}/upload_prepare` : `/v2/groups/${targetId}/upload_prepare`;
+}
+function uploadPartFinishPath(scope, targetId) {
+	return scope === "c2c" ? `/v2/users/${targetId}/upload_part_finish` : `/v2/groups/${targetId}/upload_part_finish`;
+}
+function uploadCompletePath(scope, targetId) {
+	return mediaUploadPath(scope, targetId);
+}
+function streamMessagePath(openid) {
+	return `/v2/users/${openid}/stream_messages`;
+}
+function gatewayPath() {
+	return "/gateway";
+}
+function interactionPath(interactionId) {
+	return `/interactions/${interactionId}`;
+}
+function getNextMsgSeq(_msgId) {
+	const timePart = Date.now() % 1e8;
+	const random = Math.floor(Math.random() * 65536);
+	return (timePart ^ random) % 65536;
+}
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/protocol/api/media-chunked.js
+var UploadDailyLimitExceededError = class extends Error {
+	filePath;
+	fileSize;
+	name = "UploadDailyLimitExceededError";
+	constructor(filePath, fileSize, originalMessage) {
+		super(originalMessage);
+		this.filePath = filePath;
+		this.fileSize = fileSize;
+	}
+};
+const DEFAULT_CONCURRENT_PARTS = 1;
+const MAX_CONCURRENT_PARTS = 10;
+const MAX_PART_FINISH_RETRY_TIMEOUT_MS = 10 * 60 * 1e3;
+const PART_UPLOAD_TIMEOUT_MS = 3e5;
+const MD5_10M_SIZE = 10002432;
+var ChunkedMediaApi = class {
+	client;
+	tokenManager;
+	logger;
+	cache;
+	sanitize;
+	constructor(client, tokenManager, config$1 = {}) {
+		this.client = client;
+		this.tokenManager = tokenManager;
+		this.logger = config$1.logger;
+		this.cache = config$1.uploadCache;
+		this.sanitize = config$1.sanitizeFileName ?? ((n) => n);
+	}
+	async uploadChunked(opts) {
+		const prefix = opts.logPrefix ?? "[qqbot:chunked-upload]";
+		const input = resolveSource(opts.source, opts.fileName);
+		const displayName = input.fileName;
+		const fileSize = input.size;
+		const pathLabel = input.kind === "localPath" ? input.path : "<buffer>";
+		this.logger?.info?.(`${prefix} Start: file=${displayName} size=${formatFileSize(fileSize)} type=${opts.fileType}`);
+		const hashes = await computeHashes(input);
+		this.logger?.debug?.(`${prefix} hashes: md5=${hashes.md5} sha1=${hashes.sha1} md5_10m=${hashes.md5_10m}`);
+		if (this.cache) {
+			const cached$1 = this.cache.get(hashes.md5, opts.scope, opts.targetId, opts.fileType);
+			if (cached$1) {
+				this.logger?.info?.(`${prefix} cache HIT (md5=${hashes.md5.slice(0, 8)}) — skipping chunked upload`);
+				return {
+					file_uuid: "",
+					file_info: cached$1,
+					ttl: 0
+				};
+			}
+		}
+		const fileNameForPrepare = opts.fileType === MediaFileType.FILE ? this.sanitize(displayName) : displayName;
+		const prepareResp = await this.callUploadPrepare(opts, fileNameForPrepare, fileSize, hashes, pathLabel);
+		const { upload_id, parts } = prepareResp;
+		const block_size = prepareResp.block_size;
+		const maxConcurrent = Math.min(prepareResp.concurrency ? prepareResp.concurrency : DEFAULT_CONCURRENT_PARTS, MAX_CONCURRENT_PARTS);
+		const retryTimeoutMs = prepareResp.retry_timeout ? Math.min(prepareResp.retry_timeout * 1e3, MAX_PART_FINISH_RETRY_TIMEOUT_MS) : void 0;
+		this.logger?.info?.(`${prefix} prepared: upload_id=${upload_id} block=${formatFileSize(block_size)} parts=${parts.length} concurrency=${maxConcurrent}`);
+		let completedParts = 0;
+		let uploadedBytes = 0;
+		const uploadPart = async (part) => {
+			const partIndex = part.index;
+			const offset = (partIndex - 1) * block_size;
+			const length = Math.min(block_size, fileSize - offset);
+			const partBuffer = await readPart(input, offset, length);
+			const md5Hex = crypto$3.createHash("md5").update(partBuffer).digest("hex");
+			this.logger?.debug?.(`${prefix} part ${partIndex}/${parts.length}: ${formatFileSize(length)} offset=${offset} md5=${md5Hex}`);
+			await putToPresignedUrl(part.presigned_url, partBuffer, partIndex, parts.length, this.logger, prefix);
+			await this.callUploadPartFinish(opts, upload_id, partIndex, length, md5Hex, retryTimeoutMs);
+			completedParts++;
+			uploadedBytes += length;
+			this.logger?.info?.(`${prefix} part ${partIndex}/${parts.length} done (${completedParts}/${parts.length})`);
+			opts.onProgress?.({
+				completedParts,
+				totalParts: parts.length,
+				uploadedBytes,
+				totalBytes: fileSize
+			});
+		};
+		await runWithConcurrency(parts.map((part) => () => uploadPart(part)), maxConcurrent);
+		this.logger?.info?.(`${prefix} all parts uploaded, completing...`);
+		const result = await this.callCompleteUpload(opts, upload_id);
+		this.logger?.info?.(`${prefix} completed: file_uuid=${result.file_uuid} ttl=${result.ttl}s`);
+		if (this.cache && result.file_info && result.ttl > 0) this.cache.set(hashes.md5, opts.scope, opts.targetId, opts.fileType, result.file_info, result.file_uuid, result.ttl);
+		return result;
+	}
+	async callUploadPrepare(opts, fileName, fileSize, hashes, pathLabel) {
+		const token = await this.tokenManager.getAccessToken(opts.creds.appId, opts.creds.clientSecret);
+		const path$4 = uploadPreparePath(opts.scope, opts.targetId);
+		try {
+			return await this.client.request(token, "POST", path$4, {
+				file_type: opts.fileType,
+				file_name: fileName,
+				file_size: fileSize,
+				md5: hashes.md5,
+				sha1: hashes.sha1,
+				md5_10m: hashes.md5_10m
+			}, { uploadRequest: true });
+		} catch (err) {
+			if (err instanceof ApiError && err.bizCode === UPLOAD_PREPARE_FALLBACK_CODE) throw new UploadDailyLimitExceededError(pathLabel, fileSize, err.message);
+			throw err;
+		}
+	}
+	async callUploadPartFinish(opts, uploadId, partIndex, blockSize, md5, retryTimeoutMs) {
+		const persistentPolicy = buildPartFinishPersistentPolicy(retryTimeoutMs);
+		const path$4 = uploadPartFinishPath(opts.scope, opts.targetId);
+		await withRetry(async () => {
+			const token = await this.tokenManager.getAccessToken(opts.creds.appId, opts.creds.clientSecret);
+			return this.client.request(token, "POST", path$4, {
+				upload_id: uploadId,
+				part_index: partIndex,
+				block_size: blockSize,
+				md5
+			}, { uploadRequest: true });
+		}, PART_FINISH_RETRY_POLICY, persistentPolicy, this.logger);
+	}
+	async callCompleteUpload(opts, uploadId) {
+		const path$4 = uploadCompletePath(opts.scope, opts.targetId);
+		return withRetry(async () => {
+			const token = await this.tokenManager.getAccessToken(opts.creds.appId, opts.creds.clientSecret);
+			return this.client.request(token, "POST", path$4, { upload_id: uploadId }, { uploadRequest: true });
+		}, COMPLETE_UPLOAD_RETRY_POLICY, void 0, this.logger);
+	}
+};
+function resolveSource(source, fileNameOverride) {
+	if (source.kind === "localPath") {
+		const inferredName = source.path.split(/[/\\]/).pop() || "file";
+		return {
+			kind: "localPath",
+			path: source.path,
+			size: source.size,
+			fileName: fileNameOverride ?? inferredName
+		};
+	}
+	return {
+		kind: "buffer",
+		buffer: source.buffer,
+		size: source.buffer.length,
+		fileName: fileNameOverride ?? source.fileName ?? "file"
+	};
+}
+async function readPart(input, offset, length) {
+	if (input.kind === "buffer") return input.buffer.subarray(offset, offset + length);
+	const handle = await fs$3.promises.open(input.path, "r");
+	try {
+		const buf = Buffer.alloc(length);
+		const { bytesRead } = await handle.read(buf, 0, length, offset);
+		return bytesRead < length ? buf.subarray(0, bytesRead) : buf;
+	} finally {
+		await handle.close();
+	}
+}
+async function computeHashes(input) {
+	if (input.kind === "buffer") {
+		const md5 = crypto$3.createHash("md5").update(input.buffer).digest("hex");
+		const sha1 = crypto$3.createHash("sha1").update(input.buffer).digest("hex");
+		const md5_10m = input.size > MD5_10M_SIZE ? crypto$3.createHash("md5").update(input.buffer.subarray(0, MD5_10M_SIZE)).digest("hex") : md5;
+		return {
+			md5,
+			sha1,
+			md5_10m
+		};
+	}
+	return new Promise((resolve$1, reject) => {
+		const md5 = crypto$3.createHash("md5");
+		const sha1 = crypto$3.createHash("sha1");
+		const md5_10m = crypto$3.createHash("md5");
+		let consumed = 0;
+		const needsMd5_10m = input.size > MD5_10M_SIZE;
+		const stream = fs$3.createReadStream(input.path);
+		stream.on("data", (chunk) => {
+			const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+			md5.update(buf);
+			sha1.update(buf);
+			if (needsMd5_10m) {
+				const remaining = MD5_10M_SIZE - consumed;
+				if (remaining > 0) md5_10m.update(remaining >= buf.length ? buf : buf.subarray(0, remaining));
+			}
+			consumed += buf.length;
+		});
+		stream.on("end", () => {
+			const md5Hex = md5.digest("hex");
+			const sha1Hex = sha1.digest("hex");
+			resolve$1({
+				md5: md5Hex,
+				sha1: sha1Hex,
+				md5_10m: needsMd5_10m ? md5_10m.digest("hex") : md5Hex
+			});
+		});
+		stream.on("error", reject);
+	});
+}
+const PART_UPLOAD_MAX_RETRIES = 2;
+/**
+* PUT data to COS via raw https.request, bypassing fetch/undici.
+* Used because Node.js fetch can fail unpredictably in long-running processes.
+*/
+function putToCOS(presignedUrl, data, signal) {
+	return new Promise((resolve$1, reject) => {
+		const parsed = new URL(presignedUrl);
+		const req = https$1.request(parsed, {
+			method: "PUT",
+			headers: { "Content-Length": String(data.length) },
+			signal
+		}, (res) => {
+			const chunks = [];
+			res.on("data", (c) => chunks.push(c));
+			res.on("end", () => {
+				const etag = (res.headers.etag ?? "").replace(/"/g, "");
+				const requestId = res.headers["x-cos-request-id"]?.toString() ?? "-";
+				if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) resolve$1({
+					status: res.statusCode,
+					etag,
+					requestId
+				});
+				else reject(new Error(`COS PUT failed: ${res.statusCode} ${res.statusMessage ?? ""} - ${Buffer.concat(chunks).toString().slice(0, 120)}`));
+			});
+			res.on("error", reject);
+		});
+		req.on("error", (err) => {
+			reject(err);
+		});
+		req.end(data);
+	});
+}
+async function putToPresignedUrl(presignedUrl, data, partIndex, totalParts, logger, prefix) {
+	let lastError = null;
+	for (let attempt = 0; attempt <= PART_UPLOAD_MAX_RETRIES; attempt++) {
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), PART_UPLOAD_TIMEOUT_MS);
+		try {
+			const startTime = Date.now();
+			const { etag, requestId } = await putToCOS(presignedUrl, data, controller.signal);
+			const elapsed = Date.now() - startTime;
+			logger?.debug?.(`${prefix} PUT part ${partIndex}/${totalParts} OK (${elapsed}ms ETag=${etag} requestId=${requestId})`);
+			return;
+		} catch (err) {
+			lastError = err instanceof Error ? err : new Error(String(err));
+			const code = err.code ?? "none";
+			const causeMsg = (() => {
+				const c = err instanceof Error ? err.cause : void 0;
+				return c instanceof Error ? c.message : "none";
+			})();
+			if (lastError.name === "AbortError") lastError = new Error(`Part ${partIndex}/${totalParts} upload timeout after ${PART_UPLOAD_TIMEOUT_MS}ms`);
+			if (attempt < PART_UPLOAD_MAX_RETRIES) {
+				const delay = 1e3 * 2 ** attempt;
+				(logger?.warn ?? logger?.error)?.(`${prefix} PUT part ${partIndex}/${totalParts} attempt ${attempt + 1} failed (${lastError.message.slice(0, 120)} code=${code} cause=${causeMsg}), retrying in ${delay}ms`);
+				await sleep$2(delay);
+			} else (logger?.error)?.(`${prefix} PUT part ${partIndex}/${totalParts} all retries exhausted (code=${code} cause=${causeMsg})`);
+		} finally {
+			clearTimeout(timeoutId);
+		}
+	}
+	throw lastError ?? new Error(`Part ${partIndex}/${totalParts} upload failed`);
+}
+async function runWithConcurrency(tasks, maxConcurrent) {
+	for (let i = 0; i < tasks.length; i += maxConcurrent) {
+		const batch = tasks.slice(i, i + maxConcurrent);
+		await Promise.all(batch.map((task) => task()));
+	}
+}
+function sleep$2(ms) {
+	return new Promise((resolve$1) => setTimeout(resolve$1, ms));
+}
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/protocol/utils/file-utils.js
+const MAX_UPLOAD_SIZE = 20 * 1024 * 1024;
+const CHUNKED_UPLOAD_MAX_SIZE = 100 * 1024 * 1024;
+const LARGE_FILE_THRESHOLD = 5 * 1024 * 1024;
+const MEDIA_FILE_TYPE_INFO = {
+	[MediaFileType.IMAGE]: {
+		maxSize: 30 * 1024 * 1024,
+		name: "image"
+	},
+	[MediaFileType.VIDEO]: {
+		maxSize: 100 * 1024 * 1024,
+		name: "video"
+	},
+	[MediaFileType.VOICE]: {
+		maxSize: 20 * 1024 * 1024,
+		name: "voice"
+	},
+	[MediaFileType.FILE]: {
+		maxSize: 100 * 1024 * 1024,
+		name: "file"
+	}
+};
+function sanitizeFileName(name) {
+	if (!name) return "file";
+	const cleaned = name.replace(/[\\/:*?"<>|]/g, "_").replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim();
+	return cleaned || "file";
+}
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/protocol/api/media.js
+/** base64 编码后的大小上限检查（4/3 × 原始大小 + padding，取 1.4 倍系数） */
+const MAX_BASE64_CHECK_SIZE = Math.ceil(MAX_UPLOAD_SIZE * 1.4);
+function formatUploadSize() {
+	return formatFileSize(MAX_UPLOAD_SIZE);
+}
+var MediaApi = class {
+	client;
+	tokenManager;
+	logger;
+	cache;
+	sanitize;
+	constructor(client, tokenManager, config$1 = {}) {
+		this.client = client;
+		this.tokenManager = tokenManager;
+		this.logger = config$1.logger;
+		this.cache = config$1.uploadCache;
+		this.sanitize = config$1.sanitizeFileName ?? ((n) => n);
+	}
+	/**
+	* Upload media via base64, URL, buffer, or local file path to a C2C or Group target.
+	*/
+	async uploadMedia(scope, targetId, fileType, creds, opts) {
+		const sources = [
+			opts.url,
+			opts.fileData,
+			opts.buffer,
+			opts.localPath
+		].filter((v) => v !== void 0);
+		if (sources.length === 0) throw new Error(`uploadMedia: one of url/fileData/buffer/localPath is required`);
+		if (sources.length > 1) throw new Error(`uploadMedia: url/fileData/buffer/localPath are mutually exclusive (got ${sources.length})`);
+		let fileData = opts.fileData;
+		if (opts.buffer) fileData = opts.buffer.toString("base64");
+		else if (opts.localPath) {
+			const buf = await fs$2.promises.readFile(opts.localPath);
+			fileData = buf.toString("base64");
+		}
+		if (fileData && fileData.length > MAX_BASE64_CHECK_SIZE) {
+			const sizeMB = (fileData.length / (1024 * 1024)).toFixed(1);
+			throw new Error(`fileData too large (${sizeMB}MB decoded); QQ Bot single upload limit is ${formatUploadSize()}`);
+		}
+		if (fileData && this.cache) {
+			const hash = this.cache.computeHash(fileData);
+			const cached$1 = this.cache.get(hash, scope, targetId, fileType);
+			if (cached$1) return {
+				file_uuid: "",
+				file_info: cached$1,
+				ttl: 0
+			};
+		}
+		const body = {
+			file_type: fileType,
+			srv_send_msg: opts.srvSendMsg ?? false
+		};
+		if (opts.url) body.url = opts.url;
+		else if (fileData) body.file_data = fileData;
+		if (fileType === MediaFileType.FILE && opts.fileName) body.file_name = this.sanitize(opts.fileName);
+		const token = await this.tokenManager.getAccessToken(creds.appId, creds.clientSecret);
+		const path$4 = mediaUploadPath(scope, targetId);
+		const result = await withRetry(() => this.client.request(token, "POST", path$4, body, {
+			redactBodyKeys: ["file_data"],
+			uploadRequest: true
+		}), UPLOAD_RETRY_POLICY, void 0, this.logger);
+		if (fileData && result.file_info && result.ttl > 0 && this.cache) {
+			const hash = this.cache.computeHash(fileData);
+			this.cache.set(hash, scope, targetId, fileType, result.file_info, result.file_uuid, result.ttl);
+		}
+		return result;
+	}
+	/**
+	* Send a media message (post upload) to a C2C or Group target.
+	*/
+	async sendMediaMessage(scope, targetId, fileInfo, creds, opts) {
+		const token = await this.tokenManager.getAccessToken(creds.appId, creds.clientSecret);
+		const msgSeq = opts?.msgId ? getNextMsgSeq(opts.msgId) : 1;
+		const path$4 = messagePath(scope, targetId);
+		return this.client.request(token, "POST", path$4, {
+			msg_type: 7,
+			media: { file_info: fileInfo },
+			msg_seq: msgSeq,
+			...opts?.content ? { content: opts.content } : {},
+			...opts?.msgId ? { msg_id: opts.msgId } : {}
+		});
+	}
+};
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/protocol/api/messages.js
+var MessageApi = class {
+	client;
+	tokenManager;
+	markdownSupport;
+	logger;
+	messageSentHook = null;
+	constructor(client, tokenManager, config$1) {
+		this.client = client;
+		this.tokenManager = tokenManager;
+		this.markdownSupport = config$1.markdownSupport;
+		this.logger = config$1.logger;
+	}
+	onMessageSent(callback) {
+		this.messageSentHook = callback;
+	}
+	notifyMessageSent(refIdx, meta$2) {
+		if (this.messageSentHook) try {
+			this.messageSentHook(refIdx, meta$2);
+		} catch (err) {
+			this.logger?.error?.(`[qqbot:messages] onMessageSent hook error: ${formatErrorMessage(err)}`);
+		}
+	}
+	async sendMessage(scope, targetId, content, creds, opts) {
+		const token = await this.tokenManager.getAccessToken(creds.appId, creds.clientSecret);
+		const msgSeq = opts?.msgId ? getNextMsgSeq(opts.msgId) : 1;
+		const body = this.buildMessageBody(content, opts?.msgId, msgSeq, opts?.messageReference, opts?.inlineKeyboard);
+		const path$4 = messagePath(scope, targetId);
+		return this.sendAndNotify(creds.appId, token, "POST", path$4, body, { text: content });
+	}
+	async sendProactiveMessage(scope, targetId, content, creds) {
+		if (!content?.trim()) throw new Error("Proactive message content must not be empty");
+		const token = await this.tokenManager.getAccessToken(creds.appId, creds.clientSecret);
+		const body = this.buildProactiveBody(content);
+		const path$4 = messagePath(scope, targetId);
+		return this.sendAndNotify(creds.appId, token, "POST", path$4, body, { text: content });
+	}
+	async sendChannelMessage(opts) {
+		const token = await this.tokenManager.getAccessToken(opts.creds.appId, opts.creds.clientSecret);
+		return this.client.request(token, "POST", channelMessagePath(opts.channelId), {
+			content: opts.content,
+			...opts.msgId ? { msg_id: opts.msgId } : {}
+		});
+	}
+	async sendDmMessage(opts) {
+		const token = await this.tokenManager.getAccessToken(opts.creds.appId, opts.creds.clientSecret);
+		return this.client.request(token, "POST", dmMessagePath(opts.guildId), {
+			content: opts.content,
+			...opts.msgId ? { msg_id: opts.msgId } : {}
+		});
+	}
+	/** Send a typing indicator to a C2C user. */
+	async sendInputNotify(opts) {
+		const inputSecond = opts.inputSecond ?? 60;
+		const token = await this.tokenManager.getAccessToken(opts.creds.appId, opts.creds.clientSecret);
+		const msgSeq = opts.msgId ? getNextMsgSeq(opts.msgId) : 1;
+		const response = await this.client.request(token, "POST", messagePath("c2c", opts.openid), {
+			msg_type: 6,
+			input_notify: {
+				input_type: 1,
+				input_second: inputSecond
+			},
+			msg_seq: msgSeq,
+			...opts.msgId ? { msg_id: opts.msgId } : {}
+		});
+		return { refIdx: response.ext_info?.ref_idx };
+	}
+	async acknowledgeInteraction(interactionId, creds, code = 0, data) {
+		const token = await this.tokenManager.getAccessToken(creds.appId, creds.clientSecret);
+		const body = { code };
+		if (data) body.data = data;
+		await this.client.request(token, "PUT", interactionPath(interactionId), body);
+	}
+	/** Get the WebSocket gateway URL for the bot. */
+	async getGatewayUrl(creds) {
+		const token = await this.tokenManager.getAccessToken(creds.appId, creds.clientSecret);
+		const data = await this.client.request(token, "GET", gatewayPath());
+		return data.url;
+	}
+	/**
+	* Send a C2C stream message chunk (`/v2/users/{openid}/stream_messages`).
+	* Only supported for one-to-one chats.
+	*/
+	async sendC2CStreamMessage(creds, openid, req) {
+		const token = await this.tokenManager.getAccessToken(creds.appId, creds.clientSecret);
+		const path$4 = streamMessagePath(openid);
+		const body = {
+			input_mode: req.input_mode,
+			input_state: req.input_state,
+			content_type: req.content_type,
+			content_raw: req.content_raw,
+			event_id: req.event_id,
+			msg_id: req.msg_id,
+			msg_seq: req.msg_seq,
+			index: req.index
+		};
+		if (req.stream_msg_id) body.stream_msg_id = req.stream_msg_id;
+		return this.client.request(token, "POST", path$4, body);
+	}
+	/**
+	* Raw message send — transparently forwards all fields to the QQ Open Platform API.
+	*
+	* This is the "escape hatch" for any message type not covered by the
+	* higher-level helpers. Fields like `msg_type`, `markdown`, `ark`, `embed`,
+	* `keyboard`, `media`, `message_reference`, `is_wakeup` etc. are passed through
+	* as-is to `/v2/users/{openid}/messages` or `/v2/groups/{group_openid}/messages`.
+	*
+	* Auto-injects `msg_seq` if not provided.
+	*/
+	async sendRaw(scope, targetId, creds, body) {
+		const token = await this.tokenManager.getAccessToken(creds.appId, creds.clientSecret);
+		const path$4 = messagePath(scope, targetId);
+		if (body.msg_seq === void 0) body.msg_seq = body.msg_id ? getNextMsgSeq(body.msg_id) : 1;
+		if (body.msg_type === void 0) if (body.markdown) body.msg_type = 2;
+		else if (body.ark) body.msg_type = 3;
+		else if (body.embed) body.msg_type = 4;
+		else if (body.media) body.msg_type = 7;
+		else body.msg_type = 0;
+		const cleaned = Object.fromEntries(Object.entries(body).filter(([, v]) => v !== void 0));
+		return this.sendAndNotify(creds.appId, token, "POST", path$4, cleaned, { text: cleaned.content ?? cleaned.markdown?.content });
+	}
+	/**
+	* Send a message to a guild text channel.
+	* Supports content, keyboard, message_reference, and arbitrary extra fields.
+	*/
+	async sendChannelMessageRaw(channelId, creds, body) {
+		const token = await this.tokenManager.getAccessToken(creds.appId, creds.clientSecret);
+		const cleaned = Object.fromEntries(Object.entries(body).filter(([, v]) => v !== void 0));
+		return this.client.request(token, "POST", channelMessagePath(channelId), cleaned);
+	}
+	/**
+	* Send a DM (direct message) in a guild.
+	*/
+	async sendDmMessageRaw(guildId, creds, body) {
+		const token = await this.tokenManager.getAccessToken(creds.appId, creds.clientSecret);
+		const cleaned = Object.fromEntries(Object.entries(body).filter(([, v]) => v !== void 0));
+		return this.client.request(token, "POST", dmMessagePath(guildId), cleaned);
+	}
+	/**
+	* Recall (delete) a message.
+	*/
+	async recallMessage(scope, targetId, messageId, creds) {
+		const token = await this.tokenManager.getAccessToken(creds.appId, creds.clientSecret);
+		const path$4 = `${messagePath(scope, targetId)}/${messageId}`;
+		await this.client.request(token, "DELETE", path$4);
+	}
+	async sendAndNotify(_appId, accessToken, method, path$4, body, meta$2) {
+		const result = await this.client.request(accessToken, method, path$4, body);
+		if (result.ext_info?.ref_idx && this.messageSentHook) try {
+			this.messageSentHook(result.ext_info.ref_idx, meta$2);
+		} catch (err) {
+			this.logger?.error?.(`[qqbot:messages] onMessageSent hook error: ${formatErrorMessage(err)}`);
+		}
+		return result;
+	}
+	buildMessageBody(content, msgId, msgSeq, messageReference, inlineKeyboard) {
+		const body = this.markdownSupport ? {
+			markdown: { content },
+			msg_type: 2,
+			msg_seq: msgSeq
+		} : {
+			content,
+			msg_type: 0,
+			msg_seq: msgSeq
+		};
+		if (msgId) body.msg_id = msgId;
+		if (messageReference && !this.markdownSupport) body.message_reference = { message_id: messageReference };
+		if (inlineKeyboard) body.keyboard = inlineKeyboard;
+		return body;
+	}
+	buildProactiveBody(content) {
+		return this.markdownSupport ? {
+			markdown: { content },
+			msg_type: 2
+		} : {
+			content,
+			msg_type: 0
+		};
+	}
+};
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/protocol/api/token.js
+const DEFAULT_TOKEN_BASE_URL = "https://bots.qq.com";
+const TOKEN_PATH = "/app/getAppAccessToken";
+const DEFAULT_TOKEN_TIMEOUT_MS = 1e4;
+const FIVE_MINUTES_MS = 5 * 60 * 1e3;
+var TokenManager = class {
+	cache = new Map();
+	fetchPromises = new Map();
+	refreshControllers = new Map();
+	logger;
+	resolveUserAgent;
+	baseUrl;
+	constructor(config$1) {
+		this.logger = config$1?.logger;
+		const ua = config$1?.userAgent ?? "qqbot-nodejs/unknown";
+		this.resolveUserAgent = typeof ua === "function" ? ua : () => ua;
+		this.baseUrl = config$1?.baseUrl ?? DEFAULT_TOKEN_BASE_URL;
+	}
+	async getAccessToken(appId, clientSecret) {
+		const normalizedId = appId.trim();
+		const cached$1 = this.cache.get(normalizedId);
+		const refreshAheadMs = cached$1 ? Math.min(FIVE_MINUTES_MS, (cached$1.expiresAt - Date.now()) / 3) : 0;
+		if (cached$1 && Date.now() < cached$1.expiresAt - refreshAheadMs) return cached$1.token;
+		let pending = this.fetchPromises.get(normalizedId);
+		if (pending) {
+			this.logger?.debug?.(`[qqbot:token:${normalizedId}] Fetch in progress, reusing promise`);
+			return pending;
+		}
+		pending = (async () => {
+			try {
+				return await this.doFetchToken(normalizedId, clientSecret);
+			} finally {
+				this.fetchPromises.delete(normalizedId);
+			}
+		})();
+		this.fetchPromises.set(normalizedId, pending);
+		return pending;
+	}
+	clearCache(appId) {
+		if (appId) {
+			this.cache.delete(appId.trim());
+			this.logger?.debug?.(`[qqbot:token:${appId}] Cache cleared`);
+		} else {
+			this.cache.clear();
+			this.logger?.debug?.(`[token] All caches cleared`);
+		}
+	}
+	getStatus(appId) {
+		if (this.fetchPromises.has(appId)) return {
+			status: "refreshing",
+			expiresAt: this.cache.get(appId)?.expiresAt ?? null
+		};
+		const cached$1 = this.cache.get(appId);
+		if (!cached$1) return {
+			status: "none",
+			expiresAt: null
+		};
+		const remaining = cached$1.expiresAt - Date.now();
+		const isValid = remaining > Math.min(FIVE_MINUTES_MS, remaining / 3);
+		return {
+			status: isValid ? "valid" : "expired",
+			expiresAt: cached$1.expiresAt
+		};
+	}
+	startBackgroundRefresh(appId, clientSecret, options) {
+		if (this.refreshControllers.has(appId)) {
+			this.logger?.info?.(`[qqbot:token:${appId}] Background refresh already running`);
+			return;
+		}
+		const { refreshAheadMs = 5 * 60 * 1e3, randomOffsetMs = 30 * 1e3, minRefreshIntervalMs = 60 * 1e3, retryDelayMs = 5 * 1e3 } = options ?? {};
+		const controller = new AbortController();
+		this.refreshControllers.set(appId, controller);
+		const { signal } = controller;
+		const loop = async () => {
+			this.logger?.info?.(`[qqbot:token:${appId}] Background refresh started`);
+			while (!signal.aborted) try {
+				await this.getAccessToken(appId, clientSecret);
+				const cached$1 = this.cache.get(appId);
+				if (cached$1) {
+					const expiresIn = cached$1.expiresAt - Date.now();
+					const randomOffset = Math.random() * randomOffsetMs;
+					const refreshIn = Math.max(expiresIn - refreshAheadMs - randomOffset, minRefreshIntervalMs);
+					this.logger?.debug?.(`[qqbot:token:${appId}] Next refresh in ${Math.round(refreshIn / 1e3)}s`);
+					await this.abortableSleep(refreshIn, signal);
+				} else await this.abortableSleep(minRefreshIntervalMs, signal);
+			} catch (err) {
+				if (signal.aborted) break;
+				this.logger?.error?.(`[qqbot:token:${appId}] Background refresh failed: ${formatErrorMessage(err)}`);
+				await this.abortableSleep(retryDelayMs, signal);
+			}
+			this.refreshControllers.delete(appId);
+			this.logger?.info?.(`[qqbot:token:${appId}] Background refresh stopped`);
+		};
+		loop().catch((err) => {
+			if (this.refreshControllers.has(appId)) {
+				this.refreshControllers.delete(appId);
+				this.logger?.error?.(`[qqbot:token:${appId}] Background refresh crashed: ${formatErrorMessage(err)}`);
+			}
+		});
+	}
+	stopBackgroundRefresh(appId) {
+		if (appId) {
+			const ctrl = this.refreshControllers.get(appId);
+			if (ctrl) {
+				ctrl.abort();
+				this.refreshControllers.delete(appId);
+			}
+		} else {
+			for (const ctrl of this.refreshControllers.values()) ctrl.abort();
+			this.refreshControllers.clear();
+		}
+	}
+	isBackgroundRefreshRunning(appId) {
+		if (appId) return this.refreshControllers.has(appId);
+		return this.refreshControllers.size > 0;
+	}
+	async doFetchToken(appId, clientSecret) {
+		const url = `${this.baseUrl}${TOKEN_PATH}`;
+		this.logger?.debug?.(`[qqbot:token:${appId}] >>> POST ${url}`);
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), DEFAULT_TOKEN_TIMEOUT_MS);
+		let response;
+		try {
+			response = await fetch(url, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					"User-Agent": this.resolveUserAgent()
+				},
+				body: JSON.stringify({
+					appId,
+					clientSecret
+				}),
+				signal: controller.signal
+			});
+		} catch (err) {
+			this.logger?.error?.(`[qqbot:token:${appId}] Network error: ${formatErrorMessage(err)}`);
+			throw new Error(`Network error getting access_token: ${formatErrorMessage(err)}`, { cause: err });
+		} finally {
+			clearTimeout(timeout);
+		}
+		const traceId = response.headers.get("x-tps-trace-id") ?? "";
+		this.logger?.debug?.(`[qqbot:token:${appId}] <<< ${response.status}${traceId ? ` | TraceId: ${traceId}` : ""}`);
+		if (!response.ok) {
+			const errorBody = await response.text().catch(() => "");
+			throw new Error(`Token fetch failed: HTTP ${response.status}${errorBody ? ` — ${errorBody.slice(0, 200)}` : ""}`);
+		}
+		let data;
+		try {
+			const rawBody = await response.text();
+			const logBody = rawBody.replace(/"access_token"\s*:\s*"[^"]+"/g, "\"access_token\": \"***\"");
+			this.logger?.debug?.(`[qqbot:token:${appId}] <<< Body: ${logBody}`);
+			data = JSON.parse(rawBody);
+		} catch (err) {
+			throw new Error(`Failed to parse access_token response: ${formatErrorMessage(err)}`, { cause: err });
+		}
+		if (!data.access_token) throw new Error(`Failed to get access_token: ${JSON.stringify(data)}`);
+		const expiresAt = Date.now() + (data.expires_in ?? 7200) * 1e3;
+		this.cache.set(appId, {
+			token: data.access_token,
+			expiresAt,
+			appId
+		});
+		this.logger?.debug?.(`[qqbot:token:${appId}] Cached, expires at: ${new Date(expiresAt).toISOString()}`);
+		return data.access_token;
+	}
+	abortableSleep(ms, signal) {
+		return new Promise((resolve$1, reject) => {
+			if (signal.aborted) {
+				reject(signal.reason ?? new DOMException("The operation was aborted", "AbortError"));
+				return;
+			}
+			const timer = setTimeout(() => {
+				signal.removeEventListener("abort", onAbort);
+				resolve$1();
+			}, ms);
+			const onAbort = () => {
+				clearTimeout(timer);
+				reject(signal.reason ?? new DOMException("The operation was aborted", "AbortError"));
+			};
+			signal.addEventListener("abort", onAbort, { once: true });
+		});
+	}
+};
+
+//#endregion
+//#region node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/constants.js
+var require_constants = __commonJS({ "node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/constants.js"(exports, module) {
+	const BINARY_TYPES$2 = [
+		"nodebuffer",
+		"arraybuffer",
+		"fragments"
+	];
+	const hasBlob$1 = typeof Blob !== "undefined";
+	if (hasBlob$1) BINARY_TYPES$2.push("blob");
+	module.exports = {
+		BINARY_TYPES: BINARY_TYPES$2,
+		CLOSE_TIMEOUT: 3e4,
+		EMPTY_BUFFER: Buffer.alloc(0),
+		GUID: "258EAFA5-E914-47DA-95CA-C5AB0DC85B11",
+		hasBlob: hasBlob$1,
+		kForOnEventAttribute: Symbol("kIsForOnEventAttribute"),
+		kListener: Symbol("kListener"),
+		kStatusCode: Symbol("status-code"),
+		kWebSocket: Symbol("websocket"),
+		NOOP: () => {}
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/buffer-util.js
+var require_buffer_util = __commonJS({ "node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/buffer-util.js"(exports, module) {
+	const { EMPTY_BUFFER: EMPTY_BUFFER$3 } = require_constants();
+	const FastBuffer$2 = Buffer[Symbol.species];
+	/**
+	* Merges an array of buffers into a new buffer.
+	*
+	* @param {Buffer[]} list The array of buffers to concat
+	* @param {Number} totalLength The total length of buffers in the list
+	* @return {Buffer} The resulting buffer
+	* @public
+	*/
+	function concat$1(list, totalLength) {
+		if (list.length === 0) return EMPTY_BUFFER$3;
+		if (list.length === 1) return list[0];
+		const target = Buffer.allocUnsafe(totalLength);
+		let offset = 0;
+		for (let i = 0; i < list.length; i++) {
+			const buf = list[i];
+			target.set(buf, offset);
+			offset += buf.length;
+		}
+		if (offset < totalLength) return new FastBuffer$2(target.buffer, target.byteOffset, offset);
+		return target;
+	}
+	/**
+	* Masks a buffer using the given mask.
+	*
+	* @param {Buffer} source The buffer to mask
+	* @param {Buffer} mask The mask to use
+	* @param {Buffer} output The buffer where to store the result
+	* @param {Number} offset The offset at which to start writing
+	* @param {Number} length The number of bytes to mask.
+	* @public
+	*/
+	function _mask(source, mask, output, offset, length) {
+		for (let i = 0; i < length; i++) output[offset + i] = source[i] ^ mask[i & 3];
+	}
+	/**
+	* Unmasks a buffer using the given mask.
+	*
+	* @param {Buffer} buffer The buffer to unmask
+	* @param {Buffer} mask The mask to use
+	* @public
+	*/
+	function _unmask(buffer, mask) {
+		for (let i = 0; i < buffer.length; i++) buffer[i] ^= mask[i & 3];
+	}
+	/**
+	* Converts a buffer to an `ArrayBuffer`.
+	*
+	* @param {Buffer} buf The buffer to convert
+	* @return {ArrayBuffer} Converted buffer
+	* @public
+	*/
+	function toArrayBuffer$1(buf) {
+		if (buf.length === buf.buffer.byteLength) return buf.buffer;
+		return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length);
+	}
+	/**
+	* Converts `data` to a `Buffer`.
+	*
+	* @param {*} data The data to convert
+	* @return {Buffer} The buffer
+	* @throws {TypeError}
+	* @public
+	*/
+	function toBuffer$2(data) {
+		toBuffer$2.readOnly = true;
+		if (Buffer.isBuffer(data)) return data;
+		let buf;
+		if (data instanceof ArrayBuffer) buf = new FastBuffer$2(data);
+		else if (ArrayBuffer.isView(data)) buf = new FastBuffer$2(data.buffer, data.byteOffset, data.byteLength);
+		else {
+			buf = Buffer.from(data);
+			toBuffer$2.readOnly = false;
+		}
+		return buf;
+	}
+	module.exports = {
+		concat: concat$1,
+		mask: _mask,
+		toArrayBuffer: toArrayBuffer$1,
+		toBuffer: toBuffer$2,
+		unmask: _unmask
+	};
+	if (!process.env.WS_NO_BUFFER_UTIL) try {
+		const bufferUtil$1 = __require("bufferutil");
+		module.exports.mask = function(source, mask, output, offset, length) {
+			if (length < 48) _mask(source, mask, output, offset, length);
+			else bufferUtil$1.mask(source, mask, output, offset, length);
+		};
+		module.exports.unmask = function(buffer, mask) {
+			if (buffer.length < 32) _unmask(buffer, mask);
+			else bufferUtil$1.unmask(buffer, mask);
+		};
+	} catch (e) {}
+} });
+
+//#endregion
+//#region node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/limiter.js
+var require_limiter = __commonJS({ "node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/limiter.js"(exports, module) {
+	const kDone = Symbol("kDone");
+	const kRun = Symbol("kRun");
+	var Limiter$1 = class {
+		/**
+		* Creates a new `Limiter`.
+		*
+		* @param {Number} [concurrency=Infinity] The maximum number of jobs allowed
+		*     to run concurrently
+		*/
+		constructor(concurrency) {
+			this[kDone] = () => {
+				this.pending--;
+				this[kRun]();
+			};
+			this.concurrency = concurrency || Infinity;
+			this.jobs = [];
+			this.pending = 0;
+		}
+		/**
+		* Adds a job to the queue.
+		*
+		* @param {Function} job The job to run
+		* @public
+		*/
+		add(job) {
+			this.jobs.push(job);
+			this[kRun]();
+		}
+		/**
+		* Removes a job from the queue and runs it if possible.
+		*
+		* @private
+		*/
+		[kRun]() {
+			if (this.pending === this.concurrency) return;
+			if (this.jobs.length) {
+				const job = this.jobs.shift();
+				this.pending++;
+				job(this[kDone]);
+			}
+		}
+	};
+	module.exports = Limiter$1;
+} });
+
+//#endregion
+//#region node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/permessage-deflate.js
+var require_permessage_deflate = __commonJS({ "node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/permessage-deflate.js"(exports, module) {
+	const zlib = __require("zlib");
+	const bufferUtil = require_buffer_util();
+	const Limiter = require_limiter();
+	const { kStatusCode: kStatusCode$2 } = require_constants();
+	const FastBuffer$1 = Buffer[Symbol.species];
+	const TRAILER = Buffer.from([
+		0,
+		0,
+		255,
+		255
+	]);
+	const kPerMessageDeflate = Symbol("permessage-deflate");
+	const kTotalLength = Symbol("total-length");
+	const kCallback = Symbol("callback");
+	const kBuffers = Symbol("buffers");
+	const kError$1 = Symbol("error");
+	let zlibLimiter;
+	var PerMessageDeflate$4 = class {
+		/**
+		* Creates a PerMessageDeflate instance.
+		*
+		* @param {Object} [options] Configuration options
+		* @param {(Boolean|Number)} [options.clientMaxWindowBits] Advertise support
+		*     for, or request, a custom client window size
+		* @param {Boolean} [options.clientNoContextTakeover=false] Advertise/
+		*     acknowledge disabling of client context takeover
+		* @param {Number} [options.concurrencyLimit=10] The number of concurrent
+		*     calls to zlib
+		* @param {Boolean} [options.isServer=false] Create the instance in either
+		*     server or client mode
+		* @param {Number} [options.maxPayload=0] The maximum allowed message length
+		* @param {(Boolean|Number)} [options.serverMaxWindowBits] Request/confirm the
+		*     use of a custom server window size
+		* @param {Boolean} [options.serverNoContextTakeover=false] Request/accept
+		*     disabling of server context takeover
+		* @param {Number} [options.threshold=1024] Size (in bytes) below which
+		*     messages should not be compressed if context takeover is disabled
+		* @param {Object} [options.zlibDeflateOptions] Options to pass to zlib on
+		*     deflate
+		* @param {Object} [options.zlibInflateOptions] Options to pass to zlib on
+		*     inflate
+		*/
+		constructor(options) {
+			this._options = options || {};
+			this._threshold = this._options.threshold !== void 0 ? this._options.threshold : 1024;
+			this._maxPayload = this._options.maxPayload | 0;
+			this._isServer = !!this._options.isServer;
+			this._deflate = null;
+			this._inflate = null;
+			this.params = null;
+			if (!zlibLimiter) {
+				const concurrency = this._options.concurrencyLimit !== void 0 ? this._options.concurrencyLimit : 10;
+				zlibLimiter = new Limiter(concurrency);
+			}
+		}
+		/**
+		* @type {String}
+		*/
+		static get extensionName() {
+			return "permessage-deflate";
+		}
+		/**
+		* Create an extension negotiation offer.
+		*
+		* @return {Object} Extension parameters
+		* @public
+		*/
+		offer() {
+			const params = {};
+			if (this._options.serverNoContextTakeover) params.server_no_context_takeover = true;
+			if (this._options.clientNoContextTakeover) params.client_no_context_takeover = true;
+			if (this._options.serverMaxWindowBits) params.server_max_window_bits = this._options.serverMaxWindowBits;
+			if (this._options.clientMaxWindowBits) params.client_max_window_bits = this._options.clientMaxWindowBits;
+			else if (this._options.clientMaxWindowBits == null) params.client_max_window_bits = true;
+			return params;
+		}
+		/**
+		* Accept an extension negotiation offer/response.
+		*
+		* @param {Array} configurations The extension negotiation offers/reponse
+		* @return {Object} Accepted configuration
+		* @public
+		*/
+		accept(configurations) {
+			configurations = this.normalizeParams(configurations);
+			this.params = this._isServer ? this.acceptAsServer(configurations) : this.acceptAsClient(configurations);
+			return this.params;
+		}
+		/**
+		* Releases all resources used by the extension.
+		*
+		* @public
+		*/
+		cleanup() {
+			if (this._inflate) {
+				this._inflate.close();
+				this._inflate = null;
+			}
+			if (this._deflate) {
+				const callback = this._deflate[kCallback];
+				this._deflate.close();
+				this._deflate = null;
+				if (callback) callback(new Error("The deflate stream was closed while data was being processed"));
+			}
+		}
+		/**
+		*  Accept an extension negotiation offer.
+		*
+		* @param {Array} offers The extension negotiation offers
+		* @return {Object} Accepted configuration
+		* @private
+		*/
+		acceptAsServer(offers) {
+			const opts = this._options;
+			const accepted = offers.find((params) => {
+				if (opts.serverNoContextTakeover === false && params.server_no_context_takeover || params.server_max_window_bits && (opts.serverMaxWindowBits === false || typeof opts.serverMaxWindowBits === "number" && opts.serverMaxWindowBits > params.server_max_window_bits) || typeof opts.clientMaxWindowBits === "number" && (typeof params.client_max_window_bits === "number" ? opts.clientMaxWindowBits > params.client_max_window_bits : !params.client_max_window_bits)) return false;
+				return true;
+			});
+			if (!accepted) throw new Error("None of the extension offers can be accepted");
+			if (opts.serverNoContextTakeover) accepted.server_no_context_takeover = true;
+			if (opts.clientNoContextTakeover) accepted.client_no_context_takeover = true;
+			if (typeof opts.serverMaxWindowBits === "number") accepted.server_max_window_bits = opts.serverMaxWindowBits;
+			if (typeof opts.clientMaxWindowBits === "number") accepted.client_max_window_bits = opts.clientMaxWindowBits;
+			else if (accepted.client_max_window_bits === true || opts.clientMaxWindowBits === false) delete accepted.client_max_window_bits;
+			return accepted;
+		}
+		/**
+		* Accept the extension negotiation response.
+		*
+		* @param {Array} response The extension negotiation response
+		* @return {Object} Accepted configuration
+		* @private
+		*/
+		acceptAsClient(response) {
+			const params = response[0];
+			if (this._options.clientNoContextTakeover === false && params.client_no_context_takeover) throw new Error("Unexpected parameter \"client_no_context_takeover\"");
+			if (!params.client_max_window_bits) {
+				if (typeof this._options.clientMaxWindowBits === "number") params.client_max_window_bits = this._options.clientMaxWindowBits;
+			} else if (this._options.clientMaxWindowBits === false || typeof this._options.clientMaxWindowBits === "number" && params.client_max_window_bits > this._options.clientMaxWindowBits) throw new Error("Unexpected or invalid parameter \"client_max_window_bits\"");
+			return params;
+		}
+		/**
+		* Normalize parameters.
+		*
+		* @param {Array} configurations The extension negotiation offers/reponse
+		* @return {Array} The offers/response with normalized parameters
+		* @private
+		*/
+		normalizeParams(configurations) {
+			configurations.forEach((params) => {
+				Object.keys(params).forEach((key) => {
+					let value = params[key];
+					if (value.length > 1) throw new Error(`Parameter "${key}" must have only a single value`);
+					value = value[0];
+					if (key === "client_max_window_bits") {
+						if (value !== true) {
+							const num$1 = +value;
+							if (!Number.isInteger(num$1) || num$1 < 8 || num$1 > 15) throw new TypeError(`Invalid value for parameter "${key}": ${value}`);
+							value = num$1;
+						} else if (!this._isServer) throw new TypeError(`Invalid value for parameter "${key}": ${value}`);
+					} else if (key === "server_max_window_bits") {
+						const num$1 = +value;
+						if (!Number.isInteger(num$1) || num$1 < 8 || num$1 > 15) throw new TypeError(`Invalid value for parameter "${key}": ${value}`);
+						value = num$1;
+					} else if (key === "client_no_context_takeover" || key === "server_no_context_takeover") {
+						if (value !== true) throw new TypeError(`Invalid value for parameter "${key}": ${value}`);
+					} else throw new Error(`Unknown parameter "${key}"`);
+					params[key] = value;
+				});
+			});
+			return configurations;
+		}
+		/**
+		* Decompress data. Concurrency limited.
+		*
+		* @param {Buffer} data Compressed data
+		* @param {Boolean} fin Specifies whether or not this is the last fragment
+		* @param {Function} callback Callback
+		* @public
+		*/
+		decompress(data, fin, callback) {
+			zlibLimiter.add((done) => {
+				this._decompress(data, fin, (err, result) => {
+					done();
+					callback(err, result);
+				});
+			});
+		}
+		/**
+		* Compress data. Concurrency limited.
+		*
+		* @param {(Buffer|String)} data Data to compress
+		* @param {Boolean} fin Specifies whether or not this is the last fragment
+		* @param {Function} callback Callback
+		* @public
+		*/
+		compress(data, fin, callback) {
+			zlibLimiter.add((done) => {
+				this._compress(data, fin, (err, result) => {
+					done();
+					callback(err, result);
+				});
+			});
+		}
+		/**
+		* Decompress data.
+		*
+		* @param {Buffer} data Compressed data
+		* @param {Boolean} fin Specifies whether or not this is the last fragment
+		* @param {Function} callback Callback
+		* @private
+		*/
+		_decompress(data, fin, callback) {
+			const endpoint$1 = this._isServer ? "client" : "server";
+			if (!this._inflate) {
+				const key = `${endpoint$1}_max_window_bits`;
+				const windowBits = typeof this.params[key] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key];
+				this._inflate = zlib.createInflateRaw({
+					...this._options.zlibInflateOptions,
+					windowBits
+				});
+				this._inflate[kPerMessageDeflate] = this;
+				this._inflate[kTotalLength] = 0;
+				this._inflate[kBuffers] = [];
+				this._inflate.on("error", inflateOnError);
+				this._inflate.on("data", inflateOnData);
+			}
+			this._inflate[kCallback] = callback;
+			this._inflate.write(data);
+			if (fin) this._inflate.write(TRAILER);
+			this._inflate.flush(() => {
+				const err = this._inflate[kError$1];
+				if (err) {
+					this._inflate.close();
+					this._inflate = null;
+					callback(err);
+					return;
+				}
+				const data$1 = bufferUtil.concat(this._inflate[kBuffers], this._inflate[kTotalLength]);
+				if (this._inflate._readableState.endEmitted) {
+					this._inflate.close();
+					this._inflate = null;
+				} else {
+					this._inflate[kTotalLength] = 0;
+					this._inflate[kBuffers] = [];
+					if (fin && this.params[`${endpoint$1}_no_context_takeover`]) this._inflate.reset();
+				}
+				callback(null, data$1);
+			});
+		}
+		/**
+		* Compress data.
+		*
+		* @param {(Buffer|String)} data Data to compress
+		* @param {Boolean} fin Specifies whether or not this is the last fragment
+		* @param {Function} callback Callback
+		* @private
+		*/
+		_compress(data, fin, callback) {
+			const endpoint$1 = this._isServer ? "server" : "client";
+			if (!this._deflate) {
+				const key = `${endpoint$1}_max_window_bits`;
+				const windowBits = typeof this.params[key] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key];
+				this._deflate = zlib.createDeflateRaw({
+					...this._options.zlibDeflateOptions,
+					windowBits
+				});
+				this._deflate[kTotalLength] = 0;
+				this._deflate[kBuffers] = [];
+				this._deflate.on("data", deflateOnData);
+			}
+			this._deflate[kCallback] = callback;
+			this._deflate.write(data);
+			this._deflate.flush(zlib.Z_SYNC_FLUSH, () => {
+				if (!this._deflate) return;
+				let data$1 = bufferUtil.concat(this._deflate[kBuffers], this._deflate[kTotalLength]);
+				if (fin) data$1 = new FastBuffer$1(data$1.buffer, data$1.byteOffset, data$1.length - 4);
+				this._deflate[kCallback] = null;
+				this._deflate[kTotalLength] = 0;
+				this._deflate[kBuffers] = [];
+				if (fin && this.params[`${endpoint$1}_no_context_takeover`]) this._deflate.reset();
+				callback(null, data$1);
+			});
+		}
+	};
+	module.exports = PerMessageDeflate$4;
+	/**
+	* The listener of the `zlib.DeflateRaw` stream `'data'` event.
+	*
+	* @param {Buffer} chunk A chunk of data
+	* @private
+	*/
+	function deflateOnData(chunk) {
+		this[kBuffers].push(chunk);
+		this[kTotalLength] += chunk.length;
+	}
+	/**
+	* The listener of the `zlib.InflateRaw` stream `'data'` event.
+	*
+	* @param {Buffer} chunk A chunk of data
+	* @private
+	*/
+	function inflateOnData(chunk) {
+		this[kTotalLength] += chunk.length;
+		if (this[kPerMessageDeflate]._maxPayload < 1 || this[kTotalLength] <= this[kPerMessageDeflate]._maxPayload) {
+			this[kBuffers].push(chunk);
+			return;
+		}
+		this[kError$1] = new RangeError("Max payload size exceeded");
+		this[kError$1].code = "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH";
+		this[kError$1][kStatusCode$2] = 1009;
+		this.removeListener("data", inflateOnData);
+		this.reset();
+	}
+	/**
+	* The listener of the `zlib.InflateRaw` stream `'error'` event.
+	*
+	* @param {Error} err The emitted error
+	* @private
+	*/
+	function inflateOnError(err) {
+		this[kPerMessageDeflate]._inflate = null;
+		if (this[kError$1]) {
+			this[kCallback](this[kError$1]);
+			return;
+		}
+		err[kStatusCode$2] = 1007;
+		this[kCallback](err);
+	}
+} });
+
+//#endregion
+//#region node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/validation.js
+var require_validation = __commonJS({ "node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/validation.js"(exports, module) {
+	const { isUtf8 } = __require("buffer");
+	const { hasBlob } = require_constants();
+	const tokenChars$2 = [
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		1,
+		0,
+		1,
+		1,
+		1,
+		1,
+		1,
+		0,
+		0,
+		1,
+		1,
+		0,
+		1,
+		1,
+		0,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		0,
+		0,
+		0,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		0,
+		1,
+		0,
+		1,
+		0
+	];
+	/**
+	* Checks if a status code is allowed in a close frame.
+	*
+	* @param {Number} code The status code
+	* @return {Boolean} `true` if the status code is valid, else `false`
+	* @public
+	*/
+	function isValidStatusCode$2(code) {
+		return code >= 1e3 && code <= 1014 && code !== 1004 && code !== 1005 && code !== 1006 || code >= 3e3 && code <= 4999;
+	}
+	/**
+	* Checks if a given buffer contains only correct UTF-8.
+	* Ported from https://www.cl.cam.ac.uk/%7Emgk25/ucs/utf8_check.c by
+	* Markus Kuhn.
+	*
+	* @param {Buffer} buf The buffer to check
+	* @return {Boolean} `true` if `buf` contains only correct UTF-8, else `false`
+	* @public
+	*/
+	function _isValidUTF8(buf) {
+		const len = buf.length;
+		let i = 0;
+		while (i < len) if ((buf[i] & 128) === 0) i++;
+		else if ((buf[i] & 224) === 192) {
+			if (i + 1 === len || (buf[i + 1] & 192) !== 128 || (buf[i] & 254) === 192) return false;
+			i += 2;
+		} else if ((buf[i] & 240) === 224) {
+			if (i + 2 >= len || (buf[i + 1] & 192) !== 128 || (buf[i + 2] & 192) !== 128 || buf[i] === 224 && (buf[i + 1] & 224) === 128 || buf[i] === 237 && (buf[i + 1] & 224) === 160) return false;
+			i += 3;
+		} else if ((buf[i] & 248) === 240) {
+			if (i + 3 >= len || (buf[i + 1] & 192) !== 128 || (buf[i + 2] & 192) !== 128 || (buf[i + 3] & 192) !== 128 || buf[i] === 240 && (buf[i + 1] & 240) === 128 || buf[i] === 244 && buf[i + 1] > 143 || buf[i] > 244) return false;
+			i += 4;
+		} else return false;
+		return true;
+	}
+	/**
+	* Determines whether a value is a `Blob`.
+	*
+	* @param {*} value The value to be tested
+	* @return {Boolean} `true` if `value` is a `Blob`, else `false`
+	* @private
+	*/
+	function isBlob$3(value) {
+		return hasBlob && typeof value === "object" && typeof value.arrayBuffer === "function" && typeof value.type === "string" && typeof value.stream === "function" && (value[Symbol.toStringTag] === "Blob" || value[Symbol.toStringTag] === "File");
+	}
+	module.exports = {
+		isBlob: isBlob$3,
+		isValidStatusCode: isValidStatusCode$2,
+		isValidUTF8: _isValidUTF8,
+		tokenChars: tokenChars$2
+	};
+	if (isUtf8) module.exports.isValidUTF8 = function(buf) {
+		return buf.length < 24 ? _isValidUTF8(buf) : isUtf8(buf);
+	};
+	else if (!process.env.WS_NO_UTF_8_VALIDATE) try {
+		const isValidUTF8$1 = __require("utf-8-validate");
+		module.exports.isValidUTF8 = function(buf) {
+			return buf.length < 32 ? _isValidUTF8(buf) : isValidUTF8$1(buf);
+		};
+	} catch (e) {}
+} });
+
+//#endregion
+//#region node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/receiver.js
+var require_receiver = __commonJS({ "node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/receiver.js"(exports, module) {
+	const { Writable } = __require("stream");
+	const PerMessageDeflate$3 = require_permessage_deflate();
+	const { BINARY_TYPES: BINARY_TYPES$1, EMPTY_BUFFER: EMPTY_BUFFER$2, kStatusCode: kStatusCode$1, kWebSocket: kWebSocket$3 } = require_constants();
+	const { concat, toArrayBuffer, unmask } = require_buffer_util();
+	const { isValidStatusCode: isValidStatusCode$1, isValidUTF8 } = require_validation();
+	const FastBuffer = Buffer[Symbol.species];
+	const GET_INFO = 0;
+	const GET_PAYLOAD_LENGTH_16 = 1;
+	const GET_PAYLOAD_LENGTH_64 = 2;
+	const GET_MASK = 3;
+	const GET_DATA = 4;
+	const INFLATING = 5;
+	const DEFER_EVENT = 6;
+	var Receiver$1 = class extends Writable {
+		/**
+		* Creates a Receiver instance.
+		*
+		* @param {Object} [options] Options object
+		* @param {Boolean} [options.allowSynchronousEvents=true] Specifies whether
+		*     any of the `'message'`, `'ping'`, and `'pong'` events can be emitted
+		*     multiple times in the same tick
+		* @param {String} [options.binaryType=nodebuffer] The type for binary data
+		* @param {Object} [options.extensions] An object containing the negotiated
+		*     extensions
+		* @param {Boolean} [options.isServer=false] Specifies whether to operate in
+		*     client or server mode
+		* @param {Number} [options.maxBufferedChunks=0] The maximum number of
+		*     buffered data chunks
+		* @param {Number} [options.maxFragments=0] The maximum number of message
+		*     fragments
+		* @param {Number} [options.maxPayload=0] The maximum allowed message length
+		* @param {Boolean} [options.skipUTF8Validation=false] Specifies whether or
+		*     not to skip UTF-8 validation for text and close messages
+		*/
+		constructor(options = {}) {
+			super();
+			this._allowSynchronousEvents = options.allowSynchronousEvents !== void 0 ? options.allowSynchronousEvents : true;
+			this._binaryType = options.binaryType || BINARY_TYPES$1[0];
+			this._extensions = options.extensions || {};
+			this._isServer = !!options.isServer;
+			this._maxBufferedChunks = options.maxBufferedChunks | 0;
+			this._maxFragments = options.maxFragments | 0;
+			this._maxPayload = options.maxPayload | 0;
+			this._skipUTF8Validation = !!options.skipUTF8Validation;
+			this[kWebSocket$3] = void 0;
+			this._bufferedBytes = 0;
+			this._buffers = [];
+			this._compressed = false;
+			this._payloadLength = 0;
+			this._mask = void 0;
+			this._fragmented = 0;
+			this._masked = false;
+			this._fin = false;
+			this._opcode = 0;
+			this._totalPayloadLength = 0;
+			this._messageLength = 0;
+			this._numFragments = 0;
+			this._fragments = [];
+			this._errored = false;
+			this._loop = false;
+			this._state = GET_INFO;
+		}
+		/**
+		* Implements `Writable.prototype._write()`.
+		*
+		* @param {Buffer} chunk The chunk of data to write
+		* @param {String} encoding The character encoding of `chunk`
+		* @param {Function} cb Callback
+		* @private
+		*/
+		_write(chunk, encoding, cb) {
+			if (this._opcode === 8 && this._state == GET_INFO) return cb();
+			if (this._maxBufferedChunks > 0 && this._buffers.length >= this._maxBufferedChunks) {
+				cb(this.createError(RangeError, "Too many buffered chunks", false, 1008, "WS_ERR_TOO_MANY_BUFFERED_PARTS"));
+				return;
+			}
+			this._bufferedBytes += chunk.length;
+			this._buffers.push(chunk);
+			this.startLoop(cb);
+		}
+		/**
+		* Consumes `n` bytes from the buffered data.
+		*
+		* @param {Number} n The number of bytes to consume
+		* @return {Buffer} The consumed bytes
+		* @private
+		*/
+		consume(n) {
+			this._bufferedBytes -= n;
+			if (n === this._buffers[0].length) return this._buffers.shift();
+			if (n < this._buffers[0].length) {
+				const buf = this._buffers[0];
+				this._buffers[0] = new FastBuffer(buf.buffer, buf.byteOffset + n, buf.length - n);
+				return new FastBuffer(buf.buffer, buf.byteOffset, n);
+			}
+			const dst = Buffer.allocUnsafe(n);
+			do {
+				const buf = this._buffers[0];
+				const offset = dst.length - n;
+				if (n >= buf.length) dst.set(this._buffers.shift(), offset);
+				else {
+					dst.set(new Uint8Array(buf.buffer, buf.byteOffset, n), offset);
+					this._buffers[0] = new FastBuffer(buf.buffer, buf.byteOffset + n, buf.length - n);
+				}
+				n -= buf.length;
+			} while (n > 0);
+			return dst;
+		}
+		/**
+		* Starts the parsing loop.
+		*
+		* @param {Function} cb Callback
+		* @private
+		*/
+		startLoop(cb) {
+			this._loop = true;
+			do
+				switch (this._state) {
+					case GET_INFO:
+						this.getInfo(cb);
+						break;
+					case GET_PAYLOAD_LENGTH_16:
+						this.getPayloadLength16(cb);
+						break;
+					case GET_PAYLOAD_LENGTH_64:
+						this.getPayloadLength64(cb);
+						break;
+					case GET_MASK:
+						this.getMask();
+						break;
+					case GET_DATA:
+						this.getData(cb);
+						break;
+					case INFLATING:
+					case DEFER_EVENT:
+						this._loop = false;
+						return;
+				}
+			while (this._loop);
+			if (!this._errored) cb();
+		}
+		/**
+		* Reads the first two bytes of a frame.
+		*
+		* @param {Function} cb Callback
+		* @private
+		*/
+		getInfo(cb) {
+			if (this._bufferedBytes < 2) {
+				this._loop = false;
+				return;
+			}
+			const buf = this.consume(2);
+			if ((buf[0] & 48) !== 0) {
+				const error$1 = this.createError(RangeError, "RSV2 and RSV3 must be clear", true, 1002, "WS_ERR_UNEXPECTED_RSV_2_3");
+				cb(error$1);
+				return;
+			}
+			const compressed = (buf[0] & 64) === 64;
+			if (compressed && !this._extensions[PerMessageDeflate$3.extensionName]) {
+				const error$1 = this.createError(RangeError, "RSV1 must be clear", true, 1002, "WS_ERR_UNEXPECTED_RSV_1");
+				cb(error$1);
+				return;
+			}
+			this._fin = (buf[0] & 128) === 128;
+			this._opcode = buf[0] & 15;
+			this._payloadLength = buf[1] & 127;
+			if (this._opcode === 0) {
+				if (compressed) {
+					const error$1 = this.createError(RangeError, "RSV1 must be clear", true, 1002, "WS_ERR_UNEXPECTED_RSV_1");
+					cb(error$1);
+					return;
+				}
+				if (!this._fragmented) {
+					const error$1 = this.createError(RangeError, "invalid opcode 0", true, 1002, "WS_ERR_INVALID_OPCODE");
+					cb(error$1);
+					return;
+				}
+				this._opcode = this._fragmented;
+			} else if (this._opcode === 1 || this._opcode === 2) {
+				if (this._fragmented) {
+					const error$1 = this.createError(RangeError, `invalid opcode ${this._opcode}`, true, 1002, "WS_ERR_INVALID_OPCODE");
+					cb(error$1);
+					return;
+				}
+				this._compressed = compressed;
+			} else if (this._opcode > 7 && this._opcode < 11) {
+				if (!this._fin) {
+					const error$1 = this.createError(RangeError, "FIN must be set", true, 1002, "WS_ERR_EXPECTED_FIN");
+					cb(error$1);
+					return;
+				}
+				if (compressed) {
+					const error$1 = this.createError(RangeError, "RSV1 must be clear", true, 1002, "WS_ERR_UNEXPECTED_RSV_1");
+					cb(error$1);
+					return;
+				}
+				if (this._payloadLength > 125 || this._opcode === 8 && this._payloadLength === 1) {
+					const error$1 = this.createError(RangeError, `invalid payload length ${this._payloadLength}`, true, 1002, "WS_ERR_INVALID_CONTROL_PAYLOAD_LENGTH");
+					cb(error$1);
+					return;
+				}
+			} else {
+				const error$1 = this.createError(RangeError, `invalid opcode ${this._opcode}`, true, 1002, "WS_ERR_INVALID_OPCODE");
+				cb(error$1);
+				return;
+			}
+			if (!this._fin && !this._fragmented) this._fragmented = this._opcode;
+			this._masked = (buf[1] & 128) === 128;
+			if (this._isServer) {
+				if (!this._masked) {
+					const error$1 = this.createError(RangeError, "MASK must be set", true, 1002, "WS_ERR_EXPECTED_MASK");
+					cb(error$1);
+					return;
+				}
+			} else if (this._masked) {
+				const error$1 = this.createError(RangeError, "MASK must be clear", true, 1002, "WS_ERR_UNEXPECTED_MASK");
+				cb(error$1);
+				return;
+			}
+			if (this._payloadLength === 126) this._state = GET_PAYLOAD_LENGTH_16;
+			else if (this._payloadLength === 127) this._state = GET_PAYLOAD_LENGTH_64;
+			else this.haveLength(cb);
+		}
+		/**
+		* Gets extended payload length (7+16).
+		*
+		* @param {Function} cb Callback
+		* @private
+		*/
+		getPayloadLength16(cb) {
+			if (this._bufferedBytes < 2) {
+				this._loop = false;
+				return;
+			}
+			this._payloadLength = this.consume(2).readUInt16BE(0);
+			this.haveLength(cb);
+		}
+		/**
+		* Gets extended payload length (7+64).
+		*
+		* @param {Function} cb Callback
+		* @private
+		*/
+		getPayloadLength64(cb) {
+			if (this._bufferedBytes < 8) {
+				this._loop = false;
+				return;
+			}
+			const buf = this.consume(8);
+			const num$1 = buf.readUInt32BE(0);
+			if (num$1 > Math.pow(2, 21) - 1) {
+				const error$1 = this.createError(RangeError, "Unsupported WebSocket frame: payload length > 2^53 - 1", false, 1009, "WS_ERR_UNSUPPORTED_DATA_PAYLOAD_LENGTH");
+				cb(error$1);
+				return;
+			}
+			this._payloadLength = num$1 * Math.pow(2, 32) + buf.readUInt32BE(4);
+			this.haveLength(cb);
+		}
+		/**
+		* Payload length has been read.
+		*
+		* @param {Function} cb Callback
+		* @private
+		*/
+		haveLength(cb) {
+			if (this._payloadLength && this._opcode < 8) {
+				this._totalPayloadLength += this._payloadLength;
+				if (this._totalPayloadLength > this._maxPayload && this._maxPayload > 0) {
+					const error$1 = this.createError(RangeError, "Max payload size exceeded", false, 1009, "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH");
+					cb(error$1);
+					return;
+				}
+			}
+			if (this._masked) this._state = GET_MASK;
+			else this._state = GET_DATA;
+		}
+		/**
+		* Reads mask bytes.
+		*
+		* @private
+		*/
+		getMask() {
+			if (this._bufferedBytes < 4) {
+				this._loop = false;
+				return;
+			}
+			this._mask = this.consume(4);
+			this._state = GET_DATA;
+		}
+		/**
+		* Reads data bytes.
+		*
+		* @param {Function} cb Callback
+		* @private
+		*/
+		getData(cb) {
+			let data = EMPTY_BUFFER$2;
+			if (this._payloadLength) {
+				if (this._bufferedBytes < this._payloadLength) {
+					this._loop = false;
+					return;
+				}
+				data = this.consume(this._payloadLength);
+				if (this._masked && (this._mask[0] | this._mask[1] | this._mask[2] | this._mask[3]) !== 0) unmask(data, this._mask);
+			}
+			if (this._opcode > 7) {
+				this.controlMessage(data, cb);
+				return;
+			}
+			if (this._maxFragments > 0 && ++this._numFragments > this._maxFragments) {
+				const error$1 = this.createError(RangeError, "Too many message fragments", false, 1008, "WS_ERR_TOO_MANY_BUFFERED_PARTS");
+				cb(error$1);
+				return;
+			}
+			if (this._compressed) {
+				this._state = INFLATING;
+				this.decompress(data, cb);
+				return;
+			}
+			if (data.length) {
+				this._messageLength = this._totalPayloadLength;
+				this._fragments.push(data);
+			}
+			this.dataMessage(cb);
+		}
+		/**
+		* Decompresses data.
+		*
+		* @param {Buffer} data Compressed data
+		* @param {Function} cb Callback
+		* @private
+		*/
+		decompress(data, cb) {
+			const perMessageDeflate = this._extensions[PerMessageDeflate$3.extensionName];
+			perMessageDeflate.decompress(data, this._fin, (err, buf) => {
+				if (err) return cb(err);
+				if (buf.length) {
+					this._messageLength += buf.length;
+					if (this._messageLength > this._maxPayload && this._maxPayload > 0) {
+						const error$1 = this.createError(RangeError, "Max payload size exceeded", false, 1009, "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH");
+						cb(error$1);
+						return;
+					}
+					this._fragments.push(buf);
+				}
+				this.dataMessage(cb);
+				if (this._state === GET_INFO) this.startLoop(cb);
+			});
+		}
+		/**
+		* Handles a data message.
+		*
+		* @param {Function} cb Callback
+		* @private
+		*/
+		dataMessage(cb) {
+			if (!this._fin) {
+				this._state = GET_INFO;
+				return;
+			}
+			const messageLength = this._messageLength;
+			const fragments = this._fragments;
+			this._totalPayloadLength = 0;
+			this._messageLength = 0;
+			this._fragmented = 0;
+			this._numFragments = 0;
+			this._fragments = [];
+			if (this._opcode === 2) {
+				let data;
+				if (this._binaryType === "nodebuffer") data = concat(fragments, messageLength);
+				else if (this._binaryType === "arraybuffer") data = toArrayBuffer(concat(fragments, messageLength));
+				else if (this._binaryType === "blob") data = new Blob(fragments);
+				else data = fragments;
+				if (this._allowSynchronousEvents) {
+					this.emit("message", data, true);
+					this._state = GET_INFO;
+				} else {
+					this._state = DEFER_EVENT;
+					setImmediate(() => {
+						this.emit("message", data, true);
+						this._state = GET_INFO;
+						this.startLoop(cb);
+					});
+				}
+			} else {
+				const buf = concat(fragments, messageLength);
+				if (!this._skipUTF8Validation && !isValidUTF8(buf)) {
+					const error$1 = this.createError(Error, "invalid UTF-8 sequence", true, 1007, "WS_ERR_INVALID_UTF8");
+					cb(error$1);
+					return;
+				}
+				if (this._state === INFLATING || this._allowSynchronousEvents) {
+					this.emit("message", buf, false);
+					this._state = GET_INFO;
+				} else {
+					this._state = DEFER_EVENT;
+					setImmediate(() => {
+						this.emit("message", buf, false);
+						this._state = GET_INFO;
+						this.startLoop(cb);
+					});
+				}
+			}
+		}
+		/**
+		* Handles a control message.
+		*
+		* @param {Buffer} data Data to handle
+		* @return {(Error|RangeError|undefined)} A possible error
+		* @private
+		*/
+		controlMessage(data, cb) {
+			if (this._opcode === 8) {
+				if (data.length === 0) {
+					this._loop = false;
+					this.emit("conclude", 1005, EMPTY_BUFFER$2);
+					this.end();
+				} else {
+					const code = data.readUInt16BE(0);
+					if (!isValidStatusCode$1(code)) {
+						const error$1 = this.createError(RangeError, `invalid status code ${code}`, true, 1002, "WS_ERR_INVALID_CLOSE_CODE");
+						cb(error$1);
+						return;
+					}
+					const buf = new FastBuffer(data.buffer, data.byteOffset + 2, data.length - 2);
+					if (!this._skipUTF8Validation && !isValidUTF8(buf)) {
+						const error$1 = this.createError(Error, "invalid UTF-8 sequence", true, 1007, "WS_ERR_INVALID_UTF8");
+						cb(error$1);
+						return;
+					}
+					this._loop = false;
+					this.emit("conclude", code, buf);
+					this.end();
+				}
+				this._state = GET_INFO;
+				return;
+			}
+			if (this._allowSynchronousEvents) {
+				this.emit(this._opcode === 9 ? "ping" : "pong", data);
+				this._state = GET_INFO;
+			} else {
+				this._state = DEFER_EVENT;
+				setImmediate(() => {
+					this.emit(this._opcode === 9 ? "ping" : "pong", data);
+					this._state = GET_INFO;
+					this.startLoop(cb);
+				});
+			}
+		}
+		/**
+		* Builds an error object.
+		*
+		* @param {function(new:Error|RangeError)} ErrorCtor The error constructor
+		* @param {String} message The error message
+		* @param {Boolean} prefix Specifies whether or not to add a default prefix to
+		*     `message`
+		* @param {Number} statusCode The status code
+		* @param {String} errorCode The exposed error code
+		* @return {(Error|RangeError)} The error
+		* @private
+		*/
+		createError(ErrorCtor, message, prefix, statusCode, errorCode) {
+			this._loop = false;
+			this._errored = true;
+			const err = new ErrorCtor(prefix ? `Invalid WebSocket frame: ${message}` : message);
+			Error.captureStackTrace(err, this.createError);
+			err.code = errorCode;
+			err[kStatusCode$1] = statusCode;
+			return err;
+		}
+	};
+	module.exports = Receiver$1;
+} });
+
+//#endregion
+//#region node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/sender.js
+var require_sender = __commonJS({ "node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/sender.js"(exports, module) {
+	const { Duplex: Duplex$3 } = __require("stream");
+	const { randomFillSync } = __require("crypto");
+	const { types: { isUint8Array } } = __require("util");
+	const PerMessageDeflate$2 = require_permessage_deflate();
+	const { EMPTY_BUFFER: EMPTY_BUFFER$1, kWebSocket: kWebSocket$2, NOOP: NOOP$1 } = require_constants();
+	const { isBlob: isBlob$2, isValidStatusCode } = require_validation();
+	const { mask: applyMask, toBuffer: toBuffer$1 } = require_buffer_util();
+	const kByteLength = Symbol("kByteLength");
+	const maskBuffer = Buffer.alloc(4);
+	const RANDOM_POOL_SIZE = 8 * 1024;
+	let randomPool;
+	let randomPoolPointer = RANDOM_POOL_SIZE;
+	const DEFAULT = 0;
+	const DEFLATING = 1;
+	const GET_BLOB_DATA = 2;
+	var Sender$1 = class Sender$1 {
+		/**
+		* Creates a Sender instance.
+		*
+		* @param {Duplex} socket The connection socket
+		* @param {Object} [extensions] An object containing the negotiated extensions
+		* @param {Function} [generateMask] The function used to generate the masking
+		*     key
+		*/
+		constructor(socket, extensions, generateMask) {
+			this._extensions = extensions || {};
+			if (generateMask) {
+				this._generateMask = generateMask;
+				this._maskBuffer = Buffer.alloc(4);
+			}
+			this._socket = socket;
+			this._firstFragment = true;
+			this._compress = false;
+			this._bufferedBytes = 0;
+			this._queue = [];
+			this._state = DEFAULT;
+			this.onerror = NOOP$1;
+			this[kWebSocket$2] = void 0;
+		}
+		/**
+		* Frames a piece of data according to the HyBi WebSocket protocol.
+		*
+		* @param {(Buffer|String)} data The data to frame
+		* @param {Object} options Options object
+		* @param {Boolean} [options.fin=false] Specifies whether or not to set the
+		*     FIN bit
+		* @param {Function} [options.generateMask] The function used to generate the
+		*     masking key
+		* @param {Boolean} [options.mask=false] Specifies whether or not to mask
+		*     `data`
+		* @param {Buffer} [options.maskBuffer] The buffer used to store the masking
+		*     key
+		* @param {Number} options.opcode The opcode
+		* @param {Boolean} [options.readOnly=false] Specifies whether `data` can be
+		*     modified
+		* @param {Boolean} [options.rsv1=false] Specifies whether or not to set the
+		*     RSV1 bit
+		* @return {(Buffer|String)[]} The framed data
+		* @public
+		*/
+		static frame(data, options) {
+			let mask;
+			let merge$1 = false;
+			let offset = 2;
+			let skipMasking = false;
+			if (options.mask) {
+				mask = options.maskBuffer || maskBuffer;
+				if (options.generateMask) options.generateMask(mask);
+				else {
+					if (randomPoolPointer === RANDOM_POOL_SIZE) {
+						if (randomPool === void 0) randomPool = Buffer.alloc(RANDOM_POOL_SIZE);
+						randomFillSync(randomPool, 0, RANDOM_POOL_SIZE);
+						randomPoolPointer = 0;
+					}
+					mask[0] = randomPool[randomPoolPointer++];
+					mask[1] = randomPool[randomPoolPointer++];
+					mask[2] = randomPool[randomPoolPointer++];
+					mask[3] = randomPool[randomPoolPointer++];
+				}
+				skipMasking = (mask[0] | mask[1] | mask[2] | mask[3]) === 0;
+				offset = 6;
+			}
+			let dataLength;
+			if (typeof data === "string") if ((!options.mask || skipMasking) && options[kByteLength] !== void 0) dataLength = options[kByteLength];
+			else {
+				data = Buffer.from(data);
+				dataLength = data.length;
+			}
+			else {
+				dataLength = data.length;
+				merge$1 = options.mask && options.readOnly && !skipMasking;
+			}
+			let payloadLength = dataLength;
+			if (dataLength >= 65536) {
+				offset += 8;
+				payloadLength = 127;
+			} else if (dataLength > 125) {
+				offset += 2;
+				payloadLength = 126;
+			}
+			const target = Buffer.allocUnsafe(merge$1 ? dataLength + offset : offset);
+			target[0] = options.fin ? options.opcode | 128 : options.opcode;
+			if (options.rsv1) target[0] |= 64;
+			target[1] = payloadLength;
+			if (payloadLength === 126) target.writeUInt16BE(dataLength, 2);
+			else if (payloadLength === 127) {
+				target[2] = target[3] = 0;
+				target.writeUIntBE(dataLength, 4, 6);
+			}
+			if (!options.mask) return [target, data];
+			target[1] |= 128;
+			target[offset - 4] = mask[0];
+			target[offset - 3] = mask[1];
+			target[offset - 2] = mask[2];
+			target[offset - 1] = mask[3];
+			if (skipMasking) return [target, data];
+			if (merge$1) {
+				applyMask(data, mask, target, offset, dataLength);
+				return [target];
+			}
+			applyMask(data, mask, data, 0, dataLength);
+			return [target, data];
+		}
+		/**
+		* Sends a close message to the other peer.
+		*
+		* @param {Number} [code] The status code component of the body
+		* @param {(String|Buffer)} [data] The message component of the body
+		* @param {Boolean} [mask=false] Specifies whether or not to mask the message
+		* @param {Function} [cb] Callback
+		* @public
+		*/
+		close(code, data, mask, cb) {
+			let buf;
+			if (code === void 0) buf = EMPTY_BUFFER$1;
+			else if (typeof code !== "number" || !isValidStatusCode(code)) throw new TypeError("First argument must be a valid error code number");
+			else if (data === void 0 || !data.length) {
+				buf = Buffer.allocUnsafe(2);
+				buf.writeUInt16BE(code, 0);
+			} else {
+				const length = Buffer.byteLength(data);
+				if (length > 123) throw new RangeError("The message must not be greater than 123 bytes");
+				buf = Buffer.allocUnsafe(2 + length);
+				buf.writeUInt16BE(code, 0);
+				if (typeof data === "string") buf.write(data, 2);
+				else if (isUint8Array(data)) buf.set(data, 2);
+				else throw new TypeError("Second argument must be a string or a Uint8Array");
+			}
+			const options = {
+				[kByteLength]: buf.length,
+				fin: true,
+				generateMask: this._generateMask,
+				mask,
+				maskBuffer: this._maskBuffer,
+				opcode: 8,
+				readOnly: false,
+				rsv1: false
+			};
+			if (this._state !== DEFAULT) this.enqueue([
+				this.dispatch,
+				buf,
+				false,
+				options,
+				cb
+			]);
+			else this.sendFrame(Sender$1.frame(buf, options), cb);
+		}
+		/**
+		* Sends a ping message to the other peer.
+		*
+		* @param {*} data The message to send
+		* @param {Boolean} [mask=false] Specifies whether or not to mask `data`
+		* @param {Function} [cb] Callback
+		* @public
+		*/
+		ping(data, mask, cb) {
+			let byteLength;
+			let readOnly;
+			if (typeof data === "string") {
+				byteLength = Buffer.byteLength(data);
+				readOnly = false;
+			} else if (isBlob$2(data)) {
+				byteLength = data.size;
+				readOnly = false;
+			} else {
+				data = toBuffer$1(data);
+				byteLength = data.length;
+				readOnly = toBuffer$1.readOnly;
+			}
+			if (byteLength > 125) throw new RangeError("The data size must not be greater than 125 bytes");
+			const options = {
+				[kByteLength]: byteLength,
+				fin: true,
+				generateMask: this._generateMask,
+				mask,
+				maskBuffer: this._maskBuffer,
+				opcode: 9,
+				readOnly,
+				rsv1: false
+			};
+			if (isBlob$2(data)) if (this._state !== DEFAULT) this.enqueue([
+				this.getBlobData,
+				data,
+				false,
+				options,
+				cb
+			]);
+			else this.getBlobData(data, false, options, cb);
+			else if (this._state !== DEFAULT) this.enqueue([
+				this.dispatch,
+				data,
+				false,
+				options,
+				cb
+			]);
+			else this.sendFrame(Sender$1.frame(data, options), cb);
+		}
+		/**
+		* Sends a pong message to the other peer.
+		*
+		* @param {*} data The message to send
+		* @param {Boolean} [mask=false] Specifies whether or not to mask `data`
+		* @param {Function} [cb] Callback
+		* @public
+		*/
+		pong(data, mask, cb) {
+			let byteLength;
+			let readOnly;
+			if (typeof data === "string") {
+				byteLength = Buffer.byteLength(data);
+				readOnly = false;
+			} else if (isBlob$2(data)) {
+				byteLength = data.size;
+				readOnly = false;
+			} else {
+				data = toBuffer$1(data);
+				byteLength = data.length;
+				readOnly = toBuffer$1.readOnly;
+			}
+			if (byteLength > 125) throw new RangeError("The data size must not be greater than 125 bytes");
+			const options = {
+				[kByteLength]: byteLength,
+				fin: true,
+				generateMask: this._generateMask,
+				mask,
+				maskBuffer: this._maskBuffer,
+				opcode: 10,
+				readOnly,
+				rsv1: false
+			};
+			if (isBlob$2(data)) if (this._state !== DEFAULT) this.enqueue([
+				this.getBlobData,
+				data,
+				false,
+				options,
+				cb
+			]);
+			else this.getBlobData(data, false, options, cb);
+			else if (this._state !== DEFAULT) this.enqueue([
+				this.dispatch,
+				data,
+				false,
+				options,
+				cb
+			]);
+			else this.sendFrame(Sender$1.frame(data, options), cb);
+		}
+		/**
+		* Sends a data message to the other peer.
+		*
+		* @param {*} data The message to send
+		* @param {Object} options Options object
+		* @param {Boolean} [options.binary=false] Specifies whether `data` is binary
+		*     or text
+		* @param {Boolean} [options.compress=false] Specifies whether or not to
+		*     compress `data`
+		* @param {Boolean} [options.fin=false] Specifies whether the fragment is the
+		*     last one
+		* @param {Boolean} [options.mask=false] Specifies whether or not to mask
+		*     `data`
+		* @param {Function} [cb] Callback
+		* @public
+		*/
+		send(data, options, cb) {
+			const perMessageDeflate = this._extensions[PerMessageDeflate$2.extensionName];
+			let opcode = options.binary ? 2 : 1;
+			let rsv1 = options.compress;
+			let byteLength;
+			let readOnly;
+			if (typeof data === "string") {
+				byteLength = Buffer.byteLength(data);
+				readOnly = false;
+			} else if (isBlob$2(data)) {
+				byteLength = data.size;
+				readOnly = false;
+			} else {
+				data = toBuffer$1(data);
+				byteLength = data.length;
+				readOnly = toBuffer$1.readOnly;
+			}
+			if (this._firstFragment) {
+				this._firstFragment = false;
+				if (rsv1 && perMessageDeflate && perMessageDeflate.params[perMessageDeflate._isServer ? "server_no_context_takeover" : "client_no_context_takeover"]) rsv1 = byteLength >= perMessageDeflate._threshold;
+				this._compress = rsv1;
+			} else {
+				rsv1 = false;
+				opcode = 0;
+			}
+			if (options.fin) this._firstFragment = true;
+			const opts = {
+				[kByteLength]: byteLength,
+				fin: options.fin,
+				generateMask: this._generateMask,
+				mask: options.mask,
+				maskBuffer: this._maskBuffer,
+				opcode,
+				readOnly,
+				rsv1
+			};
+			if (isBlob$2(data)) if (this._state !== DEFAULT) this.enqueue([
+				this.getBlobData,
+				data,
+				this._compress,
+				opts,
+				cb
+			]);
+			else this.getBlobData(data, this._compress, opts, cb);
+			else if (this._state !== DEFAULT) this.enqueue([
+				this.dispatch,
+				data,
+				this._compress,
+				opts,
+				cb
+			]);
+			else this.dispatch(data, this._compress, opts, cb);
+		}
+		/**
+		* Gets the contents of a blob as binary data.
+		*
+		* @param {Blob} blob The blob
+		* @param {Boolean} [compress=false] Specifies whether or not to compress
+		*     the data
+		* @param {Object} options Options object
+		* @param {Boolean} [options.fin=false] Specifies whether or not to set the
+		*     FIN bit
+		* @param {Function} [options.generateMask] The function used to generate the
+		*     masking key
+		* @param {Boolean} [options.mask=false] Specifies whether or not to mask
+		*     `data`
+		* @param {Buffer} [options.maskBuffer] The buffer used to store the masking
+		*     key
+		* @param {Number} options.opcode The opcode
+		* @param {Boolean} [options.readOnly=false] Specifies whether `data` can be
+		*     modified
+		* @param {Boolean} [options.rsv1=false] Specifies whether or not to set the
+		*     RSV1 bit
+		* @param {Function} [cb] Callback
+		* @private
+		*/
+		getBlobData(blob, compress, options, cb) {
+			this._bufferedBytes += options[kByteLength];
+			this._state = GET_BLOB_DATA;
+			blob.arrayBuffer().then((arrayBuffer) => {
+				if (this._socket.destroyed) {
+					const err = new Error("The socket was closed while the blob was being read");
+					process.nextTick(callCallbacks, this, err, cb);
+					return;
+				}
+				this._bufferedBytes -= options[kByteLength];
+				const data = toBuffer$1(arrayBuffer);
+				if (!compress) {
+					this._state = DEFAULT;
+					this.sendFrame(Sender$1.frame(data, options), cb);
+					this.dequeue();
+				} else this.dispatch(data, compress, options, cb);
+			}).catch((err) => {
+				process.nextTick(onError, this, err, cb);
+			});
+		}
+		/**
+		* Dispatches a message.
+		*
+		* @param {(Buffer|String)} data The message to send
+		* @param {Boolean} [compress=false] Specifies whether or not to compress
+		*     `data`
+		* @param {Object} options Options object
+		* @param {Boolean} [options.fin=false] Specifies whether or not to set the
+		*     FIN bit
+		* @param {Function} [options.generateMask] The function used to generate the
+		*     masking key
+		* @param {Boolean} [options.mask=false] Specifies whether or not to mask
+		*     `data`
+		* @param {Buffer} [options.maskBuffer] The buffer used to store the masking
+		*     key
+		* @param {Number} options.opcode The opcode
+		* @param {Boolean} [options.readOnly=false] Specifies whether `data` can be
+		*     modified
+		* @param {Boolean} [options.rsv1=false] Specifies whether or not to set the
+		*     RSV1 bit
+		* @param {Function} [cb] Callback
+		* @private
+		*/
+		dispatch(data, compress, options, cb) {
+			if (!compress) {
+				this.sendFrame(Sender$1.frame(data, options), cb);
+				return;
+			}
+			const perMessageDeflate = this._extensions[PerMessageDeflate$2.extensionName];
+			this._bufferedBytes += options[kByteLength];
+			this._state = DEFLATING;
+			perMessageDeflate.compress(data, options.fin, (_, buf) => {
+				if (this._socket.destroyed) {
+					const err = new Error("The socket was closed while data was being compressed");
+					callCallbacks(this, err, cb);
+					return;
+				}
+				this._bufferedBytes -= options[kByteLength];
+				this._state = DEFAULT;
+				options.readOnly = false;
+				this.sendFrame(Sender$1.frame(buf, options), cb);
+				this.dequeue();
+			});
+		}
+		/**
+		* Executes queued send operations.
+		*
+		* @private
+		*/
+		dequeue() {
+			while (this._state === DEFAULT && this._queue.length) {
+				const params = this._queue.shift();
+				this._bufferedBytes -= params[3][kByteLength];
+				Reflect.apply(params[0], this, params.slice(1));
+			}
+		}
+		/**
+		* Enqueues a send operation.
+		*
+		* @param {Array} params Send operation parameters.
+		* @private
+		*/
+		enqueue(params) {
+			this._bufferedBytes += params[3][kByteLength];
+			this._queue.push(params);
+		}
+		/**
+		* Sends a frame.
+		*
+		* @param {(Buffer | String)[]} list The frame to send
+		* @param {Function} [cb] Callback
+		* @private
+		*/
+		sendFrame(list, cb) {
+			if (list.length === 2) {
+				this._socket.cork();
+				this._socket.write(list[0]);
+				this._socket.write(list[1], cb);
+				this._socket.uncork();
+			} else this._socket.write(list[0], cb);
+		}
+	};
+	module.exports = Sender$1;
+	/**
+	* Calls queued callbacks with an error.
+	*
+	* @param {Sender} sender The `Sender` instance
+	* @param {Error} err The error to call the callbacks with
+	* @param {Function} [cb] The first callback
+	* @private
+	*/
+	function callCallbacks(sender, err, cb) {
+		if (typeof cb === "function") cb(err);
+		for (let i = 0; i < sender._queue.length; i++) {
+			const params = sender._queue[i];
+			const callback = params[params.length - 1];
+			if (typeof callback === "function") callback(err);
+		}
+	}
+	/**
+	* Handles a `Sender` error.
+	*
+	* @param {Sender} sender The `Sender` instance
+	* @param {Error} err The error
+	* @param {Function} [cb] The first pending callback
+	* @private
+	*/
+	function onError(sender, err, cb) {
+		callCallbacks(sender, err, cb);
+		sender.onerror(err);
+	}
+} });
+
+//#endregion
+//#region node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/event-target.js
+var require_event_target = __commonJS({ "node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/event-target.js"(exports, module) {
+	const { kForOnEventAttribute: kForOnEventAttribute$1, kListener: kListener$1 } = require_constants();
+	const kCode = Symbol("kCode");
+	const kData = Symbol("kData");
+	const kError = Symbol("kError");
+	const kMessage = Symbol("kMessage");
+	const kReason = Symbol("kReason");
+	const kTarget = Symbol("kTarget");
+	const kType = Symbol("kType");
+	const kWasClean = Symbol("kWasClean");
+	var Event = class {
+		/**
+		* Create a new `Event`.
+		*
+		* @param {String} type The name of the event
+		* @throws {TypeError} If the `type` argument is not specified
+		*/
+		constructor(type) {
+			this[kTarget] = null;
+			this[kType] = type;
+		}
+		/**
+		* @type {*}
+		*/
+		get target() {
+			return this[kTarget];
+		}
+		/**
+		* @type {String}
+		*/
+		get type() {
+			return this[kType];
+		}
+	};
+	Object.defineProperty(Event.prototype, "target", { enumerable: true });
+	Object.defineProperty(Event.prototype, "type", { enumerable: true });
+	var CloseEvent = class extends Event {
+		/**
+		* Create a new `CloseEvent`.
+		*
+		* @param {String} type The name of the event
+		* @param {Object} [options] A dictionary object that allows for setting
+		*     attributes via object members of the same name
+		* @param {Number} [options.code=0] The status code explaining why the
+		*     connection was closed
+		* @param {String} [options.reason=''] A human-readable string explaining why
+		*     the connection was closed
+		* @param {Boolean} [options.wasClean=false] Indicates whether or not the
+		*     connection was cleanly closed
+		*/
+		constructor(type, options = {}) {
+			super(type);
+			this[kCode] = options.code === void 0 ? 0 : options.code;
+			this[kReason] = options.reason === void 0 ? "" : options.reason;
+			this[kWasClean] = options.wasClean === void 0 ? false : options.wasClean;
+		}
+		/**
+		* @type {Number}
+		*/
+		get code() {
+			return this[kCode];
+		}
+		/**
+		* @type {String}
+		*/
+		get reason() {
+			return this[kReason];
+		}
+		/**
+		* @type {Boolean}
+		*/
+		get wasClean() {
+			return this[kWasClean];
+		}
+	};
+	Object.defineProperty(CloseEvent.prototype, "code", { enumerable: true });
+	Object.defineProperty(CloseEvent.prototype, "reason", { enumerable: true });
+	Object.defineProperty(CloseEvent.prototype, "wasClean", { enumerable: true });
+	var ErrorEvent = class extends Event {
+		/**
+		* Create a new `ErrorEvent`.
+		*
+		* @param {String} type The name of the event
+		* @param {Object} [options] A dictionary object that allows for setting
+		*     attributes via object members of the same name
+		* @param {*} [options.error=null] The error that generated this event
+		* @param {String} [options.message=''] The error message
+		*/
+		constructor(type, options = {}) {
+			super(type);
+			this[kError] = options.error === void 0 ? null : options.error;
+			this[kMessage] = options.message === void 0 ? "" : options.message;
+		}
+		/**
+		* @type {*}
+		*/
+		get error() {
+			return this[kError];
+		}
+		/**
+		* @type {String}
+		*/
+		get message() {
+			return this[kMessage];
+		}
+	};
+	Object.defineProperty(ErrorEvent.prototype, "error", { enumerable: true });
+	Object.defineProperty(ErrorEvent.prototype, "message", { enumerable: true });
+	var MessageEvent = class extends Event {
+		/**
+		* Create a new `MessageEvent`.
+		*
+		* @param {String} type The name of the event
+		* @param {Object} [options] A dictionary object that allows for setting
+		*     attributes via object members of the same name
+		* @param {*} [options.data=null] The message content
+		*/
+		constructor(type, options = {}) {
+			super(type);
+			this[kData] = options.data === void 0 ? null : options.data;
+		}
+		/**
+		* @type {*}
+		*/
+		get data() {
+			return this[kData];
+		}
+	};
+	Object.defineProperty(MessageEvent.prototype, "data", { enumerable: true });
+	/**
+	* This provides methods for emulating the `EventTarget` interface. It's not
+	* meant to be used directly.
+	*
+	* @mixin
+	*/
+	const EventTarget = {
+		addEventListener(type, handler, options = {}) {
+			for (const listener of this.listeners(type)) if (!options[kForOnEventAttribute$1] && listener[kListener$1] === handler && !listener[kForOnEventAttribute$1]) return;
+			let wrapper;
+			if (type === "message") wrapper = function onMessage(data, isBinary) {
+				const event = new MessageEvent("message", { data: isBinary ? data : data.toString() });
+				event[kTarget] = this;
+				callListener(handler, this, event);
+			};
+			else if (type === "close") wrapper = function onClose(code, message) {
+				const event = new CloseEvent("close", {
+					code,
+					reason: message.toString(),
+					wasClean: this._closeFrameReceived && this._closeFrameSent
+				});
+				event[kTarget] = this;
+				callListener(handler, this, event);
+			};
+			else if (type === "error") wrapper = function onError$1(error$1) {
+				const event = new ErrorEvent("error", {
+					error: error$1,
+					message: error$1.message
+				});
+				event[kTarget] = this;
+				callListener(handler, this, event);
+			};
+			else if (type === "open") wrapper = function onOpen() {
+				const event = new Event("open");
+				event[kTarget] = this;
+				callListener(handler, this, event);
+			};
+			else return;
+			wrapper[kForOnEventAttribute$1] = !!options[kForOnEventAttribute$1];
+			wrapper[kListener$1] = handler;
+			if (options.once) this.once(type, wrapper);
+			else this.on(type, wrapper);
+		},
+		removeEventListener(type, handler) {
+			for (const listener of this.listeners(type)) if (listener[kListener$1] === handler && !listener[kForOnEventAttribute$1]) {
+				this.removeListener(type, listener);
+				break;
+			}
+		}
+	};
+	module.exports = {
+		CloseEvent,
+		ErrorEvent,
+		Event,
+		EventTarget,
+		MessageEvent
+	};
+	/**
+	* Call an event listener
+	*
+	* @param {(Function|Object)} listener The listener to call
+	* @param {*} thisArg The value to use as `this`` when calling the listener
+	* @param {Event} event The event to pass to the listener
+	* @private
+	*/
+	function callListener(listener, thisArg, event) {
+		if (typeof listener === "object" && listener.handleEvent) listener.handleEvent.call(listener, event);
+		else listener.call(thisArg, event);
+	}
+} });
+
+//#endregion
+//#region node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/extension.js
+var require_extension = __commonJS({ "node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/extension.js"(exports, module) {
+	const { tokenChars: tokenChars$1 } = require_validation();
+	/**
+	* Adds an offer to the map of extension offers or a parameter to the map of
+	* parameters.
+	*
+	* @param {Object} dest The map of extension offers or parameters
+	* @param {String} name The extension or parameter name
+	* @param {(Object|Boolean|String)} elem The extension parameters or the
+	*     parameter value
+	* @private
+	*/
+	function push(dest, name, elem) {
+		if (dest[name] === void 0) dest[name] = [elem];
+		else dest[name].push(elem);
+	}
+	/**
+	* Parses the `Sec-WebSocket-Extensions` header into an object.
+	*
+	* @param {String} header The field value of the header
+	* @return {Object} The parsed object
+	* @public
+	*/
+	function parse$4(header) {
+		const offers = Object.create(null);
+		let params = Object.create(null);
+		let mustUnescape = false;
+		let isEscaping = false;
+		let inQuotes = false;
+		let extensionName;
+		let paramName;
+		let start = -1;
+		let code = -1;
+		let end = -1;
+		let i = 0;
+		for (; i < header.length; i++) {
+			code = header.charCodeAt(i);
+			if (extensionName === void 0) if (end === -1 && tokenChars$1[code] === 1) {
+				if (start === -1) start = i;
+			} else if (i !== 0 && (code === 32 || code === 9)) {
+				if (end === -1 && start !== -1) end = i;
+			} else if (code === 59 || code === 44) {
+				if (start === -1) throw new SyntaxError(`Unexpected character at index ${i}`);
+				if (end === -1) end = i;
+				const name = header.slice(start, end);
+				if (code === 44) {
+					push(offers, name, params);
+					params = Object.create(null);
+				} else extensionName = name;
+				start = end = -1;
+			} else throw new SyntaxError(`Unexpected character at index ${i}`);
+			else if (paramName === void 0) if (end === -1 && tokenChars$1[code] === 1) {
+				if (start === -1) start = i;
+			} else if (code === 32 || code === 9) {
+				if (end === -1 && start !== -1) end = i;
+			} else if (code === 59 || code === 44) {
+				if (start === -1) throw new SyntaxError(`Unexpected character at index ${i}`);
+				if (end === -1) end = i;
+				push(params, header.slice(start, end), true);
+				if (code === 44) {
+					push(offers, extensionName, params);
+					params = Object.create(null);
+					extensionName = void 0;
+				}
+				start = end = -1;
+			} else if (code === 61 && start !== -1 && end === -1) {
+				paramName = header.slice(start, i);
+				start = end = -1;
+			} else throw new SyntaxError(`Unexpected character at index ${i}`);
+			else if (isEscaping) {
+				if (tokenChars$1[code] !== 1) throw new SyntaxError(`Unexpected character at index ${i}`);
+				if (start === -1) start = i;
+				else if (!mustUnescape) mustUnescape = true;
+				isEscaping = false;
+			} else if (inQuotes) if (tokenChars$1[code] === 1) {
+				if (start === -1) start = i;
+			} else if (code === 34 && start !== -1) {
+				inQuotes = false;
+				end = i;
+			} else if (code === 92) isEscaping = true;
+			else throw new SyntaxError(`Unexpected character at index ${i}`);
+			else if (code === 34 && header.charCodeAt(i - 1) === 61) inQuotes = true;
+			else if (end === -1 && tokenChars$1[code] === 1) {
+				if (start === -1) start = i;
+			} else if (start !== -1 && (code === 32 || code === 9)) {
+				if (end === -1) end = i;
+			} else if (code === 59 || code === 44) {
+				if (start === -1) throw new SyntaxError(`Unexpected character at index ${i}`);
+				if (end === -1) end = i;
+				let value = header.slice(start, end);
+				if (mustUnescape) {
+					value = value.replace(/\\/g, "");
+					mustUnescape = false;
+				}
+				push(params, paramName, value);
+				if (code === 44) {
+					push(offers, extensionName, params);
+					params = Object.create(null);
+					extensionName = void 0;
+				}
+				paramName = void 0;
+				start = end = -1;
+			} else throw new SyntaxError(`Unexpected character at index ${i}`);
+		}
+		if (start === -1 || inQuotes || code === 32 || code === 9) throw new SyntaxError("Unexpected end of input");
+		if (end === -1) end = i;
+		const token = header.slice(start, end);
+		if (extensionName === void 0) push(offers, token, params);
+		else {
+			if (paramName === void 0) push(params, token, true);
+			else if (mustUnescape) push(params, paramName, token.replace(/\\/g, ""));
+			else push(params, paramName, token);
+			push(offers, extensionName, params);
+		}
+		return offers;
+	}
+	/**
+	* Builds the `Sec-WebSocket-Extensions` header field value.
+	*
+	* @param {Object} extensions The map of extensions and parameters to format
+	* @return {String} A string representing the given object
+	* @public
+	*/
+	function format$1(extensions) {
+		return Object.keys(extensions).map((extension$1) => {
+			let configurations = extensions[extension$1];
+			if (!Array.isArray(configurations)) configurations = [configurations];
+			return configurations.map((params) => {
+				return [extension$1].concat(Object.keys(params).map((k) => {
+					let values = params[k];
+					if (!Array.isArray(values)) values = [values];
+					return values.map((v) => v === true ? k : `${k}=${v}`).join("; ");
+				})).join("; ");
+			}).join(", ");
+		}).join(", ");
+	}
+	module.exports = {
+		format: format$1,
+		parse: parse$4
+	};
+} });
+
+//#endregion
+//#region node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/websocket.js
+var require_websocket = __commonJS({ "node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/websocket.js"(exports, module) {
+	const EventEmitter$1 = __require("events");
+	const https = __require("https");
+	const http$2 = __require("http");
+	const net = __require("net");
+	const tls = __require("tls");
+	const { randomBytes: randomBytes$1, createHash: createHash$2 } = __require("crypto");
+	const { Duplex: Duplex$2, Readable: Readable$1 } = __require("stream");
+	const { URL: URL$1 } = __require("url");
+	const PerMessageDeflate$1 = require_permessage_deflate();
+	const Receiver = require_receiver();
+	const Sender = require_sender();
+	const { isBlob: isBlob$1 } = require_validation();
+	const { BINARY_TYPES, CLOSE_TIMEOUT: CLOSE_TIMEOUT$1, EMPTY_BUFFER, GUID: GUID$1, kForOnEventAttribute, kListener, kStatusCode, kWebSocket: kWebSocket$1, NOOP } = require_constants();
+	const { EventTarget: { addEventListener, removeEventListener } } = require_event_target();
+	const { format, parse: parse$3 } = require_extension();
+	const { toBuffer } = require_buffer_util();
+	const kAborted = Symbol("kAborted");
+	const protocolVersions = [8, 13];
+	const readyStates = [
+		"CONNECTING",
+		"OPEN",
+		"CLOSING",
+		"CLOSED"
+	];
+	const subprotocolRegex = /^[!#$%&'*+\-.0-9A-Z^_`|a-z~]+$/;
+	var WebSocket$2 = class WebSocket$2 extends EventEmitter$1 {
+		/**
+		* Create a new `WebSocket`.
+		*
+		* @param {(String|URL)} address The URL to which to connect
+		* @param {(String|String[])} [protocols] The subprotocols
+		* @param {Object} [options] Connection options
+		*/
+		constructor(address, protocols, options) {
+			super();
+			this._binaryType = BINARY_TYPES[0];
+			this._closeCode = 1006;
+			this._closeFrameReceived = false;
+			this._closeFrameSent = false;
+			this._closeMessage = EMPTY_BUFFER;
+			this._closeTimer = null;
+			this._errorEmitted = false;
+			this._extensions = {};
+			this._paused = false;
+			this._protocol = "";
+			this._readyState = WebSocket$2.CONNECTING;
+			this._receiver = null;
+			this._sender = null;
+			this._socket = null;
+			if (address !== null) {
+				this._bufferedAmount = 0;
+				this._isServer = false;
+				this._redirects = 0;
+				if (protocols === void 0) if (!options || options.protocols === void 0) protocols = [];
+				else if (Array.isArray(options.protocols)) protocols = options.protocols;
+				else protocols = [options.protocols];
+				else if (!Array.isArray(protocols)) if (typeof protocols === "object" && protocols !== null) {
+					options = protocols;
+					if (options.protocols === void 0) protocols = [];
+					else if (Array.isArray(options.protocols)) protocols = options.protocols;
+					else protocols = [options.protocols];
+				} else protocols = [protocols];
+				initAsClient(this, address, protocols, options);
+			} else {
+				this._autoPong = options.autoPong;
+				this._closeTimeout = options.closeTimeout;
+				this._isServer = true;
+			}
+		}
+		/**
+		* For historical reasons, the custom "nodebuffer" type is used by the default
+		* instead of "blob".
+		*
+		* @type {String}
+		*/
+		get binaryType() {
+			return this._binaryType;
+		}
+		set binaryType(type) {
+			if (!BINARY_TYPES.includes(type)) return;
+			this._binaryType = type;
+			if (this._receiver) this._receiver._binaryType = type;
+		}
+		/**
+		* @type {Number}
+		*/
+		get bufferedAmount() {
+			if (!this._socket) return this._bufferedAmount;
+			return this._socket._writableState.length + this._sender._bufferedBytes;
+		}
+		/**
+		* @type {String}
+		*/
+		get extensions() {
+			return Object.keys(this._extensions).join();
+		}
+		/**
+		* @type {Boolean}
+		*/
+		get isPaused() {
+			return this._paused;
+		}
+		/**
+		* @type {Function}
+		*/
+		get onclose() {
+			return null;
+		}
+		/**
+		* @type {Function}
+		*/
+		get onerror() {
+			return null;
+		}
+		/**
+		* @type {Function}
+		*/
+		get onopen() {
+			return null;
+		}
+		/**
+		* @type {Function}
+		*/
+		get onmessage() {
+			return null;
+		}
+		/**
+		* @type {String}
+		*/
+		get protocol() {
+			return this._protocol;
+		}
+		/**
+		* @type {Number}
+		*/
+		get readyState() {
+			return this._readyState;
+		}
+		/**
+		* @type {String}
+		*/
+		get url() {
+			return this._url;
+		}
+		/**
+		* Set up the socket and the internal resources.
+		*
+		* @param {Duplex} socket The network socket between the server and client
+		* @param {Buffer} head The first packet of the upgraded stream
+		* @param {Object} options Options object
+		* @param {Boolean} [options.allowSynchronousEvents=false] Specifies whether
+		*     any of the `'message'`, `'ping'`, and `'pong'` events can be emitted
+		*     multiple times in the same tick
+		* @param {Function} [options.generateMask] The function used to generate the
+		*     masking key
+		* @param {Number} [options.maxBufferedChunks=0] The maximum number of
+		*     buffered data chunks
+		* @param {Number} [options.maxFragments=0] The maximum number of message
+		*     fragments
+		* @param {Number} [options.maxPayload=0] The maximum allowed message size
+		* @param {Boolean} [options.skipUTF8Validation=false] Specifies whether or
+		*     not to skip UTF-8 validation for text and close messages
+		* @private
+		*/
+		setSocket(socket, head, options) {
+			const receiver = new Receiver({
+				allowSynchronousEvents: options.allowSynchronousEvents,
+				binaryType: this.binaryType,
+				extensions: this._extensions,
+				isServer: this._isServer,
+				maxBufferedChunks: options.maxBufferedChunks,
+				maxFragments: options.maxFragments,
+				maxPayload: options.maxPayload,
+				skipUTF8Validation: options.skipUTF8Validation
+			});
+			const sender = new Sender(socket, this._extensions, options.generateMask);
+			this._receiver = receiver;
+			this._sender = sender;
+			this._socket = socket;
+			receiver[kWebSocket$1] = this;
+			sender[kWebSocket$1] = this;
+			socket[kWebSocket$1] = this;
+			receiver.on("conclude", receiverOnConclude);
+			receiver.on("drain", receiverOnDrain);
+			receiver.on("error", receiverOnError);
+			receiver.on("message", receiverOnMessage);
+			receiver.on("ping", receiverOnPing);
+			receiver.on("pong", receiverOnPong);
+			sender.onerror = senderOnError;
+			if (socket.setTimeout) socket.setTimeout(0);
+			if (socket.setNoDelay) socket.setNoDelay();
+			if (head.length > 0) socket.unshift(head);
+			socket.on("close", socketOnClose);
+			socket.on("data", socketOnData);
+			socket.on("end", socketOnEnd);
+			socket.on("error", socketOnError$1);
+			this._readyState = WebSocket$2.OPEN;
+			this.emit("open");
+		}
+		/**
+		* Emit the `'close'` event.
+		*
+		* @private
+		*/
+		emitClose() {
+			if (!this._socket) {
+				this._readyState = WebSocket$2.CLOSED;
+				this.emit("close", this._closeCode, this._closeMessage);
+				return;
+			}
+			if (this._extensions[PerMessageDeflate$1.extensionName]) this._extensions[PerMessageDeflate$1.extensionName].cleanup();
+			this._receiver.removeAllListeners();
+			this._readyState = WebSocket$2.CLOSED;
+			this.emit("close", this._closeCode, this._closeMessage);
+		}
+		/**
+		* Start a closing handshake.
+		*
+		*          +----------+   +-----------+   +----------+
+		*     - - -|ws.close()|-->|close frame|-->|ws.close()|- - -
+		*    |     +----------+   +-----------+   +----------+     |
+		*          +----------+   +-----------+         |
+		* CLOSING  |ws.close()|<--|close frame|<--+-----+       CLOSING
+		*          +----------+   +-----------+   |
+		*    |           |                        |   +---+        |
+		*                +------------------------+-->|fin| - - - -
+		*    |         +---+                      |   +---+
+		*     - - - - -|fin|<---------------------+
+		*              +---+
+		*
+		* @param {Number} [code] Status code explaining why the connection is closing
+		* @param {(String|Buffer)} [data] The reason why the connection is
+		*     closing
+		* @public
+		*/
+		close(code, data) {
+			if (this.readyState === WebSocket$2.CLOSED) return;
+			if (this.readyState === WebSocket$2.CONNECTING) {
+				const msg = "WebSocket was closed before the connection was established";
+				abortHandshake$1(this, this._req, msg);
+				return;
+			}
+			if (this.readyState === WebSocket$2.CLOSING) {
+				if (this._closeFrameSent && (this._closeFrameReceived || this._receiver._writableState.errorEmitted)) this._socket.end();
+				return;
+			}
+			this._sender.close(code, data, !this._isServer, (err) => {
+				if (err) return;
+				this._closeFrameSent = true;
+				if (this._closeFrameReceived || this._receiver._writableState.errorEmitted) this._socket.end();
+			});
+			this._readyState = WebSocket$2.CLOSING;
+			setCloseTimer(this);
+		}
+		/**
+		* Pause the socket.
+		*
+		* @public
+		*/
+		pause() {
+			if (this.readyState === WebSocket$2.CONNECTING || this.readyState === WebSocket$2.CLOSED) return;
+			this._paused = true;
+			this._socket.pause();
+		}
+		/**
+		* Send a ping.
+		*
+		* @param {*} [data] The data to send
+		* @param {Boolean} [mask] Indicates whether or not to mask `data`
+		* @param {Function} [cb] Callback which is executed when the ping is sent
+		* @public
+		*/
+		ping(data, mask, cb) {
+			if (this.readyState === WebSocket$2.CONNECTING) throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
+			if (typeof data === "function") {
+				cb = data;
+				data = mask = void 0;
+			} else if (typeof mask === "function") {
+				cb = mask;
+				mask = void 0;
+			}
+			if (typeof data === "number") data = data.toString();
+			if (this.readyState !== WebSocket$2.OPEN) {
+				sendAfterClose(this, data, cb);
+				return;
+			}
+			if (mask === void 0) mask = !this._isServer;
+			this._sender.ping(data || EMPTY_BUFFER, mask, cb);
+		}
+		/**
+		* Send a pong.
+		*
+		* @param {*} [data] The data to send
+		* @param {Boolean} [mask] Indicates whether or not to mask `data`
+		* @param {Function} [cb] Callback which is executed when the pong is sent
+		* @public
+		*/
+		pong(data, mask, cb) {
+			if (this.readyState === WebSocket$2.CONNECTING) throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
+			if (typeof data === "function") {
+				cb = data;
+				data = mask = void 0;
+			} else if (typeof mask === "function") {
+				cb = mask;
+				mask = void 0;
+			}
+			if (typeof data === "number") data = data.toString();
+			if (this.readyState !== WebSocket$2.OPEN) {
+				sendAfterClose(this, data, cb);
+				return;
+			}
+			if (mask === void 0) mask = !this._isServer;
+			this._sender.pong(data || EMPTY_BUFFER, mask, cb);
+		}
+		/**
+		* Resume the socket.
+		*
+		* @public
+		*/
+		resume() {
+			if (this.readyState === WebSocket$2.CONNECTING || this.readyState === WebSocket$2.CLOSED) return;
+			this._paused = false;
+			if (!this._receiver._writableState.needDrain) this._socket.resume();
+		}
+		/**
+		* Send a data message.
+		*
+		* @param {*} data The message to send
+		* @param {Object} [options] Options object
+		* @param {Boolean} [options.binary] Specifies whether `data` is binary or
+		*     text
+		* @param {Boolean} [options.compress] Specifies whether or not to compress
+		*     `data`
+		* @param {Boolean} [options.fin=true] Specifies whether the fragment is the
+		*     last one
+		* @param {Boolean} [options.mask] Specifies whether or not to mask `data`
+		* @param {Function} [cb] Callback which is executed when data is written out
+		* @public
+		*/
+		send(data, options, cb) {
+			if (this.readyState === WebSocket$2.CONNECTING) throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
+			if (typeof options === "function") {
+				cb = options;
+				options = {};
+			}
+			if (typeof data === "number") data = data.toString();
+			if (this.readyState !== WebSocket$2.OPEN) {
+				sendAfterClose(this, data, cb);
+				return;
+			}
+			const opts = {
+				binary: typeof data !== "string",
+				mask: !this._isServer,
+				compress: true,
+				fin: true,
+				...options
+			};
+			if (!this._extensions[PerMessageDeflate$1.extensionName]) opts.compress = false;
+			this._sender.send(data || EMPTY_BUFFER, opts, cb);
+		}
+		/**
+		* Forcibly close the connection.
+		*
+		* @public
+		*/
+		terminate() {
+			if (this.readyState === WebSocket$2.CLOSED) return;
+			if (this.readyState === WebSocket$2.CONNECTING) {
+				const msg = "WebSocket was closed before the connection was established";
+				abortHandshake$1(this, this._req, msg);
+				return;
+			}
+			if (this._socket) {
+				this._readyState = WebSocket$2.CLOSING;
+				this._socket.destroy();
+			}
+		}
+	};
+	/**
+	* @constant {Number} CONNECTING
+	* @memberof WebSocket
+	*/
+	Object.defineProperty(WebSocket$2, "CONNECTING", {
+		enumerable: true,
+		value: readyStates.indexOf("CONNECTING")
+	});
+	/**
+	* @constant {Number} CONNECTING
+	* @memberof WebSocket.prototype
+	*/
+	Object.defineProperty(WebSocket$2.prototype, "CONNECTING", {
+		enumerable: true,
+		value: readyStates.indexOf("CONNECTING")
+	});
+	/**
+	* @constant {Number} OPEN
+	* @memberof WebSocket
+	*/
+	Object.defineProperty(WebSocket$2, "OPEN", {
+		enumerable: true,
+		value: readyStates.indexOf("OPEN")
+	});
+	/**
+	* @constant {Number} OPEN
+	* @memberof WebSocket.prototype
+	*/
+	Object.defineProperty(WebSocket$2.prototype, "OPEN", {
+		enumerable: true,
+		value: readyStates.indexOf("OPEN")
+	});
+	/**
+	* @constant {Number} CLOSING
+	* @memberof WebSocket
+	*/
+	Object.defineProperty(WebSocket$2, "CLOSING", {
+		enumerable: true,
+		value: readyStates.indexOf("CLOSING")
+	});
+	/**
+	* @constant {Number} CLOSING
+	* @memberof WebSocket.prototype
+	*/
+	Object.defineProperty(WebSocket$2.prototype, "CLOSING", {
+		enumerable: true,
+		value: readyStates.indexOf("CLOSING")
+	});
+	/**
+	* @constant {Number} CLOSED
+	* @memberof WebSocket
+	*/
+	Object.defineProperty(WebSocket$2, "CLOSED", {
+		enumerable: true,
+		value: readyStates.indexOf("CLOSED")
+	});
+	/**
+	* @constant {Number} CLOSED
+	* @memberof WebSocket.prototype
+	*/
+	Object.defineProperty(WebSocket$2.prototype, "CLOSED", {
+		enumerable: true,
+		value: readyStates.indexOf("CLOSED")
+	});
+	[
+		"binaryType",
+		"bufferedAmount",
+		"extensions",
+		"isPaused",
+		"protocol",
+		"readyState",
+		"url"
+	].forEach((property) => {
+		Object.defineProperty(WebSocket$2.prototype, property, { enumerable: true });
+	});
+	[
+		"open",
+		"error",
+		"close",
+		"message"
+	].forEach((method) => {
+		Object.defineProperty(WebSocket$2.prototype, `on${method}`, {
+			enumerable: true,
+			get() {
+				for (const listener of this.listeners(method)) if (listener[kForOnEventAttribute]) return listener[kListener];
+				return null;
+			},
+			set(handler) {
+				for (const listener of this.listeners(method)) if (listener[kForOnEventAttribute]) {
+					this.removeListener(method, listener);
+					break;
+				}
+				if (typeof handler !== "function") return;
+				this.addEventListener(method, handler, { [kForOnEventAttribute]: true });
+			}
+		});
+	});
+	WebSocket$2.prototype.addEventListener = addEventListener;
+	WebSocket$2.prototype.removeEventListener = removeEventListener;
+	module.exports = WebSocket$2;
+	/**
+	* Initialize a WebSocket client.
+	*
+	* @param {WebSocket} websocket The client to initialize
+	* @param {(String|URL)} address The URL to which to connect
+	* @param {Array} protocols The subprotocols
+	* @param {Object} [options] Connection options
+	* @param {Boolean} [options.allowSynchronousEvents=true] Specifies whether any
+	*     of the `'message'`, `'ping'`, and `'pong'` events can be emitted multiple
+	*     times in the same tick
+	* @param {Boolean} [options.autoPong=true] Specifies whether or not to
+	*     automatically send a pong in response to a ping
+	* @param {Number} [options.closeTimeout=30000] Duration in milliseconds to wait
+	*     for the closing handshake to finish after `websocket.close()` is called
+	* @param {Function} [options.finishRequest] A function which can be used to
+	*     customize the headers of each http request before it is sent
+	* @param {Boolean} [options.followRedirects=false] Whether or not to follow
+	*     redirects
+	* @param {Function} [options.generateMask] The function used to generate the
+	*     masking key
+	* @param {Number} [options.handshakeTimeout] Timeout in milliseconds for the
+	*     handshake request
+	* @param {Number} [options.maxBufferedChunks=262144] The maximum number of
+	*     buffered data chunks
+	* @param {Number} [options.maxFragments=16384] The maximum number of message
+	*     fragments
+	* @param {Number} [options.maxPayload=104857600] The maximum allowed message
+	*     size
+	* @param {Number} [options.maxRedirects=10] The maximum number of redirects
+	*     allowed
+	* @param {String} [options.origin] Value of the `Origin` or
+	*     `Sec-WebSocket-Origin` header
+	* @param {(Boolean|Object)} [options.perMessageDeflate=true] Enable/disable
+	*     permessage-deflate
+	* @param {Number} [options.protocolVersion=13] Value of the
+	*     `Sec-WebSocket-Version` header
+	* @param {Boolean} [options.skipUTF8Validation=false] Specifies whether or
+	*     not to skip UTF-8 validation for text and close messages
+	* @private
+	*/
+	function initAsClient(websocket, address, protocols, options) {
+		const opts = {
+			allowSynchronousEvents: true,
+			autoPong: true,
+			closeTimeout: CLOSE_TIMEOUT$1,
+			protocolVersion: protocolVersions[1],
+			maxBufferedChunks: 256 * 1024,
+			maxFragments: 16 * 1024,
+			maxPayload: 100 * 1024 * 1024,
+			skipUTF8Validation: false,
+			perMessageDeflate: true,
+			followRedirects: false,
+			maxRedirects: 10,
+			...options,
+			socketPath: void 0,
+			hostname: void 0,
+			protocol: void 0,
+			protocols: void 0,
+			timeout: void 0,
+			method: "GET",
+			host: void 0,
+			path: void 0,
+			port: void 0
+		};
+		websocket._autoPong = opts.autoPong;
+		websocket._closeTimeout = opts.closeTimeout;
+		if (!protocolVersions.includes(opts.protocolVersion)) throw new RangeError(`Unsupported protocol version: ${opts.protocolVersion} (supported versions: ${protocolVersions.join(", ")})`);
+		let parsedUrl;
+		if (address instanceof URL$1) parsedUrl = address;
+		else try {
+			parsedUrl = new URL$1(address);
+		} catch {
+			throw new SyntaxError(`Invalid URL: ${address}`);
+		}
+		if (parsedUrl.protocol === "http:") parsedUrl.protocol = "ws:";
+		else if (parsedUrl.protocol === "https:") parsedUrl.protocol = "wss:";
+		websocket._url = parsedUrl.href;
+		const isSecure = parsedUrl.protocol === "wss:";
+		const isIpcUrl = parsedUrl.protocol === "ws+unix:";
+		let invalidUrlMessage;
+		if (parsedUrl.protocol !== "ws:" && !isSecure && !isIpcUrl) invalidUrlMessage = "The URL's protocol must be one of \"ws:\", \"wss:\", \"http:\", \"https:\", or \"ws+unix:\"";
+		else if (isIpcUrl && !parsedUrl.pathname) invalidUrlMessage = "The URL's pathname is empty";
+		else if (parsedUrl.hash) invalidUrlMessage = "The URL contains a fragment identifier";
+		if (invalidUrlMessage) {
+			const err = new SyntaxError(invalidUrlMessage);
+			if (websocket._redirects === 0) throw err;
+			else {
+				emitErrorAndClose(websocket, err);
+				return;
+			}
+		}
+		const defaultPort = isSecure ? 443 : 80;
+		const key = randomBytes$1(16).toString("base64");
+		const request = isSecure ? https.request : http$2.request;
+		const protocolSet = new Set();
+		let perMessageDeflate;
+		opts.createConnection = opts.createConnection || (isSecure ? tlsConnect : netConnect);
+		opts.defaultPort = opts.defaultPort || defaultPort;
+		opts.port = parsedUrl.port || defaultPort;
+		opts.host = parsedUrl.hostname.startsWith("[") ? parsedUrl.hostname.slice(1, -1) : parsedUrl.hostname;
+		opts.headers = {
+			...opts.headers,
+			"Sec-WebSocket-Version": opts.protocolVersion,
+			"Sec-WebSocket-Key": key,
+			Connection: "Upgrade",
+			Upgrade: "websocket"
+		};
+		opts.path = parsedUrl.pathname + parsedUrl.search;
+		opts.timeout = opts.handshakeTimeout;
+		if (opts.perMessageDeflate) {
+			perMessageDeflate = new PerMessageDeflate$1({
+				...opts.perMessageDeflate,
+				isServer: false,
+				maxPayload: opts.maxPayload
+			});
+			opts.headers["Sec-WebSocket-Extensions"] = format({ [PerMessageDeflate$1.extensionName]: perMessageDeflate.offer() });
+		}
+		if (protocols.length) {
+			for (const protocol of protocols) {
+				if (typeof protocol !== "string" || !subprotocolRegex.test(protocol) || protocolSet.has(protocol)) throw new SyntaxError("An invalid or duplicated subprotocol was specified");
+				protocolSet.add(protocol);
+			}
+			opts.headers["Sec-WebSocket-Protocol"] = protocols.join(",");
+		}
+		if (opts.origin) if (opts.protocolVersion < 13) opts.headers["Sec-WebSocket-Origin"] = opts.origin;
+		else opts.headers.Origin = opts.origin;
+		if (parsedUrl.username || parsedUrl.password) opts.auth = `${parsedUrl.username}:${parsedUrl.password}`;
+		if (isIpcUrl) {
+			const parts = opts.path.split(":");
+			opts.socketPath = parts[0];
+			opts.path = parts[1];
+		}
+		let req;
+		if (opts.followRedirects) {
+			if (websocket._redirects === 0) {
+				websocket._originalIpc = isIpcUrl;
+				websocket._originalSecure = isSecure;
+				websocket._originalHostOrSocketPath = isIpcUrl ? opts.socketPath : parsedUrl.host;
+				const headers = options && options.headers;
+				options = {
+					...options,
+					headers: {}
+				};
+				if (headers) for (const [key$1, value] of Object.entries(headers)) options.headers[key$1.toLowerCase()] = value;
+			} else if (websocket.listenerCount("redirect") === 0) {
+				const isSameHost = isIpcUrl ? websocket._originalIpc ? opts.socketPath === websocket._originalHostOrSocketPath : false : websocket._originalIpc ? false : parsedUrl.host === websocket._originalHostOrSocketPath;
+				if (!isSameHost || websocket._originalSecure && !isSecure) {
+					delete opts.headers.authorization;
+					delete opts.headers.cookie;
+					if (!isSameHost) delete opts.headers.host;
+					opts.auth = void 0;
+				}
+			}
+			if (opts.auth && !options.headers.authorization) options.headers.authorization = "Basic " + Buffer.from(opts.auth).toString("base64");
+			req = websocket._req = request(opts);
+			if (websocket._redirects) websocket.emit("redirect", websocket.url, req);
+		} else req = websocket._req = request(opts);
+		if (opts.timeout) req.on("timeout", () => {
+			abortHandshake$1(websocket, req, "Opening handshake has timed out");
+		});
+		req.on("error", (err) => {
+			if (req === null || req[kAborted]) return;
+			req = websocket._req = null;
+			emitErrorAndClose(websocket, err);
+		});
+		req.on("response", (res) => {
+			const location = res.headers.location;
+			const statusCode = res.statusCode;
+			if (location && opts.followRedirects && statusCode >= 300 && statusCode < 400) {
+				if (++websocket._redirects > opts.maxRedirects) {
+					abortHandshake$1(websocket, req, "Maximum redirects exceeded");
+					return;
+				}
+				req.abort();
+				let addr;
+				try {
+					addr = new URL$1(location, address);
+				} catch (e) {
+					const err = new SyntaxError(`Invalid URL: ${location}`);
+					emitErrorAndClose(websocket, err);
+					return;
+				}
+				initAsClient(websocket, addr, protocols, options);
+			} else if (!websocket.emit("unexpected-response", req, res)) abortHandshake$1(websocket, req, `Unexpected server response: ${res.statusCode}`);
+		});
+		req.on("upgrade", (res, socket, head) => {
+			websocket.emit("upgrade", res);
+			if (websocket.readyState !== WebSocket$2.CONNECTING) return;
+			req = websocket._req = null;
+			const upgrade = res.headers.upgrade;
+			if (upgrade === void 0 || upgrade.toLowerCase() !== "websocket") {
+				abortHandshake$1(websocket, socket, "Invalid Upgrade header");
+				return;
+			}
+			const digest = createHash$2("sha1").update(key + GUID$1).digest("base64");
+			if (res.headers["sec-websocket-accept"] !== digest) {
+				abortHandshake$1(websocket, socket, "Invalid Sec-WebSocket-Accept header");
+				return;
+			}
+			const serverProt = res.headers["sec-websocket-protocol"];
+			let protError;
+			if (serverProt !== void 0) {
+				if (!protocolSet.size) protError = "Server sent a subprotocol but none was requested";
+				else if (!protocolSet.has(serverProt)) protError = "Server sent an invalid subprotocol";
+			} else if (protocolSet.size) protError = "Server sent no subprotocol";
+			if (protError) {
+				abortHandshake$1(websocket, socket, protError);
+				return;
+			}
+			if (serverProt) websocket._protocol = serverProt;
+			const secWebSocketExtensions = res.headers["sec-websocket-extensions"];
+			if (secWebSocketExtensions !== void 0) {
+				if (!perMessageDeflate) {
+					const message = "Server sent a Sec-WebSocket-Extensions header but no extension was requested";
+					abortHandshake$1(websocket, socket, message);
+					return;
+				}
+				let extensions;
+				try {
+					extensions = parse$3(secWebSocketExtensions);
+				} catch (err) {
+					const message = "Invalid Sec-WebSocket-Extensions header";
+					abortHandshake$1(websocket, socket, message);
+					return;
+				}
+				const extensionNames = Object.keys(extensions);
+				if (extensionNames.length !== 1 || extensionNames[0] !== PerMessageDeflate$1.extensionName) {
+					const message = "Server indicated an extension that was not requested";
+					abortHandshake$1(websocket, socket, message);
+					return;
+				}
+				try {
+					perMessageDeflate.accept(extensions[PerMessageDeflate$1.extensionName]);
+				} catch (err) {
+					const message = "Invalid Sec-WebSocket-Extensions header";
+					abortHandshake$1(websocket, socket, message);
+					return;
+				}
+				websocket._extensions[PerMessageDeflate$1.extensionName] = perMessageDeflate;
+			}
+			websocket.setSocket(socket, head, {
+				allowSynchronousEvents: opts.allowSynchronousEvents,
+				generateMask: opts.generateMask,
+				maxBufferedChunks: opts.maxBufferedChunks,
+				maxFragments: opts.maxFragments,
+				maxPayload: opts.maxPayload,
+				skipUTF8Validation: opts.skipUTF8Validation
+			});
+		});
+		if (opts.finishRequest) opts.finishRequest(req, websocket);
+		else req.end();
+	}
+	/**
+	* Emit the `'error'` and `'close'` events.
+	*
+	* @param {WebSocket} websocket The WebSocket instance
+	* @param {Error} The error to emit
+	* @private
+	*/
+	function emitErrorAndClose(websocket, err) {
+		websocket._readyState = WebSocket$2.CLOSING;
+		websocket._errorEmitted = true;
+		websocket.emit("error", err);
+		websocket.emitClose();
+	}
+	/**
+	* Create a `net.Socket` and initiate a connection.
+	*
+	* @param {Object} options Connection options
+	* @return {net.Socket} The newly created socket used to start the connection
+	* @private
+	*/
+	function netConnect(options) {
+		options.path = options.socketPath;
+		return net.connect(options);
+	}
+	/**
+	* Create a `tls.TLSSocket` and initiate a connection.
+	*
+	* @param {Object} options Connection options
+	* @return {tls.TLSSocket} The newly created socket used to start the connection
+	* @private
+	*/
+	function tlsConnect(options) {
+		options.path = void 0;
+		if (!options.servername && options.servername !== "") options.servername = net.isIP(options.host) ? "" : options.host;
+		return tls.connect(options);
+	}
+	/**
+	* Abort the handshake and emit an error.
+	*
+	* @param {WebSocket} websocket The WebSocket instance
+	* @param {(http.ClientRequest|net.Socket|tls.Socket)} stream The request to
+	*     abort or the socket to destroy
+	* @param {String} message The error message
+	* @private
+	*/
+	function abortHandshake$1(websocket, stream, message) {
+		websocket._readyState = WebSocket$2.CLOSING;
+		const err = new Error(message);
+		Error.captureStackTrace(err, abortHandshake$1);
+		if (stream.setHeader) {
+			stream[kAborted] = true;
+			stream.abort();
+			if (stream.socket && !stream.socket.destroyed) stream.socket.destroy();
+			process.nextTick(emitErrorAndClose, websocket, err);
+		} else {
+			stream.destroy(err);
+			stream.once("error", websocket.emit.bind(websocket, "error"));
+			stream.once("close", websocket.emitClose.bind(websocket));
+		}
+	}
+	/**
+	* Handle cases where the `ping()`, `pong()`, or `send()` methods are called
+	* when the `readyState` attribute is `CLOSING` or `CLOSED`.
+	*
+	* @param {WebSocket} websocket The WebSocket instance
+	* @param {*} [data] The data to send
+	* @param {Function} [cb] Callback
+	* @private
+	*/
+	function sendAfterClose(websocket, data, cb) {
+		if (data) {
+			const length = isBlob$1(data) ? data.size : toBuffer(data).length;
+			if (websocket._socket) websocket._sender._bufferedBytes += length;
+			else websocket._bufferedAmount += length;
+		}
+		if (cb) {
+			const err = new Error(`WebSocket is not open: readyState ${websocket.readyState} (${readyStates[websocket.readyState]})`);
+			process.nextTick(cb, err);
+		}
+	}
+	/**
+	* The listener of the `Receiver` `'conclude'` event.
+	*
+	* @param {Number} code The status code
+	* @param {Buffer} reason The reason for closing
+	* @private
+	*/
+	function receiverOnConclude(code, reason) {
+		const websocket = this[kWebSocket$1];
+		websocket._closeFrameReceived = true;
+		websocket._closeMessage = reason;
+		websocket._closeCode = code;
+		if (websocket._socket[kWebSocket$1] === void 0) return;
+		websocket._socket.removeListener("data", socketOnData);
+		process.nextTick(resume, websocket._socket);
+		if (code === 1005) websocket.close();
+		else websocket.close(code, reason);
+	}
+	/**
+	* The listener of the `Receiver` `'drain'` event.
+	*
+	* @private
+	*/
+	function receiverOnDrain() {
+		const websocket = this[kWebSocket$1];
+		if (!websocket.isPaused) websocket._socket.resume();
+	}
+	/**
+	* The listener of the `Receiver` `'error'` event.
+	*
+	* @param {(RangeError|Error)} err The emitted error
+	* @private
+	*/
+	function receiverOnError(err) {
+		const websocket = this[kWebSocket$1];
+		if (websocket._socket[kWebSocket$1] !== void 0) {
+			websocket._socket.removeListener("data", socketOnData);
+			process.nextTick(resume, websocket._socket);
+			websocket.close(err[kStatusCode]);
+		}
+		if (!websocket._errorEmitted) {
+			websocket._errorEmitted = true;
+			websocket.emit("error", err);
+		}
+	}
+	/**
+	* The listener of the `Receiver` `'finish'` event.
+	*
+	* @private
+	*/
+	function receiverOnFinish() {
+		this[kWebSocket$1].emitClose();
+	}
+	/**
+	* The listener of the `Receiver` `'message'` event.
+	*
+	* @param {Buffer|ArrayBuffer|Buffer[])} data The message
+	* @param {Boolean} isBinary Specifies whether the message is binary or not
+	* @private
+	*/
+	function receiverOnMessage(data, isBinary) {
+		this[kWebSocket$1].emit("message", data, isBinary);
+	}
+	/**
+	* The listener of the `Receiver` `'ping'` event.
+	*
+	* @param {Buffer} data The data included in the ping frame
+	* @private
+	*/
+	function receiverOnPing(data) {
+		const websocket = this[kWebSocket$1];
+		if (websocket._autoPong) websocket.pong(data, !this._isServer, NOOP);
+		websocket.emit("ping", data);
+	}
+	/**
+	* The listener of the `Receiver` `'pong'` event.
+	*
+	* @param {Buffer} data The data included in the pong frame
+	* @private
+	*/
+	function receiverOnPong(data) {
+		this[kWebSocket$1].emit("pong", data);
+	}
+	/**
+	* Resume a readable stream
+	*
+	* @param {Readable} stream The readable stream
+	* @private
+	*/
+	function resume(stream) {
+		stream.resume();
+	}
+	/**
+	* The `Sender` error event handler.
+	*
+	* @param {Error} The error
+	* @private
+	*/
+	function senderOnError(err) {
+		const websocket = this[kWebSocket$1];
+		if (websocket.readyState === WebSocket$2.CLOSED) return;
+		if (websocket.readyState === WebSocket$2.OPEN) {
+			websocket._readyState = WebSocket$2.CLOSING;
+			setCloseTimer(websocket);
+		}
+		this._socket.end();
+		if (!websocket._errorEmitted) {
+			websocket._errorEmitted = true;
+			websocket.emit("error", err);
+		}
+	}
+	/**
+	* Set a timer to destroy the underlying raw socket of a WebSocket.
+	*
+	* @param {WebSocket} websocket The WebSocket instance
+	* @private
+	*/
+	function setCloseTimer(websocket) {
+		websocket._closeTimer = setTimeout(websocket._socket.destroy.bind(websocket._socket), websocket._closeTimeout);
+	}
+	/**
+	* The listener of the socket `'close'` event.
+	*
+	* @private
+	*/
+	function socketOnClose() {
+		const websocket = this[kWebSocket$1];
+		this.removeListener("close", socketOnClose);
+		this.removeListener("data", socketOnData);
+		this.removeListener("end", socketOnEnd);
+		websocket._readyState = WebSocket$2.CLOSING;
+		if (!this._readableState.endEmitted && !websocket._closeFrameReceived && !websocket._receiver._writableState.errorEmitted && this._readableState.length !== 0) {
+			const chunk = this.read(this._readableState.length);
+			websocket._receiver.write(chunk);
+		}
+		websocket._receiver.end();
+		this[kWebSocket$1] = void 0;
+		clearTimeout(websocket._closeTimer);
+		if (websocket._receiver._writableState.finished || websocket._receiver._writableState.errorEmitted) websocket.emitClose();
+		else {
+			websocket._receiver.on("error", receiverOnFinish);
+			websocket._receiver.on("finish", receiverOnFinish);
+		}
+	}
+	/**
+	* The listener of the socket `'data'` event.
+	*
+	* @param {Buffer} chunk A chunk of data
+	* @private
+	*/
+	function socketOnData(chunk) {
+		if (!this[kWebSocket$1]._receiver.write(chunk)) this.pause();
+	}
+	/**
+	* The listener of the socket `'end'` event.
+	*
+	* @private
+	*/
+	function socketOnEnd() {
+		const websocket = this[kWebSocket$1];
+		websocket._readyState = WebSocket$2.CLOSING;
+		websocket._receiver.end();
+		this.end();
+	}
+	/**
+	* The listener of the socket `'error'` event.
+	*
+	* @private
+	*/
+	function socketOnError$1() {
+		const websocket = this[kWebSocket$1];
+		this.removeListener("error", socketOnError$1);
+		this.on("error", NOOP);
+		if (websocket) {
+			websocket._readyState = WebSocket$2.CLOSING;
+			this.destroy();
+		}
+	}
+} });
+var import_websocket = __toESM(require_websocket(), 1);
+
+//#endregion
+//#region node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/stream.js
+var require_stream = __commonJS({ "node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/stream.js"(exports, module) {
+	const WebSocket$1 = require_websocket();
+	const { Duplex: Duplex$1 } = __require("stream");
+	/**
+	* Emits the `'close'` event on a stream.
+	*
+	* @param {Duplex} stream The stream.
+	* @private
+	*/
+	function emitClose$1(stream) {
+		stream.emit("close");
+	}
+	/**
+	* The listener of the `'end'` event.
+	*
+	* @private
+	*/
+	function duplexOnEnd() {
+		if (!this.destroyed && this._writableState.finished) this.destroy();
+	}
+	/**
+	* The listener of the `'error'` event.
+	*
+	* @param {Error} err The error
+	* @private
+	*/
+	function duplexOnError(err) {
+		this.removeListener("error", duplexOnError);
+		this.destroy();
+		if (this.listenerCount("error") === 0) this.emit("error", err);
+	}
+	/**
+	* Wraps a `WebSocket` in a duplex stream.
+	*
+	* @param {WebSocket} ws The `WebSocket` to wrap
+	* @param {Object} [options] The options for the `Duplex` constructor
+	* @return {Duplex} The duplex stream
+	* @public
+	*/
+	function createWebSocketStream(ws, options) {
+		let terminateOnDestroy = true;
+		const duplex = new Duplex$1({
+			...options,
+			autoDestroy: false,
+			emitClose: false,
+			objectMode: false,
+			writableObjectMode: false
+		});
+		ws.on("message", function message(msg, isBinary) {
+			const data = !isBinary && duplex._readableState.objectMode ? msg.toString() : msg;
+			if (!duplex.push(data)) ws.pause();
+		});
+		ws.once("error", function error$1(err) {
+			if (duplex.destroyed) return;
+			terminateOnDestroy = false;
+			duplex.destroy(err);
+		});
+		ws.once("close", function close() {
+			if (duplex.destroyed) return;
+			duplex.push(null);
+		});
+		duplex._destroy = function(err, callback) {
+			if (ws.readyState === ws.CLOSED) {
+				callback(err);
+				process.nextTick(emitClose$1, duplex);
+				return;
+			}
+			let called = false;
+			ws.once("error", function error$1(err$1) {
+				called = true;
+				callback(err$1);
+			});
+			ws.once("close", function close() {
+				if (!called) callback(err);
+				process.nextTick(emitClose$1, duplex);
+			});
+			if (terminateOnDestroy) ws.terminate();
+		};
+		duplex._final = function(callback) {
+			if (ws.readyState === ws.CONNECTING) {
+				ws.once("open", function open$1() {
+					duplex._final(callback);
+				});
+				return;
+			}
+			if (ws._socket === null) return;
+			if (ws._socket._writableState.finished) {
+				callback();
+				if (duplex._readableState.endEmitted) duplex.destroy();
+			} else {
+				ws._socket.once("finish", function finish() {
+					callback();
+				});
+				ws.close();
+			}
+		};
+		duplex._read = function() {
+			if (ws.isPaused) ws.resume();
+		};
+		duplex._write = function(chunk, encoding, callback) {
+			if (ws.readyState === ws.CONNECTING) {
+				ws.once("open", function open$1() {
+					duplex._write(chunk, encoding, callback);
+				});
+				return;
+			}
+			ws.send(chunk, callback);
+		};
+		duplex.on("end", duplexOnEnd);
+		duplex.on("error", duplexOnError);
+		return duplex;
+	}
+	module.exports = createWebSocketStream;
+} });
+
+//#endregion
+//#region node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/subprotocol.js
+var require_subprotocol = __commonJS({ "node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/subprotocol.js"(exports, module) {
+	const { tokenChars } = require_validation();
+	/**
+	* Parses the `Sec-WebSocket-Protocol` header into a set of subprotocol names.
+	*
+	* @param {String} header The field value of the header
+	* @return {Set} The subprotocol names
+	* @public
+	*/
+	function parse$2(header) {
+		const protocols = new Set();
+		let start = -1;
+		let end = -1;
+		let i = 0;
+		for (; i < header.length; i++) {
+			const code = header.charCodeAt(i);
+			if (end === -1 && tokenChars[code] === 1) {
+				if (start === -1) start = i;
+			} else if (i !== 0 && (code === 32 || code === 9)) {
+				if (end === -1 && start !== -1) end = i;
+			} else if (code === 44) {
+				if (start === -1) throw new SyntaxError(`Unexpected character at index ${i}`);
+				if (end === -1) end = i;
+				const protocol$1 = header.slice(start, end);
+				if (protocols.has(protocol$1)) throw new SyntaxError(`The "${protocol$1}" subprotocol is duplicated`);
+				protocols.add(protocol$1);
+				start = end = -1;
+			} else throw new SyntaxError(`Unexpected character at index ${i}`);
+		}
+		if (start === -1 || end !== -1) throw new SyntaxError("Unexpected end of input");
+		const protocol = header.slice(start, i);
+		if (protocols.has(protocol)) throw new SyntaxError(`The "${protocol}" subprotocol is duplicated`);
+		protocols.add(protocol);
+		return protocols;
+	}
+	module.exports = { parse: parse$2 };
+} });
+
+//#endregion
+//#region node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/websocket-server.js
+var require_websocket_server = __commonJS({ "node_modules/.pnpm/ws@8.22.0/node_modules/ws/lib/websocket-server.js"(exports, module) {
+	const EventEmitter = __require("events");
+	const http$1 = __require("http");
+	const { Duplex } = __require("stream");
+	const { createHash: createHash$1 } = __require("crypto");
+	const extension = require_extension();
+	const PerMessageDeflate = require_permessage_deflate();
+	const subprotocol = require_subprotocol();
+	const WebSocket = require_websocket();
+	const { CLOSE_TIMEOUT, GUID, kWebSocket } = require_constants();
+	const keyRegex = /^[+/0-9A-Za-z]{22}==$/;
+	const RUNNING = 0;
+	const CLOSING = 1;
+	const CLOSED = 2;
+	var WebSocketServer = class extends EventEmitter {
+		/**
+		* Create a `WebSocketServer` instance.
+		*
+		* @param {Object} options Configuration options
+		* @param {Boolean} [options.allowSynchronousEvents=true] Specifies whether
+		*     any of the `'message'`, `'ping'`, and `'pong'` events can be emitted
+		*     multiple times in the same tick
+		* @param {Boolean} [options.autoPong=true] Specifies whether or not to
+		*     automatically send a pong in response to a ping
+		* @param {Number} [options.backlog=511] The maximum length of the queue of
+		*     pending connections
+		* @param {Boolean} [options.clientTracking=true] Specifies whether or not to
+		*     track clients
+		* @param {Number} [options.closeTimeout=30000] Duration in milliseconds to
+		*     wait for the closing handshake to finish after `websocket.close()` is
+		*     called
+		* @param {Function} [options.handleProtocols] A hook to handle protocols
+		* @param {String} [options.host] The hostname where to bind the server
+		* @param {Number} [options.maxBufferedChunks=262144] The maximum number of
+		*     buffered data chunks
+		* @param {Number} [options.maxFragments=16384] The maximum number of message
+		*     fragments
+		* @param {Number} [options.maxPayload=104857600] The maximum allowed message
+		*     size
+		* @param {Boolean} [options.noServer=false] Enable no server mode
+		* @param {String} [options.path] Accept only connections matching this path
+		* @param {(Boolean|Object)} [options.perMessageDeflate=false] Enable/disable
+		*     permessage-deflate
+		* @param {Number} [options.port] The port where to bind the server
+		* @param {(http.Server|https.Server)} [options.server] A pre-created HTTP/S
+		*     server to use
+		* @param {Boolean} [options.skipUTF8Validation=false] Specifies whether or
+		*     not to skip UTF-8 validation for text and close messages
+		* @param {Function} [options.verifyClient] A hook to reject connections
+		* @param {Function} [options.WebSocket=WebSocket] Specifies the `WebSocket`
+		*     class to use. It must be the `WebSocket` class or class that extends it
+		* @param {Function} [callback] A listener for the `listening` event
+		*/
+		constructor(options, callback) {
+			super();
+			options = {
+				allowSynchronousEvents: true,
+				autoPong: true,
+				maxBufferedChunks: 256 * 1024,
+				maxFragments: 16 * 1024,
+				maxPayload: 100 * 1024 * 1024,
+				skipUTF8Validation: false,
+				perMessageDeflate: false,
+				handleProtocols: null,
+				clientTracking: true,
+				closeTimeout: CLOSE_TIMEOUT,
+				verifyClient: null,
+				noServer: false,
+				backlog: null,
+				server: null,
+				host: null,
+				path: null,
+				port: null,
+				WebSocket,
+				...options
+			};
+			if (options.port == null && !options.server && !options.noServer || options.port != null && (options.server || options.noServer) || options.server && options.noServer) throw new TypeError("One and only one of the \"port\", \"server\", or \"noServer\" options must be specified");
+			if (options.port != null) {
+				this._server = http$1.createServer((req, res) => {
+					const body = http$1.STATUS_CODES[426];
+					res.writeHead(426, {
+						"Content-Length": body.length,
+						"Content-Type": "text/plain"
+					});
+					res.end(body);
+				});
+				this._server.listen(options.port, options.host, options.backlog, callback);
+			} else if (options.server) this._server = options.server;
+			if (this._server) {
+				const emitConnection = this.emit.bind(this, "connection");
+				this._removeListeners = addListeners(this._server, {
+					listening: this.emit.bind(this, "listening"),
+					error: this.emit.bind(this, "error"),
+					upgrade: (req, socket, head) => {
+						this.handleUpgrade(req, socket, head, emitConnection);
+					}
+				});
+			}
+			if (options.perMessageDeflate === true) options.perMessageDeflate = {};
+			if (options.clientTracking) {
+				this.clients = new Set();
+				this._shouldEmitClose = false;
+			}
+			this.options = options;
+			this._state = RUNNING;
+		}
+		/**
+		* Returns the bound address, the address family name, and port of the server
+		* as reported by the operating system if listening on an IP socket.
+		* If the server is listening on a pipe or UNIX domain socket, the name is
+		* returned as a string.
+		*
+		* @return {(Object|String|null)} The address of the server
+		* @public
+		*/
+		address() {
+			if (this.options.noServer) throw new Error("The server is operating in \"noServer\" mode");
+			if (!this._server) return null;
+			return this._server.address();
+		}
+		/**
+		* Stop the server from accepting new connections and emit the `'close'` event
+		* when all existing connections are closed.
+		*
+		* @param {Function} [cb] A one-time listener for the `'close'` event
+		* @public
+		*/
+		close(cb) {
+			if (this._state === CLOSED) {
+				if (cb) this.once("close", () => {
+					cb(new Error("The server is not running"));
+				});
+				process.nextTick(emitClose, this);
+				return;
+			}
+			if (cb) this.once("close", cb);
+			if (this._state === CLOSING) return;
+			this._state = CLOSING;
+			if (this.options.noServer || this.options.server) {
+				if (this._server) {
+					this._removeListeners();
+					this._removeListeners = this._server = null;
+				}
+				if (this.clients) if (!this.clients.size) process.nextTick(emitClose, this);
+				else this._shouldEmitClose = true;
+				else process.nextTick(emitClose, this);
+			} else {
+				const server = this._server;
+				this._removeListeners();
+				this._removeListeners = this._server = null;
+				server.close(() => {
+					emitClose(this);
+				});
+			}
+		}
+		/**
+		* See if a given request should be handled by this server instance.
+		*
+		* @param {http.IncomingMessage} req Request object to inspect
+		* @return {Boolean} `true` if the request is valid, else `false`
+		* @public
+		*/
+		shouldHandle(req) {
+			if (this.options.path) {
+				const index = req.url.indexOf("?");
+				const pathname = index !== -1 ? req.url.slice(0, index) : req.url;
+				if (pathname !== this.options.path) return false;
+			}
+			return true;
+		}
+		/**
+		* Handle a HTTP Upgrade request.
+		*
+		* @param {http.IncomingMessage} req The request object
+		* @param {Duplex} socket The network socket between the server and client
+		* @param {Buffer} head The first packet of the upgraded stream
+		* @param {Function} cb Callback
+		* @public
+		*/
+		handleUpgrade(req, socket, head, cb) {
+			socket.on("error", socketOnError);
+			const key = req.headers["sec-websocket-key"];
+			const upgrade = req.headers.upgrade;
+			const version$1 = +req.headers["sec-websocket-version"];
+			if (req.method !== "GET") {
+				const message = "Invalid HTTP method";
+				abortHandshakeOrEmitwsClientError(this, req, socket, 405, message);
+				return;
+			}
+			if (upgrade === void 0 || upgrade.toLowerCase() !== "websocket") {
+				const message = "Invalid Upgrade header";
+				abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
+				return;
+			}
+			if (key === void 0 || !keyRegex.test(key)) {
+				const message = "Missing or invalid Sec-WebSocket-Key header";
+				abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
+				return;
+			}
+			if (version$1 !== 13 && version$1 !== 8) {
+				const message = "Missing or invalid Sec-WebSocket-Version header";
+				abortHandshakeOrEmitwsClientError(this, req, socket, 400, message, { "Sec-WebSocket-Version": "13, 8" });
+				return;
+			}
+			if (!this.shouldHandle(req)) {
+				abortHandshake(socket, 400);
+				return;
+			}
+			const secWebSocketProtocol = req.headers["sec-websocket-protocol"];
+			let protocols = new Set();
+			if (secWebSocketProtocol !== void 0) try {
+				protocols = subprotocol.parse(secWebSocketProtocol);
+			} catch (err) {
+				const message = "Invalid Sec-WebSocket-Protocol header";
+				abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
+				return;
+			}
+			const secWebSocketExtensions = req.headers["sec-websocket-extensions"];
+			const extensions = {};
+			if (this.options.perMessageDeflate && secWebSocketExtensions !== void 0) {
+				const perMessageDeflate = new PerMessageDeflate({
+					...this.options.perMessageDeflate,
+					isServer: true,
+					maxPayload: this.options.maxPayload
+				});
+				try {
+					const offers = extension.parse(secWebSocketExtensions);
+					if (offers[PerMessageDeflate.extensionName]) {
+						perMessageDeflate.accept(offers[PerMessageDeflate.extensionName]);
+						extensions[PerMessageDeflate.extensionName] = perMessageDeflate;
+					}
+				} catch (err) {
+					const message = "Invalid or unacceptable Sec-WebSocket-Extensions header";
+					abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
+					return;
+				}
+			}
+			if (this.options.verifyClient) {
+				const info = {
+					origin: req.headers[`${version$1 === 8 ? "sec-websocket-origin" : "origin"}`],
+					secure: !!(req.socket.authorized || req.socket.encrypted),
+					req
+				};
+				if (this.options.verifyClient.length === 2) {
+					this.options.verifyClient(info, (verified, code, message, headers) => {
+						if (!verified) return abortHandshake(socket, code || 401, message, headers);
+						this.completeUpgrade(extensions, key, protocols, req, socket, head, cb);
+					});
+					return;
+				}
+				if (!this.options.verifyClient(info)) return abortHandshake(socket, 401);
+			}
+			this.completeUpgrade(extensions, key, protocols, req, socket, head, cb);
+		}
+		/**
+		* Upgrade the connection to WebSocket.
+		*
+		* @param {Object} extensions The accepted extensions
+		* @param {String} key The value of the `Sec-WebSocket-Key` header
+		* @param {Set} protocols The subprotocols
+		* @param {http.IncomingMessage} req The request object
+		* @param {Duplex} socket The network socket between the server and client
+		* @param {Buffer} head The first packet of the upgraded stream
+		* @param {Function} cb Callback
+		* @throws {Error} If called more than once with the same socket
+		* @private
+		*/
+		completeUpgrade(extensions, key, protocols, req, socket, head, cb) {
+			if (!socket.readable || !socket.writable) return socket.destroy();
+			if (socket[kWebSocket]) throw new Error("server.handleUpgrade() was called more than once with the same socket, possibly due to a misconfiguration");
+			if (this._state > RUNNING) return abortHandshake(socket, 503);
+			const digest = createHash$1("sha1").update(key + GUID).digest("base64");
+			const headers = [
+				"HTTP/1.1 101 Switching Protocols",
+				"Upgrade: websocket",
+				"Connection: Upgrade",
+				`Sec-WebSocket-Accept: ${digest}`
+			];
+			const ws = new this.options.WebSocket(null, void 0, this.options);
+			if (protocols.size) {
+				const protocol = this.options.handleProtocols ? this.options.handleProtocols(protocols, req) : protocols.values().next().value;
+				if (protocol) {
+					headers.push(`Sec-WebSocket-Protocol: ${protocol}`);
+					ws._protocol = protocol;
+				}
+			}
+			if (extensions[PerMessageDeflate.extensionName]) {
+				const params = extensions[PerMessageDeflate.extensionName].params;
+				const value = extension.format({ [PerMessageDeflate.extensionName]: [params] });
+				headers.push(`Sec-WebSocket-Extensions: ${value}`);
+				ws._extensions = extensions;
+			}
+			this.emit("headers", headers, req);
+			socket.write(headers.concat("\r\n").join("\r\n"));
+			socket.removeListener("error", socketOnError);
+			ws.setSocket(socket, head, {
+				allowSynchronousEvents: this.options.allowSynchronousEvents,
+				maxBufferedChunks: this.options.maxBufferedChunks,
+				maxFragments: this.options.maxFragments,
+				maxPayload: this.options.maxPayload,
+				skipUTF8Validation: this.options.skipUTF8Validation
+			});
+			if (this.clients) {
+				this.clients.add(ws);
+				ws.on("close", () => {
+					this.clients.delete(ws);
+					if (this._shouldEmitClose && !this.clients.size) process.nextTick(emitClose, this);
+				});
+			}
+			cb(ws, req);
+		}
+	};
+	module.exports = WebSocketServer;
+	/**
+	* Add event listeners on an `EventEmitter` using a map of <event, listener>
+	* pairs.
+	*
+	* @param {EventEmitter} server The event emitter
+	* @param {Object.<String, Function>} map The listeners to add
+	* @return {Function} A function that will remove the added listeners when
+	*     called
+	* @private
+	*/
+	function addListeners(server, map) {
+		for (const event of Object.keys(map)) server.on(event, map[event]);
+		return function removeListeners() {
+			for (const event of Object.keys(map)) server.removeListener(event, map[event]);
+		};
+	}
+	/**
+	* Emit a `'close'` event on an `EventEmitter`.
+	*
+	* @param {EventEmitter} server The event emitter
+	* @private
+	*/
+	function emitClose(server) {
+		server._state = CLOSED;
+		server.emit("close");
+	}
+	/**
+	* Handle socket errors.
+	*
+	* @private
+	*/
+	function socketOnError() {
+		this.destroy();
+	}
+	/**
+	* Close the connection when preconditions are not fulfilled.
+	*
+	* @param {Duplex} socket The socket of the upgrade request
+	* @param {Number} code The HTTP response status code
+	* @param {String} [message] The HTTP response body
+	* @param {Object} [headers] Additional HTTP response headers
+	* @private
+	*/
+	function abortHandshake(socket, code, message, headers) {
+		message = message || http$1.STATUS_CODES[code];
+		headers = {
+			Connection: "close",
+			"Content-Type": "text/html",
+			"Content-Length": Buffer.byteLength(message),
+			...headers
+		};
+		socket.once("finish", socket.destroy);
+		socket.end(`HTTP/1.1 ${code} ${http$1.STATUS_CODES[code]}\r\n` + Object.keys(headers).map((h) => `${h}: ${headers[h]}`).join("\r\n") + "\r\n\r\n" + message);
+	}
+	/**
+	* Emit a `'wsClientError'` event on a `WebSocketServer` if there is at least
+	* one listener for it, otherwise call `abortHandshake()`.
+	*
+	* @param {WebSocketServer} server The WebSocket server
+	* @param {http.IncomingMessage} req The request object
+	* @param {Duplex} socket The socket of the upgrade request
+	* @param {Number} code The HTTP response status code
+	* @param {String} message The HTTP response body
+	* @param {Object} [headers] The HTTP response headers
+	* @private
+	*/
+	function abortHandshakeOrEmitwsClientError(server, req, socket, code, message, headers) {
+		if (server.listenerCount("wsClientError")) {
+			const err = new Error(message);
+			Error.captureStackTrace(err, abortHandshakeOrEmitwsClientError);
+			server.emit("wsClientError", err, socket, req);
+		} else abortHandshake(socket, code, message, headers);
+	}
+} });
+
+//#endregion
+//#region node_modules/.pnpm/ws@8.22.0/node_modules/ws/wrapper.mjs
+var wrapper_default = import_websocket.default;
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/protocol/gateway/codec.js
+function decodeGatewayMessageData(data) {
+	if (typeof data === "string") return data;
+	if (Buffer.isBuffer(data)) return data.toString("utf8");
+	if (Array.isArray(data) && data.every((chunk) => Buffer.isBuffer(chunk))) return Buffer.concat(data).toString("utf8");
+	if (data instanceof ArrayBuffer) return Buffer.from(data).toString("utf8");
+	if (ArrayBuffer.isView(data)) return Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString("utf8");
+	return "";
+}
+function readOptionalMessageSceneExt(event) {
+	if (!("message_scene" in event)) return void 0;
+	const scene = event.message_scene;
+	return scene?.ext;
+}
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/protocol/gateway/constants.js
+/**
+* QQ Bot WebSocket Gateway protocol constants.
+*
+* Pure protocol-layer constants. Zero external dependencies.
+*/
+/** QQ Bot WebSocket intents grouped by permission level. */
+const INTENTS = {
+	GUILDS: 1,
+	GUILD_MEMBERS: 2,
+	PUBLIC_GUILD_MESSAGES: 1 << 30,
+	DIRECT_MESSAGE: 4096,
+	GROUP_AND_C2C: 1 << 25,
+	INTERACTION: 1 << 26
+};
+const FULL_INTENTS = INTENTS.GUILDS | INTENTS.GUILD_MEMBERS | INTENTS.PUBLIC_GUILD_MESSAGES | INTENTS.DIRECT_MESSAGE | INTENTS.GROUP_AND_C2C | INTENTS.INTERACTION;
+const RECONNECT_DELAYS = [
+	1e3,
+	2e3,
+	5e3,
+	1e4,
+	3e4,
+	6e4
+];
+const RATE_LIMIT_DELAY = 6e4;
+const MAX_RECONNECT_ATTEMPTS = 100;
+const MAX_QUICK_DISCONNECT_COUNT = 3;
+const QUICK_DISCONNECT_THRESHOLD = 5e3;
+const GatewayOp = {
+	DISPATCH: 0,
+	HEARTBEAT: 1,
+	IDENTIFY: 2,
+	RESUME: 6,
+	RECONNECT: 7,
+	INVALID_SESSION: 9,
+	HELLO: 10,
+	HEARTBEAT_ACK: 11
+};
+const GatewayCloseCode = {
+	NORMAL: 1e3,
+	AUTH_FAILED: 4004,
+	INVALID_SESSION: 4006,
+	SEQ_OUT_OF_RANGE: 4007,
+	RATE_LIMITED: 4008,
+	SESSION_TIMEOUT: 4009,
+	SERVER_ERROR_START: 4900,
+	SERVER_ERROR_END: 4913,
+	INSUFFICIENT_INTENTS: 4914,
+	DISALLOWED_INTENTS: 4915
+};
+const GatewayEvent = {
+	READY: "READY",
+	RESUMED: "RESUMED",
+	C2C_MESSAGE_CREATE: "C2C_MESSAGE_CREATE",
+	AT_MESSAGE_CREATE: "AT_MESSAGE_CREATE",
+	DIRECT_MESSAGE_CREATE: "DIRECT_MESSAGE_CREATE",
+	GROUP_AT_MESSAGE_CREATE: "GROUP_AT_MESSAGE_CREATE",
+	GROUP_MESSAGE_CREATE: "GROUP_MESSAGE_CREATE",
+	INTERACTION_CREATE: "INTERACTION_CREATE",
+	GUILD_CREATE: "GUILD_CREATE",
+	GUILD_UPDATE: "GUILD_UPDATE",
+	GUILD_DELETE: "GUILD_DELETE",
+	GUILD_MEMBER_ADD: "GUILD_MEMBER_ADD",
+	GUILD_MEMBER_UPDATE: "GUILD_MEMBER_UPDATE",
+	GUILD_MEMBER_REMOVE: "GUILD_MEMBER_REMOVE",
+	CHANNEL_CREATE: "CHANNEL_CREATE",
+	CHANNEL_UPDATE: "CHANNEL_UPDATE",
+	CHANNEL_DELETE: "CHANNEL_DELETE",
+	GROUP_ADD_ROBOT: "GROUP_ADD_ROBOT",
+	GROUP_DEL_ROBOT: "GROUP_DEL_ROBOT",
+	GROUP_MSG_REJECT: "GROUP_MSG_REJECT",
+	GROUP_MSG_RECEIVE: "GROUP_MSG_RECEIVE",
+	FRIEND_ADD: "FRIEND_ADD",
+	FRIEND_DEL: "FRIEND_DEL",
+	C2C_MSG_REJECT: "C2C_MSG_REJECT",
+	C2C_MSG_RECEIVE: "C2C_MSG_RECEIVE",
+	MESSAGE_REACTION_ADD: "MESSAGE_REACTION_ADD",
+	MESSAGE_REACTION_REMOVE: "MESSAGE_REACTION_REMOVE"
+};
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/protocol/gateway/event-dispatcher.js
+const REF_INDEX_KEY = "msg_idx";
+/**
+* Parse `ref_idx` and `msg_idx` from message_scene.ext + msg_elements.
+*/
+function parseRefIndices(ext, msgType, msgElements) {
+	let refMsgIdx;
+	let msgIdx;
+	if (Array.isArray(ext)) for (const entry of ext) {
+		if (typeof entry !== "string") continue;
+		const eq = entry.indexOf("=");
+		if (eq < 0) continue;
+		const key = entry.slice(0, eq).trim();
+		const val = entry.slice(eq + 1).trim();
+		if (!val) continue;
+		if (key === REF_INDEX_KEY) msgIdx = val;
+		else if (key === "ref_msg_idx") refMsgIdx = val;
+	}
+	if (msgType === 103 && Array.isArray(msgElements)) {
+		for (const el of msgElements) if (el?.msg_idx) {
+			refMsgIdx = el.msg_idx;
+			break;
+		}
+	}
+	return {
+		refMsgIdx,
+		msgIdx
+	};
+}
+function dispatchEvent(eventType, data, _accountId, _log) {
+	if (eventType === GatewayEvent.READY) {
+		const d = data;
+		return {
+			action: "ready",
+			data,
+			sessionId: d.session_id
+		};
+	}
+	if (eventType === GatewayEvent.RESUMED) return {
+		action: "resumed",
+		data
+	};
+	if (eventType === GatewayEvent.C2C_MESSAGE_CREATE) {
+		const ev = data;
+		const refs = parseRefIndices(ev.message_scene?.ext, ev.message_type, ev.msg_elements);
+		return {
+			action: "message",
+			msg: {
+				rawEventType: eventType,
+				kind: "c2c",
+				senderId: ev.author.user_openid,
+				content: ev.content,
+				messageId: ev.id,
+				timestamp: ev.timestamp,
+				attachments: ev.attachments,
+				refMsgIdx: refs.refMsgIdx,
+				msgIdx: refs.msgIdx,
+				msgType: ev.message_type,
+				messageScene: ev.message_scene,
+				msgElements: ev.msg_elements,
+				raw: ev
+			}
+		};
+	}
+	if (eventType === GatewayEvent.AT_MESSAGE_CREATE) {
+		const ev = data;
+		const refs = parseRefIndices(readOptionalMessageSceneExt(ev));
+		return {
+			action: "message",
+			msg: {
+				rawEventType: eventType,
+				kind: "guild",
+				senderId: ev.author.id,
+				senderName: ev.author.username,
+				content: ev.content,
+				messageId: ev.id,
+				timestamp: ev.timestamp,
+				channelId: ev.channel_id,
+				guildId: ev.guild_id,
+				attachments: ev.attachments,
+				refMsgIdx: refs.refMsgIdx,
+				msgIdx: refs.msgIdx,
+				raw: ev
+			}
+		};
+	}
+	if (eventType === GatewayEvent.DIRECT_MESSAGE_CREATE) {
+		const ev = data;
+		const refs = parseRefIndices(readOptionalMessageSceneExt(ev));
+		return {
+			action: "message",
+			msg: {
+				rawEventType: eventType,
+				kind: "dm",
+				senderId: ev.author.id,
+				senderName: ev.author.username,
+				content: ev.content,
+				messageId: ev.id,
+				timestamp: ev.timestamp,
+				guildId: ev.guild_id,
+				attachments: ev.attachments,
+				refMsgIdx: refs.refMsgIdx,
+				msgIdx: refs.msgIdx,
+				raw: ev
+			}
+		};
+	}
+	if (eventType === GatewayEvent.GROUP_AT_MESSAGE_CREATE || eventType === GatewayEvent.GROUP_MESSAGE_CREATE) {
+		const ev = data;
+		const refs = parseRefIndices(ev.message_scene?.ext, ev.message_type, ev.msg_elements);
+		return {
+			action: "message",
+			msg: {
+				rawEventType: eventType,
+				kind: "group",
+				senderId: ev.author.member_openid,
+				senderName: ev.author.username,
+				senderIsBot: ev.author.bot,
+				content: ev.content,
+				messageId: ev.id,
+				timestamp: ev.timestamp,
+				groupOpenid: ev.group_openid,
+				attachments: ev.attachments,
+				refMsgIdx: refs.refMsgIdx,
+				msgIdx: refs.msgIdx,
+				msgType: ev.message_type,
+				mentions: ev.mentions,
+				messageScene: ev.message_scene,
+				msgElements: ev.msg_elements,
+				raw: ev
+			}
+		};
+	}
+	if (eventType === GatewayEvent.INTERACTION_CREATE) return {
+		action: "interaction",
+		event: data
+	};
+	return {
+		action: "raw",
+		type: eventType,
+		data
+	};
+}
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/protocol/gateway/reconnect.js
+var ReconnectState = class {
+	accountId;
+	log;
+	attempts = 0;
+	lastConnectTime = 0;
+	quickDisconnectCount = 0;
+	constructor(accountId, log$1) {
+		this.accountId = accountId;
+		this.log = log$1;
+	}
+	onConnected() {
+		this.attempts = 0;
+		this.lastConnectTime = Date.now();
+	}
+	isExhausted() {
+		return this.attempts >= MAX_RECONNECT_ATTEMPTS;
+	}
+	getNextDelay(customDelay) {
+		const delay = customDelay ?? RECONNECT_DELAYS[Math.min(this.attempts, RECONNECT_DELAYS.length - 1)];
+		this.attempts++;
+		this.log?.debug?.(`[${this.accountId}] Reconnecting in ${delay}ms (attempt ${this.attempts})`);
+		return delay;
+	}
+	handleClose(code, isAborted) {
+		if (code === GatewayCloseCode.INSUFFICIENT_INTENTS || code === GatewayCloseCode.DISALLOWED_INTENTS) {
+			const reason = code === GatewayCloseCode.INSUFFICIENT_INTENTS ? "offline/sandbox-only" : "banned";
+			this.log?.error(`[${this.accountId}] Bot is ${reason}. Please contact QQ platform.`);
+			return {
+				shouldReconnect: false,
+				clearSession: false,
+				refreshToken: false,
+				fatal: true,
+				reason
+			};
+		}
+		if (code === GatewayCloseCode.AUTH_FAILED) {
+			this.log?.info(`[${this.accountId}] Invalid token (4004), will refresh token and reconnect`);
+			return {
+				shouldReconnect: !isAborted,
+				clearSession: false,
+				refreshToken: true,
+				fatal: false,
+				reason: "invalid token (4004)"
+			};
+		}
+		if (code === GatewayCloseCode.RATE_LIMITED) {
+			this.log?.info(`[${this.accountId}] Rate limited (4008), waiting ${RATE_LIMIT_DELAY}ms`);
+			return {
+				shouldReconnect: !isAborted,
+				reconnectDelay: RATE_LIMIT_DELAY,
+				clearSession: false,
+				refreshToken: false,
+				fatal: false,
+				reason: "rate limited (4008)"
+			};
+		}
+		if (code === GatewayCloseCode.INVALID_SESSION || code === GatewayCloseCode.SEQ_OUT_OF_RANGE || code === GatewayCloseCode.SESSION_TIMEOUT) {
+			const codeDesc = {
+				[GatewayCloseCode.INVALID_SESSION]: "session no longer valid",
+				[GatewayCloseCode.SEQ_OUT_OF_RANGE]: "invalid seq on resume",
+				[GatewayCloseCode.SESSION_TIMEOUT]: "session timed out"
+			};
+			this.log?.info(`[${this.accountId}] Error ${code} (${codeDesc[code]}), will re-identify`);
+			return {
+				shouldReconnect: !isAborted,
+				clearSession: true,
+				refreshToken: true,
+				fatal: false,
+				reason: codeDesc[code]
+			};
+		}
+		if (code >= GatewayCloseCode.SERVER_ERROR_START && code <= GatewayCloseCode.SERVER_ERROR_END) {
+			this.log?.info(`[${this.accountId}] Internal error (${code}), will re-identify`);
+			return {
+				shouldReconnect: !isAborted && code !== GatewayCloseCode.NORMAL,
+				clearSession: true,
+				refreshToken: true,
+				fatal: false,
+				reason: `internal error (${code})`
+			};
+		}
+		const connectionDuration = Date.now() - this.lastConnectTime;
+		if (connectionDuration < QUICK_DISCONNECT_THRESHOLD && this.lastConnectTime > 0) {
+			this.quickDisconnectCount++;
+			this.log?.debug?.(`[${this.accountId}] Quick disconnect detected (${connectionDuration}ms), count: ${this.quickDisconnectCount}`);
+			if (this.quickDisconnectCount >= MAX_QUICK_DISCONNECT_COUNT) {
+				this.log?.error(`[${this.accountId}] Too many quick disconnects. This may indicate a permission issue.`);
+				this.quickDisconnectCount = 0;
+				return {
+					shouldReconnect: !isAborted && code !== 1e3,
+					reconnectDelay: RATE_LIMIT_DELAY,
+					clearSession: false,
+					refreshToken: false,
+					fatal: false,
+					reason: "too many quick disconnects"
+				};
+			}
+		} else this.quickDisconnectCount = 0;
+		return {
+			shouldReconnect: !isAborted && code !== GatewayCloseCode.NORMAL,
+			clearSession: false,
+			refreshToken: false,
+			fatal: false,
+			reason: `close code ${code}`
+		};
+	}
+};
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/protocol/gateway/gateway-connection.js
+var GatewayConnection = class {
+	isAborted = false;
+	currentWs = null;
+	heartbeatInterval = null;
+	sessionId = null;
+	lastSeq = null;
+	isConnecting = false;
+	reconnectTimer = null;
+	shouldRefreshToken = false;
+	reconnect;
+	opts;
+	resolveUserAgent;
+	constructor(opts) {
+		this.opts = opts;
+		this.reconnect = new ReconnectState(opts.account.accountId, opts.log);
+		const ua = opts.userAgent ?? "qqbot-nodejs/unknown";
+		this.resolveUserAgent = typeof ua === "function" ? ua : () => ua;
+	}
+	/** Start the connection loop. Resolves when abortSignal fires. */
+	async start() {
+		this.restoreSession();
+		this.registerAbortHandler();
+		await this.connect();
+		return new Promise((resolve$1) => {
+			this.opts.abortSignal.addEventListener("abort", () => resolve$1());
+		});
+	}
+	restoreSession() {
+		const saved = this.opts.session?.load();
+		if (saved) {
+			this.sessionId = saved.sessionId;
+			this.lastSeq = saved.lastSeq;
+			this.opts.log?.info?.(`[${this.opts.account.accountId}] Restored session: sessionId=${saved.sessionId}, lastSeq=${saved.lastSeq}`);
+		}
+	}
+	saveCurrentSession() {
+		if (!this.sessionId || !this.opts.session) return;
+		this.opts.session.save({
+			sessionId: this.sessionId,
+			lastSeq: this.lastSeq
+		});
+	}
+	registerAbortHandler() {
+		this.opts.abortSignal.addEventListener("abort", () => {
+			this.isAborted = true;
+			if (this.reconnectTimer) {
+				clearTimeout(this.reconnectTimer);
+				this.reconnectTimer = null;
+			}
+			this.cleanup();
+		});
+	}
+	cleanup() {
+		if (this.heartbeatInterval) {
+			clearInterval(this.heartbeatInterval);
+			this.heartbeatInterval = null;
+		}
+		if (this.currentWs && (this.currentWs.readyState === wrapper_default.OPEN || this.currentWs.readyState === wrapper_default.CONNECTING)) this.currentWs.close();
+		this.currentWs = null;
+	}
+	scheduleReconnect(customDelay) {
+		if (this.isAborted || this.reconnect.isExhausted()) {
+			this.opts.log?.error(`[${this.opts.account.accountId}] Max reconnect attempts reached or aborted`);
+			return;
+		}
+		if (this.reconnectTimer) {
+			clearTimeout(this.reconnectTimer);
+			this.reconnectTimer = null;
+		}
+		const delay = this.reconnect.getNextDelay(customDelay);
+		this.reconnectTimer = setTimeout(() => {
+			this.reconnectTimer = null;
+			if (!this.isAborted) this.connect();
+		}, delay);
+	}
+	async connect() {
+		const { log: log$1, account } = this.opts;
+		if (this.isConnecting) {
+			log$1?.debug?.(`[${account.accountId}] Already connecting, skip`);
+			return;
+		}
+		this.isConnecting = true;
+		try {
+			this.cleanup();
+			if (this.shouldRefreshToken) {
+				log$1?.debug?.(`[${account.accountId}] Refreshing token...`);
+				this.opts.clearTokenCache?.();
+				this.shouldRefreshToken = false;
+			}
+			const accessToken = await this.opts.getAccessToken();
+			log$1?.info(`[${account.accountId}] ✅ Access token obtained`);
+			const gatewayUrl = await this.opts.getGatewayUrl(accessToken);
+			log$1?.info(`[${account.accountId}] Connecting to ${gatewayUrl}`);
+			const ws = new wrapper_default(gatewayUrl, { headers: { "User-Agent": this.resolveUserAgent() } });
+			this.currentWs = ws;
+			ws.on("open", () => {
+				log$1?.info(`[${account.accountId}] WebSocket connected`);
+				this.isConnecting = false;
+				this.reconnect.onConnected();
+			});
+			ws.on("message", async (data) => {
+				try {
+					const rawData = decodeGatewayMessageData(data);
+					const payload = JSON.parse(rawData);
+					const { op, d, s, t } = payload;
+					if (s) {
+						this.lastSeq = s;
+						this.saveCurrentSession();
+					}
+					switch (op) {
+						case GatewayOp.HELLO:
+							this.handleHello(ws, d, accessToken);
+							break;
+						case GatewayOp.DISPATCH: {
+							log$1?.debug?.(`[${account.accountId}] Dispatch event: t=${t} payload=${previewPayload(d)}`);
+							const result = dispatchEvent(t ?? "", d, account.accountId, log$1);
+							if (result.action === "ready") {
+								this.sessionId = result.sessionId;
+								this.saveCurrentSession();
+								this.opts.onReady?.(result.data);
+							} else if (result.action === "resumed") {
+								(this.opts.onResumed ?? this.opts.onReady)?.(result.data);
+								this.saveCurrentSession();
+							} else if (result.action === "interaction") {
+								if (this.opts.onInteraction) Promise.resolve(this.opts.onInteraction(result.event));
+								else if (this.opts.onRawEvent) Promise.resolve(this.opts.onRawEvent(payload.t, payload.d));
+							} else if (result.action === "message") Promise.resolve(this.opts.onMessage(result.msg));
+							else if (result.action === "raw") {
+								if (this.opts.onRawEvent) Promise.resolve(this.opts.onRawEvent(result.type, result.data));
+							}
+							break;
+						}
+						case GatewayOp.HEARTBEAT_ACK: break;
+						case GatewayOp.RECONNECT:
+							this.cleanup();
+							this.scheduleReconnect();
+							break;
+						case GatewayOp.INVALID_SESSION: {
+							const canResume = d;
+							if (!canResume) {
+								this.sessionId = null;
+								this.lastSeq = null;
+								this.opts.session?.clear();
+								this.shouldRefreshToken = true;
+							}
+							this.cleanup();
+							this.scheduleReconnect(3e3);
+							break;
+						}
+					}
+				} catch (err) {
+					log$1?.error(`[${account.accountId}] Message parse error: ${err instanceof Error ? err.message : String(err)}`);
+				}
+			});
+			ws.on("close", (code, reason) => {
+				log$1?.info(`[${account.accountId}] WebSocket closed: ${code} ${reason.toString()}`);
+				this.isConnecting = false;
+				this.handleClose(code);
+			});
+			ws.on("error", (err) => {
+				log$1?.error(`[${account.accountId}] WebSocket error: ${err.message}`);
+				this.opts.onError?.(err);
+			});
+		} catch (err) {
+			this.isConnecting = false;
+			const errMsg = err instanceof Error ? err.message : String(err);
+			log$1?.error(`[${account.accountId}] Connection failed: ${errMsg}`);
+			if (errMsg.includes("Too many requests") || errMsg.includes("100001")) this.scheduleReconnect(RATE_LIMIT_DELAY);
+			else this.scheduleReconnect();
+		}
+	}
+	handleHello(ws, d, accessToken) {
+		const intents = this.opts.intents ?? FULL_INTENTS;
+		if (this.sessionId && this.lastSeq !== null) ws.send(JSON.stringify({
+			op: GatewayOp.RESUME,
+			d: {
+				token: `QQBot ${accessToken}`,
+				session_id: this.sessionId,
+				seq: this.lastSeq
+			}
+		}));
+		else ws.send(JSON.stringify({
+			op: GatewayOp.IDENTIFY,
+			d: {
+				token: `QQBot ${accessToken}`,
+				intents,
+				shard: [0, 1]
+			}
+		}));
+		const interval = d.heartbeat_interval;
+		if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+		this.heartbeatInterval = setInterval(() => {
+			if (ws.readyState === wrapper_default.OPEN) ws.send(JSON.stringify({
+				op: GatewayOp.HEARTBEAT,
+				d: this.lastSeq
+			}));
+		}, interval);
+	}
+	handleClose(code) {
+		const action = this.reconnect.handleClose(code, this.isAborted);
+		if (action.clearSession) {
+			this.sessionId = null;
+			this.lastSeq = null;
+			this.opts.session?.clear();
+		}
+		if (action.refreshToken) this.shouldRefreshToken = true;
+		this.cleanup();
+		if (action.fatal) return;
+		if (action.shouldReconnect) this.scheduleReconnect(action.reconnectDelay);
+	}
+};
+/**
+* Serialize a gateway event payload for debug logging.
+*
+* JSON-stringifies the payload; returns `"(non-serializable)"` for cyclic
+* or otherwise unserializable values so logging never throws.
+*/
+function previewPayload(data) {
+	if (data === void 0) return "undefined";
+	if (data === null) return "null";
+	try {
+		const s = JSON.stringify(data);
+		return s === void 0 ? "(non-serializable)" : s;
+	} catch {
+		return "(non-serializable)";
+	}
+}
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/protocol/transport/webhook-verify.js
+/**
+* Derive an Ed25519 seed (32 bytes) from the bot secret.
+* QQ's spec: repeat the secret until >= 32 chars, then truncate to 32.
+*/
+function deriveSeed(botSecret) {
+	let seed = botSecret;
+	while (seed.length < 32) seed = seed + seed;
+	return Buffer.from(seed.slice(0, 32), "utf-8");
+}
+/**
+* Generate Ed25519 key pair from bot secret.
+*/
+function getKeyPair(botSecret) {
+	const seed = deriveSeed(botSecret);
+	const privateKey = crypto$2.createPrivateKey({
+		key: Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), seed]),
+		format: "der",
+		type: "pkcs8"
+	});
+	const publicKey = crypto$2.createPublicKey(privateKey);
+	return {
+		privateKey,
+		publicKey
+	};
+}
+function ed25519Sign(botSecret, message) {
+	const { privateKey } = getKeyPair(botSecret);
+	const signature = crypto$2.sign(null, message, privateKey);
+	return signature.toString("hex");
+}
+function verifyWebhookSignature$1(params) {
+	const { body, timestamp, signature, botSecret } = params;
+	try {
+		const { publicKey } = getKeyPair(botSecret);
+		const message = Buffer.concat([Buffer.from(timestamp, "utf-8"), body]);
+		const sigBuffer = Buffer.from(signature, "hex");
+		return crypto$2.verify(null, message, publicKey, sigBuffer);
+	} catch {
+		return false;
+	}
+}
+function signValidationResponse(params) {
+	const { plainToken, eventTs, botSecret } = params;
+	const message = Buffer.from(eventTs + plainToken, "utf-8");
+	const signature = ed25519Sign(botSecret, message);
+	return {
+		plain_token: plainToken,
+		signature
+	};
+}
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/protocol/transport/webhook-server-node.js
+var NodeHttpWebhookServer = class {
+	server = null;
+	async listen(port, path$4, handler) {
+		return new Promise((resolve$1, reject) => {
+			const server = http.createServer(async (req, res) => {
+				if (req.method !== "POST" || req.url !== path$4) {
+					res.writeHead(404, { "Content-Type": "text/plain" });
+					res.end("Not Found");
+					return;
+				}
+				const chunks = [];
+				req.on("data", (chunk) => chunks.push(chunk));
+				req.on("end", async () => {
+					try {
+						const body = Buffer.concat(chunks);
+						const headers = {};
+						for (const [key, value] of Object.entries(req.headers)) headers[key.toLowerCase()] = value;
+						const response = await handler({
+							body,
+							headers
+						});
+						res.writeHead(response.status, {
+							"Content-Type": "application/json",
+							...response.headers ?? {}
+						});
+						res.end(response.body);
+					} catch (_err) {
+						res.writeHead(500, { "Content-Type": "text/plain" });
+						res.end("Internal Server Error");
+					}
+				});
+			});
+			server.on("error", reject);
+			server.listen(port, () => {
+				this.server = server;
+				resolve$1();
+			});
+		});
+	}
+	close() {
+		if (this.server) {
+			this.server.close();
+			this.server = null;
+		}
+	}
+};
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/protocol/transport/webhook.js
+const OP_DISPATCH = 0;
+const OP_HTTP_CALLBACK_ACK = 12;
+const OP_VALIDATION = 13;
+var WebhookTransport = class {
+	opts;
+	callbacks;
+	log;
+	server;
+	accountId;
+	stopped = false;
+	stopResolve = null;
+	constructor(opts, callbacks) {
+		this.opts = opts;
+		this.callbacks = callbacks;
+		this.log = opts.log;
+		this.server = opts.server ?? new NodeHttpWebhookServer();
+		this.accountId = opts.accountId ?? opts.appId;
+	}
+	async start() {
+		const port = this.opts.port ?? 8080;
+		const path$4 = this.opts.path ?? "/";
+		this.log?.info?.(`[webhook] starting on port ${port}, path ${path$4}`);
+		await this.server.listen(port, path$4, (req) => this.handleRequest(req));
+		this.log?.info?.(`[webhook] listening on :${port}${path$4}`);
+		this.callbacks.onReady?.({
+			transport: "webhook",
+			port,
+			path: path$4
+		});
+		if (this.opts.abortSignal) await new Promise((resolve$1) => {
+			if (this.opts.abortSignal.aborted) {
+				resolve$1();
+				return;
+			}
+			this.stopResolve = resolve$1;
+			this.opts.abortSignal.addEventListener("abort", () => this.stop(), { once: true });
+		});
+		else await new Promise((resolve$1) => {
+			this.stopResolve = resolve$1;
+		});
+	}
+	stop() {
+		if (this.stopped) return;
+		this.stopped = true;
+		this.server.close();
+		this.log?.info?.(`[webhook] stopped`);
+		this.stopResolve?.();
+	}
+	async handleRequest(req) {
+		let payload;
+		try {
+			payload = JSON.parse(req.body.toString("utf-8"));
+		} catch {
+			this.log?.warn?.(`[webhook] invalid JSON body`);
+			return {
+				status: 400,
+				body: JSON.stringify({ error: "invalid json" })
+			};
+		}
+		if (payload.op === OP_VALIDATION) return this.handleValidation(payload);
+		const timestamp = getHeader(req.headers, "x-signature-timestamp") ?? "";
+		const signature = getHeader(req.headers, "x-signature-ed25519") ?? "";
+		if (!timestamp || !signature) {
+			this.log?.warn?.(`[webhook] missing signature headers`);
+			return {
+				status: 401,
+				body: JSON.stringify({ error: "missing signature" })
+			};
+		}
+		const valid = verifyWebhookSignature$1({
+			body: req.body,
+			timestamp,
+			signature,
+			botSecret: this.opts.appSecret
+		});
+		if (!valid) {
+			this.log?.warn?.(`[webhook] signature verification failed`);
+			return {
+				status: 401,
+				body: JSON.stringify({ error: "invalid signature" })
+			};
+		}
+		if (payload.op === OP_DISPATCH) this.handleDispatch(payload).catch((err) => {
+			this.log?.error?.(`[webhook] dispatch error: ${err instanceof Error ? err.message : String(err)}`);
+		});
+		return {
+			status: 200,
+			body: JSON.stringify({
+				op: OP_HTTP_CALLBACK_ACK,
+				d: 0
+			})
+		};
+	}
+	handleValidation(payload) {
+		const d = payload.d;
+		if (!d?.plain_token || !d?.event_ts) {
+			this.log?.warn?.(`[webhook] validation missing plain_token or event_ts`);
+			return {
+				status: 400,
+				body: JSON.stringify({ error: "invalid validation" })
+			};
+		}
+		this.log?.info?.(`[webhook] handling callback URL validation`);
+		const response = signValidationResponse({
+			plainToken: d.plain_token,
+			eventTs: d.event_ts,
+			botSecret: this.opts.appSecret
+		});
+		return {
+			status: 200,
+			body: JSON.stringify(response)
+		};
+	}
+	async handleDispatch(payload) {
+		const eventType = payload.t ?? "";
+		const data = payload.d;
+		this.log?.debug?.(`[webhook] dispatch event: t=${eventType} payload=${JSON.stringify(data)}`);
+		const result = dispatchEvent(eventType, data, this.accountId, this.log);
+		switch (result.action) {
+			case "ready":
+				this.callbacks.onReady?.(result.data);
+				break;
+			case "resumed":
+				this.callbacks.onResumed?.(result.data);
+				break;
+			case "message":
+				try {
+					await this.callbacks.onMessage(result.msg);
+				} catch (err) {
+					this.callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
+				}
+				break;
+			case "interaction":
+				try {
+					await this.callbacks.onInteraction?.(result.event);
+				} catch (err) {
+					this.callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
+				}
+				break;
+			case "ignore": break;
+		}
+	}
+};
+function getHeader(headers, key) {
+	const val = headers[key];
+	if (Array.isArray(val)) return val[0];
+	return val;
+}
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/protocol/utils/upload-cache.js
+const MAX_CACHE_SIZE = 500;
+function computeFileHash(data) {
+	return crypto$1.createHash("md5").update(data).digest("hex");
+}
+function buildCacheKey(contentHash, scope, targetId, fileType) {
+	return `${contentHash}:${scope}:${targetId}:${fileType}`;
+}
+var UploadCache = class {
+	cache = new Map();
+	logger;
+	constructor(options) {
+		this.logger = options?.logger;
+	}
+	computeHash(data) {
+		return computeFileHash(data);
+	}
+	get(contentHash, scope, targetId, fileType) {
+		const key = buildCacheKey(contentHash, scope, targetId, fileType);
+		const entry = this.cache.get(key);
+		if (!entry) return null;
+		if (Date.now() >= entry.expiresAt) {
+			this.cache.delete(key);
+			return null;
+		}
+		this.logger?.debug?.(`[upload-cache] HIT key=${key.slice(0, 40)}... uuid=${entry.fileUuid}`);
+		return entry.fileInfo;
+	}
+	set(contentHash, scope, targetId, fileType, fileInfo, fileUuid, ttl) {
+		if (this.cache.size >= MAX_CACHE_SIZE) {
+			const now = Date.now();
+			for (const [k, v] of this.cache) if (now >= v.expiresAt) this.cache.delete(k);
+			if (this.cache.size >= MAX_CACHE_SIZE) {
+				const keys = Array.from(this.cache.keys());
+				for (let i = 0; i < keys.length / 2; i++) this.cache.delete(keys[i]);
+			}
+		}
+		const key = buildCacheKey(contentHash, scope, targetId, fileType);
+		const safetyMargin = 60;
+		const effectiveTtl = Math.max(ttl - safetyMargin, 10);
+		this.cache.set(key, {
+			fileInfo,
+			fileUuid,
+			expiresAt: Date.now() + effectiveTtl * 1e3
+		});
+		this.logger?.debug?.(`[upload-cache] SET key=${key.slice(0, 40)}... ttl=${effectiveTtl}s uuid=${fileUuid}`);
+	}
+	stats() {
+		return {
+			size: this.cache.size,
+			maxSize: MAX_CACHE_SIZE
+		};
+	}
+	clear() {
+		this.cache.clear();
+		this.logger?.debug?.(`[upload-cache] cleared`);
+	}
+};
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/streaming.js
+/** Throttle constants — match QQ open platform best practice. */
+const DEFAULT_THROTTLE_MS = 500;
+const MIN_THROTTLE_MS = 300;
+/**
+* Lightweight controller for QQ C2C stream messages.
+*
+* Usage:
+* ```ts
+* const stream = bot.openStream({ openid, msgId });
+* for (const chunk of chunks) {
+*   await stream.update(currentText);  // currentText is the full text so far
+* }
+* await stream.complete();             // marks input_state = DONE
+* ```
+*
+* Important: `update()` expects the *full* current message text, not the
+* delta. The QQ API uses `input_mode=replace` semantics — each frame
+* replaces the previous one in place.
+*/
+/** Maximum number of retries on rate-limit (429 / 50002). */
+const MAX_FLUSH_RETRIES = 3;
+/** Base delay for exponential backoff on rate-limit (ms). */
+const RATE_LIMIT_BASE_DELAY_MS = 1e3;
+var StreamSession = class {
+	api;
+	opts;
+	throttleMs;
+	eventId;
+	streamMsgId;
+	index = 0;
+	/**
+	* `msg_seq` for the current stream session. QQ open platform expects all
+	* frames in one stream to share the same `msg_seq` (only `index` advances).
+	*/
+	msgSeq = null;
+	lastFlushAt = 0;
+	lastSentText = "";
+	pendingText = "";
+	pendingTimer = null;
+	flushInProgress = false;
+	flushPromise = null;
+	isCompleted = false;
+	constructor(api, opts) {
+		this.api = api;
+		this.opts = opts;
+		this.throttleMs = Math.max(opts.throttleMs ?? DEFAULT_THROTTLE_MS, MIN_THROTTLE_MS);
+		this.eventId = opts.eventId ?? opts.msgId;
+	}
+	/**
+	* Update the current full message text. Will be sent at most once per
+	* throttle window.
+	*/
+	async update(fullText) {
+		if (this.isCompleted) return;
+		this.pendingText = fullText;
+		const now = Date.now();
+		const elapsed = now - this.lastFlushAt;
+		if (this.flushInProgress) return;
+		if (elapsed >= this.throttleMs) {
+			await this.flush(StreamInputState.GENERATING);
+			return;
+		}
+		if (!this.pendingTimer) {
+			const wait = this.throttleMs - elapsed;
+			this.pendingTimer = setTimeout(() => {
+				this.pendingTimer = null;
+				if (!this.isCompleted) this.flush(StreamInputState.GENERATING).catch((err) => {
+					this.opts.logger?.error?.(`[qqbot:stream] throttle flush error: ${formatErrorMessage(err)}`);
+				});
+			}, wait);
+		}
+	}
+	/** Mark the stream as DONE. Sends a final frame with the latest text. */
+	async complete() {
+		if (this.isCompleted) return void 0;
+		this.isCompleted = true;
+		if (this.pendingTimer) {
+			clearTimeout(this.pendingTimer);
+			this.pendingTimer = null;
+		}
+		if (this.flushPromise) await this.flushPromise.catch(() => {});
+		return this.flush(StreamInputState.DONE);
+	}
+	/** Force-cancel without sending a DONE frame (caller must clean up). */
+	cancel() {
+		this.isCompleted = true;
+		if (this.pendingTimer) {
+			clearTimeout(this.pendingTimer);
+			this.pendingTimer = null;
+		}
+	}
+	async flush(state$1) {
+		if (this.flushInProgress) return void 0;
+		if (this.pendingText === this.lastSentText && state$1 !== StreamInputState.DONE) return void 0;
+		this.flushInProgress = true;
+		const promise = this.doFlush(state$1);
+		this.flushPromise = promise;
+		return promise;
+	}
+	async doFlush(state$1) {
+		let flushFailed = false;
+		try {
+			const text$3 = this.pendingText;
+			if (this.msgSeq === null) this.msgSeq = getNextMsgSeq(this.opts.msgId);
+			const currentIndex = this.index++;
+			const req = {
+				input_mode: StreamInputMode.REPLACE,
+				input_state: state$1,
+				content_type: StreamContentType.MARKDOWN,
+				content_raw: text$3,
+				event_id: this.eventId,
+				msg_id: this.opts.msgId,
+				msg_seq: this.msgSeq,
+				index: currentIndex
+			};
+			if (this.streamMsgId) req.stream_msg_id = this.streamMsgId;
+			const resp = await this.sendWithRetry(req);
+			if (resp?.id && !this.streamMsgId) this.streamMsgId = resp.id;
+			this.lastSentText = text$3;
+			this.lastFlushAt = Date.now();
+			return resp;
+		} catch (err) {
+			flushFailed = true;
+			this.opts.logger?.error?.(`[qqbot:stream] flush failed (state=${state$1}): ${formatErrorMessage(err)}`);
+			throw err;
+		} finally {
+			this.flushInProgress = false;
+			if (!flushFailed && !this.isCompleted && this.pendingText !== this.lastSentText && !this.pendingTimer && state$1 !== StreamInputState.DONE) await this.flush(StreamInputState.GENERATING);
+		}
+	}
+	/**
+	* Send a stream message with exponential backoff on rate-limit errors.
+	* QQ returns err_code 50002 or HTTP 429 when rate-limited.
+	*/
+	async sendWithRetry(req) {
+		for (let attempt = 0; attempt <= MAX_FLUSH_RETRIES; attempt++) try {
+			return await this.api.sendC2CStreamMessage(this.opts.creds, this.opts.openid, req);
+		} catch (err) {
+			if (!this.isRateLimitError(err) || attempt >= MAX_FLUSH_RETRIES) throw err;
+			const delay = RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, attempt);
+			this.opts.logger?.debug?.(`[qqbot:stream] rate limited, retry ${attempt + 1}/${MAX_FLUSH_RETRIES} after ${delay}ms`);
+			await new Promise((r) => setTimeout(r, delay));
+			req.index = this.index++;
+		}
+		return void 0;
+	}
+	/** Check if an error is a rate-limit error (QQ err_code 50002 or HTTP 429). */
+	isRateLimitError(err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		if (msg.includes("rate limit")) return true;
+		const code = err?.code ?? err?.err_code;
+		if (code === 50002 || code === 429) return true;
+		return false;
+	}
+};
+
+//#endregion
+//#region node_modules/.pnpm/@tencent-connect+qqbot-nodejs@1.0.4/node_modules/@tencent-connect/qqbot-nodejs/dist/QQBot.js
+const MsgType = {
+	TEXT: 0,
+	MARKDOWN: 2,
+	ARK: 3,
+	EMBED: 4,
+	MEDIA: 7
+};
+const noopLogger$1 = {
+	info: () => {},
+	error: () => {},
+	warn: () => {},
+	debug: () => {}
+};
+var QQBot = class {
+	tokenManager;
+	apiClient;
+	messageApi;
+	mediaApi;
+	chunkedMediaApi;
+	opts;
+	logger;
+	creds;
+	account;
+	userAgent;
+	uploadCache;
+	middlewares = [];
+	handlers = {
+		ready: new Set(),
+		resumed: new Set(),
+		error: new Set(),
+		message: new Set(),
+		interaction: new Set(),
+		rawEvent: new Set()
+	};
+	gateway = null;
+	abortController = null;
+	_apiGateway = null;
+	constructor(options) {
+		if (!options.appId) throw new Error("QQBot: appId is required");
+		if (!options.appSecret) throw new Error("QQBot: appSecret is required");
+		this.opts = options;
+		this.logger = options.logger ?? noopLogger$1;
+		this.userAgent = options.userAgent ?? `qqbot-nodejs/0.1.0 (Node/${process.versions.node})`;
+		this.creds = {
+			appId: options.appId,
+			clientSecret: options.appSecret
+		};
+		this.account = {
+			accountId: options.accountId ?? options.appId,
+			appId: options.appId,
+			clientSecret: options.appSecret,
+			markdownSupport: options.markdownSupport === true
+		};
+		this.uploadCache = options.uploadCache ?? new UploadCache({ logger: this.logger });
+		this.apiClient = new ApiClient({
+			logger: this.logger,
+			userAgent: this.userAgent,
+			baseUrl: options.baseUrl
+		});
+		this.tokenManager = new TokenManager({
+			logger: this.logger,
+			userAgent: this.userAgent,
+			baseUrl: options.tokenBaseUrl
+		});
+		this.messageApi = new MessageApi(this.apiClient, this.tokenManager, {
+			markdownSupport: options.markdownSupport === true,
+			logger: this.logger
+		});
+		const cacheAdapter = {
+			computeHash: (data) => this.uploadCache.computeHash(data),
+			get: (hash, scope, targetId, fileType) => this.uploadCache.get(hash, scope, targetId, fileType),
+			set: (hash, scope, targetId, fileType, fileInfo, fileUuid, ttl) => this.uploadCache.set(hash, scope, targetId, fileType, fileInfo, fileUuid, ttl)
+		};
+		this.mediaApi = new MediaApi(this.apiClient, this.tokenManager, {
+			logger: this.logger,
+			uploadCache: cacheAdapter,
+			sanitizeFileName
+		});
+		this.chunkedMediaApi = new ChunkedMediaApi(this.apiClient, this.tokenManager, {
+			logger: this.logger,
+			uploadCache: cacheAdapter,
+			sanitizeFileName
+		});
+	}
+	/** The QQ Open Platform AppID this bot is bound to. */
+	get appId() {
+		return this.creds.appId;
+	}
+	/** The stable account id (defaults to appId). */
+	get accountId() {
+		return this.account.accountId;
+	}
+	on(event, handler) {
+		this.handlers[event].add(handler);
+		return this;
+	}
+	off(event, handler) {
+		this.handlers[event].delete(handler);
+		return this;
+	}
+	/**
+	* Register an inbound middleware. Middlewares run in registration order
+	* before the `message` event listeners; calling `ctx.stop()` (or simply
+	* not calling `next()`) short-circuits the chain — including the final
+	* `message` listener.
+	*
+	* @example
+	* ```ts
+	* import { accessPolicy, mentionGate } from "@tencent-connect/qqbot-nodejs";
+	* bot.use(accessPolicy({ group: { mode: "allowlist", allow: [...] } }));
+	* bot.use(mentionGate());
+	* bot.on("message", async (ctx, msg) => {  ... });
+	* ```
+	*/
+	use(...middleware) {
+		for (const mw of middleware) {
+			if (typeof mw !== "function") throw new Error("QQBot.use: middleware must be a function");
+			this.middlewares.push(mw);
+		}
+		return this;
+	}
+	/** Read the registered middleware chain (for diagnostics). */
+	getMiddlewares() {
+		return this.middlewares;
+	}
+	async emit(event, ...args) {
+		for (const handler of this.handlers[event]) try {
+			await Promise.resolve(handler(...args));
+		} catch (err) {
+			this.logger.error?.(`[qqbot] handler for "${String(event)}" threw: ${err instanceof Error ? err.message : String(err)}`);
+		}
+	}
+	/**
+	* Start receiving events from QQ Open Platform.
+	*
+	* - **WebSocket mode** (default): connects to the WS gateway with heartbeat/RESUME.
+	* - **Webhook mode**: starts an HTTP server to receive POST callbacks.
+	*
+	* Resolves when {@link stop} or the abort signal terminates the connection.
+	*/
+	async start(externalSignal) {
+		if (this.gateway) throw new Error("QQBot: already started");
+		this.abortController = new AbortController();
+		if (externalSignal) if (externalSignal.aborted) this.abortController.abort();
+		else externalSignal.addEventListener("abort", () => this.abortController?.abort(), { once: true });
+		const transportMode = this.opts.transport ?? "websocket";
+		if (transportMode === "webhook") await this.startWebhook();
+		else if (transportMode === "websocket") await this.startWebSocket();
+		else {
+			const custom$1 = transportMode;
+			await custom$1.start();
+		}
+		this.tokenManager.stopBackgroundRefresh(this.creds.appId);
+		this.gateway = null;
+		this.abortController = null;
+	}
+	/** Stop the transport and background refreshers. */
+	stop() {
+		this.abortController?.abort();
+		this.tokenManager.stopBackgroundRefresh(this.creds.appId);
+		this.gateway = null;
+		this.abortController = null;
+	}
+	/**
+	* Initialize token based on the configured prefetch strategy.
+	*
+	* - `"sync"` (default): awaits the first token fetch, providing fail-fast
+	*   semantics so credential errors surface at startup.
+	* - `"async"`: fires the token fetch in the background and starts the
+	*   background refresher immediately — trades fail-fast for faster startup.
+	*/
+	async initToken() {
+		const mode = this.opts.tokenPrefetch ?? "sync";
+		if (mode === "sync") await this.tokenManager.getAccessToken(this.creds.appId, this.creds.clientSecret);
+		else this.tokenManager.getAccessToken(this.creds.appId, this.creds.clientSecret).catch((err) => {
+			this.logger.error?.(`[qqbot] async token prefetch failed: ${err}`);
+			this.emit("error", err instanceof Error ? err : new Error(String(err)));
+		});
+		this.tokenManager.startBackgroundRefresh(this.creds.appId, this.creds.clientSecret);
+	}
+	async startWebSocket() {
+		await this.initToken();
+		this.gateway = new GatewayConnection({
+			account: this.account,
+			abortSignal: this.abortController.signal,
+			log: this.logger,
+			userAgent: this.userAgent,
+			intents: this.opts.intents,
+			session: this.opts.sessionPersistence,
+			getAccessToken: () => this.tokenManager.getAccessToken(this.creds.appId, this.creds.clientSecret),
+			clearTokenCache: () => this.tokenManager.clearCache(this.creds.appId),
+			getGatewayUrl: () => this.messageApi.getGatewayUrl(this.creds),
+			onReady: (data) => {
+				this.logger.info?.(`[qqbot] gateway READY`);
+				this.emit("ready", data);
+			},
+			onResumed: (data) => {
+				this.logger.info?.(`[qqbot] gateway RESUMED`);
+				this.emit("resumed", data);
+			},
+			onError: (err) => {
+				this.emit("error", err);
+			},
+			onMessage: (raw) => this.handleInboundMessage(raw),
+			onInteraction: (event) => {
+				const ctx = {
+					bot: this,
+					event,
+					state: {},
+					receivedAt: Date.now()
+				};
+				this.emit("interaction", ctx, event);
+			},
+			onRawEvent: (type, data) => {
+				const ctx = {
+					bot: this,
+					eventType: type,
+					data,
+					state: {},
+					receivedAt: Date.now()
+				};
+				this.emit("rawEvent", ctx);
+			}
+		});
+		await this.gateway.start();
+	}
+	async startWebhook() {
+		await this.initToken();
+		const webhook = new WebhookTransport({
+			appId: this.creds.appId,
+			appSecret: this.creds.clientSecret,
+			port: this.opts.webhook?.port,
+			path: this.opts.webhook?.path,
+			server: this.opts.webhook?.server,
+			accountId: this.account.accountId,
+			log: this.logger,
+			abortSignal: this.abortController.signal
+		}, {
+			onReady: (data) => {
+				this.logger.info?.(`[qqbot] webhook READY`);
+				this.emit("ready", data);
+			},
+			onResumed: (data) => {
+				this.emit("resumed", data);
+			},
+			onError: (err) => {
+				this.emit("error", err);
+			},
+			onMessage: (raw) => this.handleInboundMessage(raw),
+			onInteraction: (event) => {
+				const ctx = {
+					bot: this,
+					event,
+					state: {},
+					receivedAt: Date.now()
+				};
+				this.emit("interaction", ctx, event);
+			}
+		});
+		await webhook.start();
+	}
+	async handleInboundMessage(raw) {
+		const replyTarget = this.deriveReplyTarget(raw);
+		if (!replyTarget) {
+			this.logger.debug?.(`[qqbot] inbound message has no reply target — skipping`);
+			return;
+		}
+		const augmented = {
+			...raw,
+			replyTarget
+		};
+		const ctx = createMiddlewareContext$1({
+			bot: this,
+			message: augmented,
+			log: this.logger
+		});
+		const downstream = async () => {
+			await this.emit("message", ctx, ctx.message);
+		};
+		const chain = [...this.middlewares, downstream];
+		try {
+			await runMiddlewareChain(chain, ctx);
+		} catch (err) {
+			this.logger.error?.(`[qqbot] middleware chain threw: ${err instanceof Error ? err.message : String(err)}`);
+			this.emit("error", err instanceof Error ? err : new Error(String(err)));
+		}
+	}
+	/**
+	* Universal message send — supports all QQ Open Platform message types.
+	*
+	* This is the most flexible sending method. It accepts the full parameter
+	* set of POST `/v2/users/{openid}/messages` or `/v2/groups/{group_openid}/messages`.
+	* Use it when the convenience helpers (sendText, sendMarkdown, etc.) don't
+	* cover your use case.
+	*
+	* `msg_type` is auto-detected if not specified:
+	* - markdown field present → 2 (Markdown)
+	* - ark field present → 3 (Ark)
+	* - embed field present → 4 (Embed)
+	* - media field present → 7 (Rich media)
+	* - otherwise → 0 (Text)
+	*
+	* @example Send a keyboard message
+	* ```ts
+	* await bot.send({
+	*   target: msg.replyTarget,
+	*   msgType: MsgType.MARKDOWN,
+	*   markdown: { content: '# Hello' },
+	*   keyboard: { content: { rows: [...] } },
+	* });
+	* ```
+	*
+	* @example Send a proactive message (no msgId)
+	* ```ts
+	* await bot.send({
+	*   target: { scope: 'c2c', targetId: openid },
+	*   content: 'Hello from bot!',
+	* });
+	* ```
+	*/
+	async send(opts) {
+		const body = {};
+		if (opts.target.msgId) body.msg_id = opts.target.msgId;
+		if (opts.msgType !== void 0) body.msg_type = opts.msgType;
+		if (opts.content !== void 0) body.content = opts.content;
+		if (opts.markdown) body.markdown = opts.markdown;
+		if (opts.ark) body.ark = opts.ark;
+		if (opts.embed) body.embed = opts.embed;
+		if (opts.media) body.media = opts.media;
+		if (opts.keyboard) body.keyboard = opts.keyboard;
+		if (opts.messageReference) body.message_reference = opts.messageReference;
+		if (opts.extra) Object.assign(body, opts.extra);
+		return this.messageApi.sendRaw(opts.target.scope, opts.target.targetId, this.creds, body);
+	}
+	/**
+	* Send a text message to a C2C user or group (smart mode).
+	*
+	* **Difference from `send()`**:
+	* - `sendText` auto-selects msg_type based on `markdownSupport` config
+	*   (markdown bots automatically send as msg_type=2).
+	* - `send()` is explicit mode — you control msg_type directly.
+	*
+	* When `target.msgId` is present the message is treated as a reply
+	* (tied to the inbound message lifecycle); otherwise it is treated as
+	* a proactive push.
+	*/
+	async sendText(target, content) {
+		if (target.msgId) return this.messageApi.sendMessage(target.scope, target.targetId, content, this.creds, { msgId: target.msgId });
+		return this.messageApi.sendProactiveMessage(target.scope, target.targetId, content, this.creds);
+	}
+	/** Send a text message with an inline keyboard. */
+	async sendTextWithKeyboard(target, content, inlineKeyboard) {
+		return this.messageApi.sendMessage(target.scope, target.targetId, content, this.creds, {
+			msgId: target.msgId,
+			inlineKeyboard
+		});
+	}
+	/**
+	* Send a Markdown message (msg_type=2).
+	*
+	* @example
+	* ```ts
+	* await bot.sendMarkdown(msg.replyTarget, '# Hello **world**');
+	* await bot.sendMarkdown(msg.replyTarget, '# Click below', {
+	*   keyboard: { content: { rows: [...] } },
+	* });
+	* ```
+	*/
+	async sendMarkdown(target, content, opts) {
+		return this.send({
+			target,
+			msgType: MsgType.MARKDOWN,
+			markdown: { content },
+			keyboard: opts?.keyboard
+		});
+	}
+	/**
+	* Recall (delete) a previously sent message.
+	*
+	* @example
+	* ```ts
+	* const sent = await bot.sendText(target, 'oops');
+	* await bot.recallMessage(target, sent.id);
+	* ```
+	*/
+	async recallMessage(target, messageId) {
+		return this.messageApi.recallMessage(target.scope, target.targetId, messageId, this.creds);
+	}
+	/**
+	* Send a wakeup/recall message (C2C only, 30-day window).
+	*
+	* After a user initiates a conversation, the bot can send periodic
+	* recall messages within 30 days using `is_wakeup: true`.
+	* Platform enforces frequency limits.
+	*
+	* @example
+	* ```ts
+	* await bot.sendWakeup({ scope: 'c2c', targetId: openid }, '你有新消息!');
+	* ```
+	*/
+	async sendWakeup(target, content) {
+		if (target.scope !== "c2c") throw new Error("sendWakeup is only supported for C2C targets");
+		return this.send({
+			target,
+			content,
+			extra: { is_wakeup: true }
+		});
+	}
+	/**
+	* Send a message to a guild text channel.
+	*
+	* @example
+	* ```ts
+	* await bot.sendChannelMessage(channelId, '频道消息', { msgId });
+	* ```
+	*/
+	async sendChannelMessage(channelId, content, opts) {
+		const body = { content };
+		if (opts?.msgId) body.msg_id = opts.msgId;
+		if (opts?.keyboard) body.keyboard = opts.keyboard;
+		if (opts?.messageReference) body.message_reference = { message_id: opts.messageReference };
+		return this.messageApi.sendChannelMessageRaw(channelId, this.creds, body);
+	}
+	/**
+	* Send a direct message (DM) in a guild.
+	*
+	* @example
+	* ```ts
+	* await bot.sendDmMessage(guildId, '私信内容', { msgId });
+	* ```
+	*/
+	async sendDmMessage(guildId, content, opts) {
+		const body = { content };
+		if (opts?.msgId) body.msg_id = opts.msgId;
+		return this.messageApi.sendDmMessageRaw(guildId, this.creds, body);
+	}
+	/** Send a typing indicator (C2C only). */
+	async sendTyping(target, durationSec = 30) {
+		if (target.scope !== "c2c") throw new Error("sendTyping is only supported for C2C targets");
+		return this.messageApi.sendInputNotify({
+			openid: target.targetId,
+			creds: this.creds,
+			msgId: target.msgId,
+			inputSecond: durationSec
+		});
+	}
+	/** Acknowledge an INTERACTION_CREATE event. */
+	async acknowledgeInteraction(interactionId, code = 0, data) {
+		return this.messageApi.acknowledgeInteraction(interactionId, this.creds, code, data);
+	}
+	/**
+	* Open Platform API Gateway — call any QQ Open Platform REST API with
+	* automatic token injection and refresh.
+	*
+	* This is the "escape hatch" for any API not wrapped by a dedicated method.
+	* All requests are authenticated, rate-limit aware, and return structured errors.
+	*
+	* @example List guilds
+	* ```ts
+	* const guilds = await bot.api.get('/users/@me/guilds');
+	* ```
+	*
+	* @example Create an announcement
+	* ```ts
+	* await bot.api.post(`/guilds/${guildId}/announces`, {
+	*   message_id: msgId, channel_id: channelId,
+	* });
+	* ```
+	*
+	* @example Get a raw access token
+	* ```ts
+	* const token = await bot.api.getToken();
+	* ```
+	*/
+	get api() {
+		if (this._apiGateway) return this._apiGateway;
+		this._apiGateway = {
+			get: (path$4, query) => this.apiRequest("GET", path$4, void 0, query),
+			post: (path$4, body) => this.apiRequest("POST", path$4, body),
+			put: (path$4, body) => this.apiRequest("PUT", path$4, body),
+			patch: (path$4, body) => this.apiRequest("PATCH", path$4, body),
+			delete: (path$4) => this.apiRequest("DELETE", path$4),
+			getToken: () => this.tokenManager.getAccessToken(this.creds.appId, this.creds.clientSecret)
+		};
+		return this._apiGateway;
+	}
+	async apiRequest(method, path$4, body, query) {
+		const token = await this.tokenManager.getAccessToken(this.creds.appId, this.creds.clientSecret);
+		let fullPath = path$4;
+		if (query && Object.keys(query).length > 0) {
+			const params = new URLSearchParams();
+			for (const [k, v] of Object.entries(query)) if (v !== void 0 && v !== null) params.set(k, String(v));
+			fullPath = `${path$4}?${params.toString()}`;
+		}
+		return this.apiClient.request(token, method, fullPath, body ?? void 0);
+	}
+	/**
+	* Open a C2C stream session for incremental output.
+	*
+	* @returns A {@link StreamSession} — call `update(fullText)` repeatedly,
+	* then `complete()` when finished.
+	*/
+	openStream(opts) {
+		if (opts.target.scope !== "c2c") throw new Error("Streaming is only supported for C2C targets");
+		if (!opts.target.msgId) throw new Error("Streaming requires target.msgId from the inbound message");
+		const sessionOptions = {
+			openid: opts.target.targetId,
+			msgId: opts.target.msgId,
+			creds: this.creds,
+			eventId: opts.eventId,
+			throttleMs: opts.throttleMs,
+			logger: this.logger
+		};
+		return new StreamSession(this.messageApi, sessionOptions);
+	}
+	/**
+	* Upload media (image / voice / video / file) to a target. Automatically
+	* dispatches to the chunked-upload path when the source exceeds
+	* {@link LARGE_FILE_THRESHOLD} bytes.
+	*/
+	async uploadMedia(opts) {
+		const sources = [
+			opts.url,
+			opts.fileData,
+			opts.buffer,
+			opts.localPath
+		].filter((v) => v !== void 0);
+		if (sources.length === 0) throw new Error("uploadMedia: one of url/fileData/buffer/localPath is required");
+		if (sources.length > 1) throw new Error("uploadMedia: provide exactly one source");
+		const size = await this.computeSourceSize(opts);
+		const useChunked = size !== null && size >= LARGE_FILE_THRESHOLD;
+		const fileName = opts.fileName ?? (opts.localPath ? path$3.basename(opts.localPath) : void 0) ?? (opts.url ? decodeURIComponent(path$3.basename(new URL(opts.url).pathname)) || void 0 : void 0);
+		if (useChunked && (opts.localPath || opts.buffer)) {
+			const source = opts.localPath ? {
+				kind: "localPath",
+				path: opts.localPath,
+				size
+			} : {
+				kind: "buffer",
+				buffer: opts.buffer,
+				fileName
+			};
+			return this.chunkedMediaApi.uploadChunked({
+				scope: opts.target.scope,
+				targetId: opts.target.targetId,
+				fileType: opts.fileType,
+				source,
+				creds: this.creds,
+				fileName,
+				onProgress: opts.onProgress ? (p) => opts.onProgress(p.uploadedBytes, p.totalBytes) : void 0
+			});
+		}
+		return this.mediaApi.uploadMedia(opts.target.scope, opts.target.targetId, opts.fileType, this.creds, {
+			url: opts.url,
+			fileData: opts.fileData,
+			buffer: opts.buffer,
+			localPath: opts.localPath,
+			srvSendMsg: opts.srvSendMsg,
+			fileName
+		});
+	}
+	/**
+	* Upload + send a media message to a C2C user or group.
+	*/
+	async sendMedia(opts) {
+		const upload = await this.uploadMedia({
+			...opts,
+			srvSendMsg: false
+		});
+		const message = await this.mediaApi.sendMediaMessage(opts.target.scope, opts.target.targetId, upload.file_info, this.creds, {
+			msgId: opts.target.msgId,
+			content: opts.content
+		});
+		return {
+			upload,
+			message
+		};
+	}
+	/** Convenience: upload + send an image. */
+	async sendImage(target, source, opts) {
+		return this.sendMedia({
+			target,
+			fileType: MediaFileType.IMAGE,
+			...source,
+			content: opts?.content,
+			onProgress: opts?.onProgress
+		});
+	}
+	/** Convenience: upload + send a video. */
+	async sendVideo(target, source, opts) {
+		return this.sendMedia({
+			target,
+			fileType: MediaFileType.VIDEO,
+			...source,
+			content: opts?.content,
+			onProgress: opts?.onProgress
+		});
+	}
+	/** Convenience: upload + send a voice message. */
+	async sendVoice(target, source, opts) {
+		return this.sendMedia({
+			target,
+			fileType: MediaFileType.VOICE,
+			...source,
+			onProgress: opts?.onProgress
+		});
+	}
+	/** Convenience: upload + send a generic file (for users with file-message permission). */
+	async sendFile(target, source, opts) {
+		return this.sendMedia({
+			target,
+			fileType: MediaFileType.FILE,
+			...source,
+			fileName: opts?.fileName,
+			content: opts?.content,
+			onProgress: opts?.onProgress
+		});
+	}
+	deriveReplyTarget(raw) {
+		if (raw.kind === "c2c") return {
+			scope: "c2c",
+			targetId: raw.senderId,
+			msgId: raw.messageId
+		};
+		if (raw.kind === "group" && raw.groupOpenid) return {
+			scope: "group",
+			targetId: raw.groupOpenid,
+			msgId: raw.messageId
+		};
+		return null;
+	}
+	async computeSourceSize(opts) {
+		if (opts.buffer) return opts.buffer.length;
+		if (opts.localPath) try {
+			const stat$1 = await fs$1.promises.stat(opts.localPath);
+			return stat$1.size;
+		} catch {
+			return null;
+		}
+		if (opts.fileData) return Math.floor(opts.fileData.length * 3 / 4);
+		return null;
+	}
+};
+
+//#endregion
+//#region src/host/im/qq.ts
+function maskAppId(appId) {
+	if (appId.length <= 10) return appId ? `${appId.slice(0, 3)}•••` : "";
+	return `${appId.slice(0, 6)}••••${appId.slice(-4)}`;
+}
+function deriveQqBotId(appId) {
+	return "qq_" + createHash("sha256").update(appId).digest("hex").slice(0, 24);
+}
+var QqRuntime = class {
+	#auth;
+	#store;
+	#chat;
+	#log;
+	#bot = null;
+	#controller = null;
+	#run = null;
+	#botIds = new Set();
+	#status = {
+		state: "idle",
+		connected: false,
+		messagesReceived: 0,
+		messagesReplied: 0
+	};
+	constructor(options) {
+		this.#auth = options.auth;
+		this.#store = options.store;
+		this.#chat = options.chat;
+		this.#log = options.log;
+	}
+	status() {
+		return { ...this.#status };
+	}
+	async start() {
+		if (this.#run) return;
+		this.#status = {
+			...this.#status,
+			state: "connecting",
+			connected: false,
+			appId: maskAppId(this.#auth.appId),
+			lastError: void 0
+		};
+		const controller = new AbortController();
+		this.#controller = controller;
+		const logger = {
+			error: (...args) => this.#log.error(`[dsh-pet:qq] ${args.map(String).join(" ")}`),
+			warn: (...args) => this.#log.warn(`[dsh-pet:qq] ${args.map(String).join(" ")}`),
+			info: () => {},
+			debug: () => {}
+		};
+		const bot = new QQBot({
+			appId: this.#auth.appId,
+			appSecret: this.#auth.appSecret,
+			accountId: this.#auth.botId,
+			logger,
+			transport: "websocket"
+		});
+		this.#bot = bot;
+		this.#botIds = new Set([this.#auth.appId]);
+		let readyResolve = null;
+		let readyReject = null;
+		const ready = new Promise((resolve$1, reject) => {
+			readyResolve = resolve$1;
+			readyReject = reject;
+		});
+		const markReady = (data) => {
+			const id = data?.user?.id;
+			if (typeof id === "string" && id.trim()) this.#botIds.add(id);
+			this.#status.state = "connected";
+			this.#status.connected = true;
+			this.#status.lastCheckedAt = Date.now();
+			this.#status.lastError = void 0;
+			readyResolve?.();
+			readyResolve = null;
+		};
+		bot.on("ready", markReady);
+		bot.on("resumed", markReady);
+		bot.on("error", (error$1) => {
+			this.#status.lastError = error$1 instanceof Error ? error$1.message : String(error$1);
+			if (!this.#status.connected) readyReject?.(error$1);
+		});
+		bot.on("message", (_ctx, message) => {
+			this.#handle(message).catch((error$1) => {
+				this.#log.error(`[dsh-pet:qq] 消息处理失败：${error$1 instanceof Error ? error$1.message : String(error$1)}`);
+			});
+		});
+		this.#run = Promise.resolve().then(() => bot.start(controller.signal)).catch((error$1) => {
+			if (controller.signal.aborted) return;
+			this.#status.state = "error";
+			this.#status.connected = false;
+			this.#status.lastError = error$1 instanceof Error ? error$1.message : String(error$1);
+			readyReject?.(error$1);
+		}).finally(() => {
+			this.#run = null;
+			if (this.#controller === controller) this.#controller = null;
+			this.#status.connected = false;
+			if (this.#status.state === "connected") this.#status.state = "idle";
+		});
+		let timer;
+		try {
+			await Promise.race([ready, new Promise((_, reject) => {
+				timer = setTimeout(() => reject(new Error("QQ WebSocket 连接超时")), 2e4);
+				timer.unref?.();
+			})]);
+		} catch (error$1) {
+			this.#status.state = "error";
+			this.#status.connected = false;
+			this.#status.lastError = error$1 instanceof Error ? error$1.message : String(error$1);
+			await this.stop();
+			throw error$1;
+		} finally {
+			if (timer) clearTimeout(timer);
+		}
+	}
+	async stop() {
+		this.#controller?.abort();
+		this.#controller = null;
+		const bot = this.#bot;
+		this.#bot = null;
+		try {
+			bot?.stop();
+		} catch {}
+		await Promise.race([this.#run?.catch(() => void 0) ?? Promise.resolve(), new Promise((resolve$1) => setTimeout(resolve$1, 2e3))]);
+		this.#run = null;
+		this.#status.state = "idle";
+		this.#status.connected = false;
+	}
+	async #handle(message) {
+		if (!message || message.senderIsBot === true) return;
+		if (message.kind !== "c2c" && message.kind !== "group") return;
+		const isGroup = message.kind === "group";
+		if (isGroup) {
+			const addressed = message.rawEventType === "GROUP_AT_MESSAGE_CREATE" || Array.isArray(message.mentions) && message.mentions.some((mention) => mention?.is_you === true);
+			if (!addressed) return;
+		}
+		const id = isGroup ? message.groupOpenid ?? "" : message.senderId;
+		const text$3 = typeof message.content === "string" ? message.content.replace(/<@!?[^<>\s]+>/gu, "").trim() : "";
+		if (!id || !message.messageId || !text$3) return;
+		if (this.#store.state.qq.seenMessageIds.includes(message.messageId)) return;
+		this.#status.messagesReceived += 1;
+		const result = await this.#chat({
+			platform: "qq",
+			senderId: id,
+			...message.senderName ? { senderName: message.senderName } : {},
+			text: text$3,
+			messageId: message.messageId,
+			isGroup
+		});
+		if (result.reply && this.#bot) try {
+			await this.#bot.sendText(message.replyTarget, result.reply);
+			this.#status.messagesReplied += 1;
+		} catch (error$1) {
+			this.#log.warn(`[dsh-pet:qq] 回复发送失败：${error$1 instanceof Error ? error$1.message : String(error$1)}`);
+		}
+		this.#store.state.qq.seenMessageIds.push(message.messageId);
+		if (this.#store.state.qq.seenMessageIds.length > 1e3) this.#store.state.qq.seenMessageIds.splice(0, this.#store.state.qq.seenMessageIds.length - 1e3);
+		await this.#store.saveState();
+	}
+};
+
+//#endregion
+//#region src/host/im/index.ts
+function maskId(value) {
+	if (!value) return void 0;
+	if (value.length <= 8) return value;
+	return `${value.slice(0, 4)}••${value.slice(-4)}`;
+}
+function platformName(platform) {
+	return platform === "wechat" ? "微信" : "QQ";
+}
+var NativeImManager = class {
+	#store;
+	#getConfig;
+	#chat;
+	#log;
+	#wechatApi = createWeixinApi();
+	#wechatLogin = null;
+	#wechat = null;
+	#qq = null;
+	#started = false;
+	constructor(options) {
+		this.#store = options.store;
+		this.#getConfig = options.getConfig;
+		this.#chat = options.chat;
+		this.#log = options.log;
+	}
+	async start() {
+		if (this.#started) return;
+		this.#started = true;
+		await this.#store.load();
+		this.#sync();
+	}
+	async stop() {
+		this.#started = false;
+		this.#wechatLogin?.cancel();
+		this.#wechatLogin = null;
+		await this.#wechat?.stop().catch(() => void 0);
+		this.#wechat = null;
+		await this.#qq?.stop().catch(() => void 0);
+		this.#qq = null;
+	}
+	/** 配置保存/同步后调用：按最新 enabled 状态启停，不改已登录凭据。 */
+	reload() {
+		this.#sync();
+	}
+	status() {
+		const wechat = this.#wechat?.status() ?? {
+			state: "idle",
+			connected: false,
+			messagesReceived: 0,
+			messagesReplied: 0
+		};
+		const qq = this.#qq?.status() ?? {
+			state: "idle",
+			connected: false,
+			messagesReceived: 0,
+			messagesReplied: 0
+		};
+		return {
+			wechat: {
+				connected: wechat.connected,
+				state: wechat.state,
+				...maskId(wechat.accountId) ? { account: maskId(wechat.accountId) } : {},
+				...maskId(wechat.ownerUserId) ? { owner: maskId(wechat.ownerUserId) } : {},
+				...wechat.lastError ? { lastError: wechat.lastError } : {},
+				messagesReceived: wechat.messagesReceived,
+				messagesReplied: wechat.messagesReplied,
+				login: this.#wechatLogin?.status() ?? null
+			},
+			qq: {
+				connected: qq.connected,
+				state: qq.state,
+				...qq.appId ? { appId: qq.appId } : {},
+				...qq.lastError ? { lastError: qq.lastError } : {},
+				messagesReceived: qq.messagesReceived,
+				messagesReplied: qq.messagesReplied
+			}
+		};
+	}
+	async startWechatLogin() {
+		this.#wechatLogin?.cancel();
+		this.#wechatLogin = new WechatLogin(this.#wechatApi, this.#store, async (auth) => {
+			await this.#startWechat(auth);
+		});
+		return this.#wechatLogin.start();
+	}
+	wechatLoginStatus() {
+		return this.#wechatLogin?.status() ?? null;
+	}
+	cancelWechatLogin() {
+		this.#wechatLogin?.cancel();
+		this.#wechatLogin = null;
+	}
+	submitWechatVerifyCode(code) {
+		return this.#wechatLogin?.submitVerifyCode(code) ?? null;
+	}
+	async logoutWechat() {
+		this.#wechatLogin?.cancel();
+		this.#wechatLogin = null;
+		await this.#wechat?.stop().catch(() => void 0);
+		this.#wechat = null;
+		await this.#store.clearAuth("wechat");
+		await this.#store.clearState("wechat");
+	}
+	async bindQq(appId, appSecret) {
+		const id = appId.trim();
+		const secret = appSecret.trim();
+		if (!id || !secret) throw new Error("QQ AppID 和 AppSecret 都必填");
+		if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) throw new Error("QQ AppID 格式不正确");
+		if (secret.length > 512) throw new Error("QQ AppSecret 过长");
+		const auth = {
+			botId: deriveQqBotId(id),
+			appId: id,
+			appSecret: secret,
+			ownerUserOpenid: "",
+			connectedAt: new Date().toISOString()
+		};
+		this.#store.auth.qq = auth;
+		await this.#store.saveAuth();
+		await this.#startQq(auth);
+	}
+	async logoutQq() {
+		await this.#qq?.stop().catch(() => void 0);
+		this.#qq = null;
+		await this.#store.clearAuth("qq");
+		await this.#store.clearState("qq");
+	}
+	#sync() {
+		if (!this.#started) return;
+		const config$1 = this.#getConfig();
+		if (!config$1.wechat.enabled) {
+			this.#wechat?.stop().catch(() => void 0);
+			this.#wechat = null;
+		} else if (this.#store.auth.wechat && !this.#wechat) this.#startWechat(this.#store.auth.wechat).catch((error$1) => {
+			this.#log.warn(`[dsh-pet] 微信连接失败：${error$1 instanceof Error ? error$1.message : String(error$1)}`);
+		});
+		if (!config$1.qq.enabled) {
+			this.#qq?.stop().catch(() => void 0);
+			this.#qq = null;
+		} else if (this.#store.auth.qq && !this.#qq) this.#startQq(this.#store.auth.qq).catch((error$1) => {
+			this.#log.warn(`[dsh-pet] QQ 连接失败：${error$1 instanceof Error ? error$1.message : String(error$1)}`);
+		});
+	}
+	async #startWechat(auth) {
+		await this.#wechat?.stop().catch(() => void 0);
+		const runtime = new WechatRuntime({
+			api: this.#wechatApi,
+			auth,
+			store: this.#store,
+			getConfig: () => this.#getConfig().wechat,
+			chat: (inbound) => this.#handle(inbound),
+			log: this.#log
+		});
+		this.#wechat = runtime;
+		try {
+			await runtime.start();
+		} catch (error$1) {
+			if (this.#wechat === runtime) this.#wechat = null;
+			await runtime.stop().catch(() => void 0);
+			throw error$1;
+		}
+	}
+	async #startQq(auth) {
+		await this.#qq?.stop().catch(() => void 0);
+		const runtime = new QqRuntime({
+			auth,
+			store: this.#store,
+			getConfig: () => this.#getConfig().qq,
+			chat: (inbound) => this.#handle(inbound),
+			log: this.#log
+		});
+		this.#qq = runtime;
+		try {
+			await runtime.start();
+		} catch (error$1) {
+			if (this.#qq === runtime) this.#qq = null;
+			await runtime.stop().catch(() => void 0);
+			throw error$1;
+		}
+	}
+	async #handle(inbound) {
+		const config$1 = this.#getConfig()[inbound.platform];
+		if (!config$1.enabled) return { reason: "platform-disabled" };
+		if (!config$1.petId.trim()) return { reason: "pet-required" };
+		if (inbound.isGroup && !config$1.allowGroups) return { reason: "group-not-allowed" };
+		const allowed = this.#allowed(config$1, inbound);
+		if (!allowed) return { reason: "not-whitelisted" };
+		const speaker = `${platformName(inbound.platform)}·${inbound.senderName || inbound.senderId}`;
+		const result = await this.#chat(config$1.petId, inbound.text, {
+			memoryKey: `im:${inbound.platform}:${inbound.senderId}`,
+			writeSay: config$1.writeSay,
+			speaker
+		});
+		if (!result.ok) return {
+			reason: result.reason,
+			...result.message ? { message: result.message } : {}
+		};
+		return { reply: result.text };
+	}
+	#allowed(config$1, inbound) {
+		if (config$1.whitelist.some((entry) => entry.platform === inbound.platform && entry.id === inbound.senderId)) return true;
+		if (!config$1.allowOwner) return false;
+		const owner = inbound.platform === "wechat" ? this.#store.auth.wechat?.ownerUserId : this.#store.auth.qq?.ownerUserOpenid;
+		return Boolean(owner && owner === inbound.senderId);
+	}
+};
+
+//#endregion
+//#region src/host/im/store.ts
+const EMPTY_STATE = {
+	version: 1,
+	wechat: {
+		getUpdatesBuf: "",
+		seenMessageIds: [],
+		contextTokens: {}
+	},
+	qq: { seenMessageIds: [] }
+};
+function safeString(value, max = 4096) {
+	return typeof value === "string" ? value.slice(0, max) : "";
+}
+function normalizeAuth(raw) {
+	const o = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+	const w = o.wechat && typeof o.wechat === "object" ? o.wechat : null;
+	const q = o.qq && typeof o.qq === "object" ? o.qq : null;
+	const wechat = w && safeString(w.botId) && safeString(w.accountId) && safeString(w.ownerUserId) && safeString(w.token) ? {
+		botId: safeString(w.botId, 128),
+		accountId: safeString(w.accountId, 256),
+		ownerUserId: safeString(w.ownerUserId, 256),
+		token: safeString(w.token, 4096),
+		baseUrl: safeString(w.baseUrl, 2048) || "https://ilinkai.weixin.qq.com/",
+		connectedAt: safeString(w.connectedAt, 64) || new Date().toISOString()
+	} : void 0;
+	const qq = q && safeString(q.botId) && safeString(q.appId) && safeString(q.appSecret) && safeString(q.ownerUserOpenid) ? {
+		botId: safeString(q.botId, 128),
+		appId: safeString(q.appId, 128),
+		appSecret: safeString(q.appSecret, 512),
+		ownerUserOpenid: safeString(q.ownerUserOpenid, 256),
+		connectedAt: safeString(q.connectedAt, 64) || new Date().toISOString()
+	} : void 0;
+	return {
+		version: 1,
+		...wechat ? { wechat } : {},
+		...qq ? { qq } : {}
+	};
+}
+function normalizeState(raw) {
+	const o = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+	const w = o.wechat && typeof o.wechat === "object" ? o.wechat : {};
+	const q = o.qq && typeof o.qq === "object" ? o.qq : {};
+	const contexts = {};
+	const rawContexts = w.contextTokens && typeof w.contextTokens === "object" ? w.contextTokens : {};
+	for (const [id, entry] of Object.entries(rawContexts).slice(-1e3)) {
+		const e = entry && typeof entry === "object" ? entry : {};
+		const token = safeString(e.token, 4096);
+		if (!id || !token) continue;
+		contexts[id] = {
+			token,
+			...safeString(e.seq, 64) ? { seq: safeString(e.seq, 64) } : {},
+			at: Number.isFinite(Number(e.at)) ? Number(e.at) : Date.now()
+		};
+	}
+	const ids = (value) => Array.isArray(value) ? value.map((v) => safeString(v, 256)).filter(Boolean).slice(-1e3) : [];
+	return {
+		version: 1,
+		wechat: {
+			getUpdatesBuf: safeString(w.getUpdatesBuf, 4096),
+			seenMessageIds: ids(w.seenMessageIds),
+			contextTokens: contexts
+		},
+		qq: { seenMessageIds: ids(q.seenMessageIds) }
+	};
+}
+var ImStore = class {
+	authPath;
+	statePath;
+	auth = { version: 1 };
+	state = structuredClone(EMPTY_STATE);
+	#queue = Promise.resolve();
+	constructor(userRoot) {
+		this.authPath = join(userRoot, "im-auth.json");
+		this.statePath = join(userRoot, "im-state.json");
+	}
+	async load() {
+		try {
+			this.auth = normalizeAuth(JSON.parse(await readFile(this.authPath, "utf8")));
+		} catch (e) {
+			if (e?.code !== "ENOENT") this.auth = { version: 1 };
+		}
+		try {
+			this.state = normalizeState(JSON.parse(await readFile(this.statePath, "utf8")));
+		} catch (e) {
+			if (e?.code !== "ENOENT") this.state = structuredClone(EMPTY_STATE);
+		}
+	}
+	async saveAuth() {
+		await this.#write(this.authPath, this.auth);
+	}
+	async saveState() {
+		await this.#write(this.statePath, this.state);
+	}
+	async clearAuth(platform) {
+		if (platform === "wechat") delete this.auth.wechat;
+		else delete this.auth.qq;
+		await this.saveAuth();
+	}
+	async clearState(platform) {
+		if (platform === "wechat") this.state.wechat = structuredClone(EMPTY_STATE.wechat);
+		else this.state.qq = structuredClone(EMPTY_STATE.qq);
+		await this.saveState();
+	}
+	/** 串行写盘（同进程内多个消息同时更新游标时防交错）。 */
+	#write(path$4, value) {
+		const operation = this.#queue.then(async () => {
+			await mkdir(dirname(path$4), {
+				recursive: true,
+				mode: 448
+			});
+			const temp = `${path$4}.${process.pid}.${Date.now()}.tmp`;
+			await writeFile(temp, JSON.stringify(value, null, 2) + "\n", {
+				encoding: "utf8",
+				mode: 384
+			});
+			await rename(temp, path$4);
+		});
+		this.#queue = operation.then(() => void 0, () => void 0);
+		return operation;
+	}
+};
 
 //#endregion
 //#region src/host/soul-events.ts
@@ -3196,17 +15340,17 @@ const petFacing = (v) => v === "left" || v === "right" ? v : null;
 function animationNames(animations) {
 	const a = animations && typeof animations === "object" ? animations : {};
 	const out = [];
-	const push = (names) => {
+	const push$1 = (names) => {
 		for (const n of names) if (!out.includes(n)) out.push(n);
 	};
-	push(strings(a.idle));
-	push(strings(a.turn));
-	push(strings(a.drag));
-	push(strings(a.clicks));
+	push$1(strings(a.idle));
+	push$1(strings(a.turn));
+	push$1(strings(a.drag));
+	push$1(strings(a.clicks));
 	const moves = a.moves && typeof a.moves === "object" ? a.moves : {};
-	push(Array.isArray(moves.actions) ? moves.actions.map((m) => m && typeof m === "object" ? m.name : void 0).filter((x) => typeof x === "string" && x !== "") : []);
+	push$1(Array.isArray(moves.actions) ? moves.actions.map((m) => m && typeof m === "object" ? m.name : void 0).filter((x) => typeof x === "string" && x !== "") : []);
 	if (Array.isArray(a.categories)) {
-		for (const c of a.categories) if (c && typeof c === "object") push(strings(c.actions));
+		for (const c of a.categories) if (c && typeof c === "object") push$1(strings(c.actions));
 	}
 	const events = a.events && typeof a.events === "object" ? a.events : {};
 	for (const key of Object.keys(events)) {
@@ -3215,7 +15359,7 @@ function animationNames(animations) {
 		const names = [];
 		for (const slot of pool) if (typeof slot === "string") names.push(slot);
 		else names.push(...strings(slot));
-		push(names);
+		push$1(names);
 	}
 	return out;
 }
@@ -6467,6 +18611,29 @@ function apply(ctx) {
 		if (result.ok && reflectionJob) runSoulReflection(reflectionJob);
 		return result;
 	};
+	const imStore = new ImStore(userRoot);
+	const nativeIm = new NativeImManager({
+		store: imStore,
+		getConfig: () => {
+			try {
+				return normalizeImConfig(readAllConfig(configPaths).main?.im);
+			} catch {
+				return normalizeImConfig(void 0);
+			}
+		},
+		chat: chatWithPet,
+		log: {
+			info: (message) => log$1.info(message),
+			warn: (message) => log$1.warn(message),
+			error: (message) => log$1.error(message)
+		}
+	});
+	ctx.effect(() => () => {
+		nativeIm.stop();
+	});
+	nativeIm.start().catch((e) => {
+		log$1.warn(`[dsh-pet] 原生微信 / QQ 初始化失败：${e instanceof Error ? e.message : String(e)}`);
+	});
 	/** 当前生效宠物列表：成品配置拍平（合并器已保证 id 唯一、字段填满），命令与桌面模式共用。 */
 	const effectivePetList = () => flattenPetList(readAllConfig(configPaths));
 	/** 余额刷新周期（秒）：成品 main 条目的 eventsRefreshSec.balance（合并器已填默认；非法兜底 1800） */
@@ -6717,8 +18884,8 @@ function apply(ctx) {
 		electronEnsure = ensureElectronDownload({
 			onLog: ({ text: text$3, level, done }) => reportDownload(text$3, level === "warn" ? "error" : done ? "success" : "working", done),
 			logger: log$1
-		}).then((path$2) => {
-			if (path$2) launchHelper(path$2);
+		}).then((path$4) => {
+			if (path$4) launchHelper(path$4);
 			else log$1.warn("[dsh-pet] Electron download failed; desktop pet unavailable. Set DSH_PET_ELECTRON_PATH and restart, or retry later.");
 		}).finally(() => {
 			electronEnsure = void 0;
@@ -6829,6 +18996,7 @@ function apply(ctx) {
 					await mkdir(userRoot, { recursive: true });
 					await writeFile(userConfigPath, JSON.stringify(clean, null, 2), "utf8");
 					syncDesktop();
+					nativeIm.reload();
 					return {
 						kind: "json",
 						status: 200,
@@ -6854,6 +19022,7 @@ function apply(ctx) {
 					};
 				}
 				syncDesktop();
+				nativeIm.reload();
 				return {
 					kind: "json",
 					status: 200,
@@ -8204,6 +20373,144 @@ function apply(ctx) {
 				signal?.addEventListener("abort", onAbort, { once: true });
 			});
 		}
+		if (rest === "im/status") {
+			if (method !== "GET") return {
+				kind: "json",
+				status: 405,
+				obj: { error: "method not allowed" }
+			};
+			return {
+				kind: "json",
+				status: 200,
+				obj: nativeIm.status(),
+				headers: { "cache-control": "no-cache, no-store" }
+			};
+		}
+		if (rest === "im/wechat/login") {
+			if (method === "POST") try {
+				return {
+					kind: "json",
+					status: 200,
+					obj: await nativeIm.startWechatLogin()
+				};
+			} catch (e) {
+				return {
+					kind: "json",
+					status: 200,
+					obj: {
+						status: "failed",
+						error: {
+							code: "qr-start-failed",
+							message: e instanceof Error ? e.message : String(e)
+						}
+					}
+				};
+			}
+			if (method === "GET") return {
+				kind: "json",
+				status: 200,
+				obj: { login: nativeIm.wechatLoginStatus() },
+				headers: { "cache-control": "no-cache, no-store" }
+			};
+			if (method === "DELETE") {
+				nativeIm.cancelWechatLogin();
+				return {
+					kind: "json",
+					status: 200,
+					obj: { ok: true }
+				};
+			}
+			return {
+				kind: "json",
+				status: 405,
+				obj: { error: "method not allowed" }
+			};
+		}
+		if (rest === "im/wechat/verify") {
+			if (method !== "POST") return {
+				kind: "json",
+				status: 405,
+				obj: { error: "method not allowed" }
+			};
+			let payload;
+			try {
+				payload = JSON.parse(body ?? "");
+			} catch {
+				return {
+					kind: "json",
+					status: 400,
+					obj: { error: "invalid JSON body" }
+				};
+			}
+			return {
+				kind: "json",
+				status: 200,
+				obj: { login: nativeIm.submitWechatVerifyCode(String(payload.code ?? "")) }
+			};
+		}
+		if (rest === "im/wechat/logout") {
+			if (method !== "POST") return {
+				kind: "json",
+				status: 405,
+				obj: { error: "method not allowed" }
+			};
+			await nativeIm.logoutWechat();
+			return {
+				kind: "json",
+				status: 200,
+				obj: { ok: true }
+			};
+		}
+		if (rest === "im/qq/bind") {
+			if (method !== "POST") return {
+				kind: "json",
+				status: 405,
+				obj: { error: "method not allowed" }
+			};
+			let payload;
+			try {
+				payload = JSON.parse(body ?? "");
+			} catch {
+				return {
+					kind: "json",
+					status: 400,
+					obj: { error: "invalid JSON body" }
+				};
+			}
+			try {
+				await nativeIm.bindQq(String(payload.appId ?? ""), String(payload.appSecret ?? ""));
+				return {
+					kind: "json",
+					status: 200,
+					obj: {
+						ok: true,
+						status: nativeIm.status()
+					}
+				};
+			} catch (e) {
+				return {
+					kind: "json",
+					status: 200,
+					obj: {
+						ok: false,
+						message: e instanceof Error ? e.message : String(e)
+					}
+				};
+			}
+		}
+		if (rest === "im/qq/logout") {
+			if (method !== "POST") return {
+				kind: "json",
+				status: 405,
+				obj: { error: "method not allowed" }
+			};
+			await nativeIm.logoutQq();
+			return {
+				kind: "json",
+				status: 200,
+				obj: { ok: true }
+			};
+		}
 		if (rest === "bridge/inbound") {
 			if (method !== "POST") return {
 				kind: "json",
@@ -9438,11 +21745,11 @@ function explicitlyAborted(x, startIndex = 0) {
 	for (let i = startIndex; i < x.issues.length; i++) if (x.issues[i]?.continue === false) return true;
 	return false;
 }
-function prefixIssues(path$2, issues) {
+function prefixIssues(path$4, issues) {
 	return issues.map((iss) => {
 		var _a$7;
 		(_a$7 = iss).path ?? (_a$7.path = []);
-		iss.path.unshift(path$2);
+		iss.path.unshift(path$4);
 		return iss;
 	});
 }
@@ -9840,12 +22147,12 @@ function flattenError(error$1, mapper = (issue$1) => issue$1.message) {
 }
 function formatError(error$1, mapper = (issue$1) => issue$1.message) {
 	const fieldErrors = { _errors: [] };
-	const processError = (error$2, path$2 = []) => {
-		for (const issue$1 of error$2.issues) if (issue$1.code === "invalid_union" && issue$1.errors.length) issue$1.errors.map((issues) => processError({ issues }, [...path$2, ...issue$1.path]));
-		else if (issue$1.code === "invalid_key") processError({ issues: issue$1.issues }, [...path$2, ...issue$1.path]);
-		else if (issue$1.code === "invalid_element") processError({ issues: issue$1.issues }, [...path$2, ...issue$1.path]);
+	const processError = (error$2, path$4 = []) => {
+		for (const issue$1 of error$2.issues) if (issue$1.code === "invalid_union" && issue$1.errors.length) issue$1.errors.map((issues) => processError({ issues }, [...path$4, ...issue$1.path]));
+		else if (issue$1.code === "invalid_key") processError({ issues: issue$1.issues }, [...path$4, ...issue$1.path]);
+		else if (issue$1.code === "invalid_element") processError({ issues: issue$1.issues }, [...path$4, ...issue$1.path]);
 		else {
-			const fullpath = [...path$2, ...issue$1.path];
+			const fullpath = [...path$4, ...issue$1.path];
 			if (fullpath.length === 0) fieldErrors._errors.push(mapper(issue$1));
 			else {
 				let curr = fieldErrors;
@@ -10028,21 +22335,21 @@ const validateAsync$1 = async (schema, value, _ctx) => {
 	return result.issues.length === 0;
 };
 const _encode = (_Err) => {
-	const parse$2 = _parse(_Err);
+	const parse$6 = _parse(_Err);
 	const fn = (schema, value, _ctx, _params) => {
 		const ctx = _ctx ? {
 			..._ctx,
 			direction: "backward"
 		} : { direction: "backward" };
-		return parse$2(schema, value, ctx, finalizeParams(fn, _params));
+		return parse$6(schema, value, ctx, finalizeParams(fn, _params));
 	};
 	return fn;
 };
 const encode$4 = /* @__PURE__ */ _encode($ZodRealError);
 const _decode = (_Err) => {
-	const parse$2 = _parse(_Err);
+	const parse$6 = _parse(_Err);
 	const fn = (schema, value, _ctx, _params) => {
-		return parse$2(schema, value, _ctx, finalizeParams(fn, _params));
+		return parse$6(schema, value, _ctx, finalizeParams(fn, _params));
 	};
 	return fn;
 };
@@ -11002,7 +23309,7 @@ function capSize(inst, size) {
 	const caps = sizeCaps(inst._zod.def.checks);
 	if (!caps.length) return;
 	const cap = Math.min(...caps.map((c) => c[0]));
-	const parse$2 = inst._zod.parse;
+	const parse$6 = inst._zod.parse;
 	inst._zod.parse = (payload, ctx) => {
 		const n = size(payload.value);
 		if (n > cap && !ctx?.skipChecks && ctx?.direction !== "backward") {
@@ -11014,7 +23321,7 @@ function capSize(inst, size) {
 				return payload;
 			}
 		}
-		return parse$2(payload, ctx);
+		return parse$6(payload, ctx);
 	};
 }
 const arraySize = (input) => Array.isArray(input) ? input.length : -1;
@@ -13193,9 +25500,9 @@ const addPattern = (agg, pattern) => {
 const intersectMime = (agg, mime) => {
 	agg.mime = agg.mime ? agg.mime.filter((m) => mime.includes(m)) : [...mime];
 };
-const setFormat = (agg, format) => {
-	agg.format = format;
-	if (format.includes("int")) agg.isInt = true;
+const setFormat = (agg, format$2) => {
+	agg.format = format$2;
+	if (format$2.includes("int")) agg.isInt = true;
 };
 const minContributor = (agg, def) => narrowMin(agg, "minimum", def.minimum);
 const maxContributor = (agg, def) => narrowMax(agg, "maximum", def.maximum);
@@ -13256,13 +25563,13 @@ const exactPattern = (p) => exactPatterns.get(p) ?? p;
 const stringProcessor = (schema, ctx, _json, _params) => {
 	const json = _json;
 	json.type = "string";
-	const { minimum, maximum, format, patterns, contentEncoding, laxFormat } = aggregateChecks(schema);
+	const { minimum, maximum, format: format$2, patterns, contentEncoding, laxFormat } = aggregateChecks(schema);
 	if (typeof minimum === "number") json.minLength = minimum;
 	if (typeof maximum === "number") json.maxLength = maximum;
-	if (format) {
-		json.format = formatMap[format] ?? format;
+	if (format$2) {
+		json.format = formatMap[format$2] ?? format$2;
 		if (json.format === "") delete json.format;
-		if (format === "time" || laxFormat) delete json.format;
+		if (format$2 === "time" || laxFormat) delete json.format;
 	}
 	if (contentEncoding) json.contentEncoding = contentEncoding;
 	if (patterns && patterns.size > 0) {
@@ -14437,9 +26744,9 @@ const meta = meta$1;
 /** 配置文件的字节上限。 */
 const MAX_CONFIG_BYTES = 32768;
 /** 只把权限授给当前用户；绝不把 shell 命令、账户名或未校验的 SID 交给 icacls。 */
-function restrictFile(path$2) {
+function restrictFile(path$4) {
 	if (process.platform !== "win32") {
-		chmodSync(path$2, 384);
+		chmodSync(path$4, 384);
 		return;
 	}
 	const identity = execFileSync(join(process.env.SystemRoot ?? "C:\\Windows", "System32", "whoami.exe"), [
@@ -14454,7 +26761,7 @@ function restrictFile(path$2) {
 	const sid = identity.match(/\bS-1-\d+(?:-\d+)+\b/)?.[0];
 	if (!sid) throw new Error("Cannot identify file owner");
 	execFileSync(join(process.env.SystemRoot ?? "C:\\Windows", "System32", "icacls.exe"), [
-		path$2,
+		path$4,
 		"/inheritance:r",
 		"/grant:r",
 		`*${sid}:F`
@@ -14475,19 +26782,19 @@ function configPath(home) {
 	return join(directory, "standalone-ai.json");
 }
 function readAiSettings(home) {
-	const path$2 = configPath(home);
-	if (!existsSync(path$2)) return void 0;
-	const stat$1 = lstatSync(path$2);
+	const path$4 = configPath(home);
+	if (!existsSync(path$4)) return void 0;
+	const stat$1 = lstatSync(path$4);
 	if (!stat$1.isFile() || stat$1.isSymbolicLink() || stat$1.size > MAX_CONFIG_BYTES) throw new Error("Unsafe settings file");
 	if (process.platform === "win32") {
-		const acl = execFileSync(join(process.env.SystemRoot ?? "C:\\Windows", "System32", "icacls.exe"), [path$2], {
+		const acl = execFileSync(join(process.env.SystemRoot ?? "C:\\Windows", "System32", "icacls.exe"), [path$4], {
 			encoding: "utf8",
 			windowsHide: true
 		});
 		if (/\b(?:Everyone|BUILTIN\\Users|Authenticated Users)\s*:/i.test(acl)) throw new Error("Unsafe settings permissions");
 	}
-	restrictFile(path$2);
-	const fd = openSync(path$2, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+	restrictFile(path$4);
+	const fd = openSync(path$4, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
 	try {
 		if (fstatSync(fd).size > MAX_CONFIG_BYTES) throw new Error("Settings file too large");
 		return JSON.parse(readFileSync(fd, "utf8"));
@@ -14498,11 +26805,11 @@ function readAiSettings(home) {
 function writeAiSettings(home, settings) {
 	writePrivateJson(configPath(home), settings);
 }
-function writePrivateJson(path$2, settings) {
-	const directory = lstatSync(dirname(path$2));
+function writePrivateJson(path$4, settings) {
+	const directory = lstatSync(dirname(path$4));
 	if (!directory.isDirectory() || directory.isSymbolicLink()) throw new Error("Unsafe private file directory");
-	if (existsSync(path$2) && (!lstatSync(path$2).isFile() || lstatSync(path$2).isSymbolicLink())) throw new Error("Unsafe settings file");
-	const temporary = `${path$2}.${randomUUID()}.tmp`;
+	if (existsSync(path$4) && (!lstatSync(path$4).isFile() || lstatSync(path$4).isSymbolicLink())) throw new Error("Unsafe settings file");
+	const temporary = `${path$4}.${randomUUID()}.tmp`;
 	const fd = openSync(temporary, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 384);
 	try {
 		restrictFile(temporary);
@@ -14515,7 +26822,7 @@ function writePrivateJson(path$2, settings) {
 		throw error$1;
 	}
 	try {
-		renameSync(temporary, path$2);
+		renameSync(temporary, path$4);
 	} catch (error$1) {
 		unlinkSync(temporary);
 		throw error$1;
@@ -14621,7 +26928,7 @@ function createAiConfig(home) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/tslib.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/tslib.mjs
 function __classPrivateFieldSet$1(receiver, state$1, value, kind, f) {
 	if (kind === "m") throw new TypeError("Private method is not writable");
 	if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a setter");
@@ -14635,20 +26942,20 @@ function __classPrivateFieldGet$1(receiver, state$1, kind, f) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/utils/uuid.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/utils/uuid.mjs
 let uuid4$1 = function() {
-	const { crypto: crypto$1 } = globalThis;
-	if (crypto$1?.randomUUID) {
-		uuid4$1 = crypto$1.randomUUID.bind(crypto$1);
-		return crypto$1.randomUUID();
+	const { crypto: crypto$4 } = globalThis;
+	if (crypto$4?.randomUUID) {
+		uuid4$1 = crypto$4.randomUUID.bind(crypto$4);
+		return crypto$4.randomUUID();
 	}
 	const u8 = new Uint8Array(1);
-	const randomByte = crypto$1 ? () => crypto$1.getRandomValues(u8)[0] : () => Math.random() * 255 & 255;
+	const randomByte = crypto$4 ? () => crypto$4.getRandomValues(u8)[0] : () => Math.random() * 255 & 255;
 	return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => (+c ^ randomByte() & 15 >> +c / 4).toString(16));
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/errors.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/errors.mjs
 function isAbortError$1(err) {
 	return typeof err === "object" && err !== null && ("name" in err && err.name === "AbortError" || "message" in err && String(err.message).includes("FetchRequestCanceledException"));
 }
@@ -14673,7 +26980,7 @@ const castToError$1 = (err) => {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/core/error.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/core/error.mjs
 var OpenAIError = class extends Error {};
 var APIError$1 = class APIError$1 extends OpenAIError {
 	constructor(status$1, error$1, message, headers) {
@@ -14774,7 +27081,7 @@ var SubjectTokenProviderError = class extends OpenAIError {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/utils/values.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/utils/values.mjs
 const startsWithSchemeRegexp = /^[a-z][a-z0-9+.-]*:/i;
 const isAbsoluteURL$1 = (url) => {
 	return startsWithSchemeRegexp.test(url);
@@ -14810,7 +27117,7 @@ const safeJSON$1 = (text$3) => {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/utils/sleep.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/utils/sleep.mjs
 const sleep$1 = (ms, ...signals) => new Promise((resolve$1, reject) => {
 	const activeSignals = [...new Set(signals.filter((signal) => signal != null))];
 	let timeout;
@@ -14852,7 +27159,7 @@ const sleep$1 = (ms, ...signals) => new Promise((resolve$1, reject) => {
 });
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/utils/abort.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/utils/abort.mjs
 const weakGlobals = globalThis;
 const finalizer = typeof weakGlobals.FinalizationRegistry === "function" ? new weakGlobals.FinalizationRegistry((cleanup) => {
 	try {
@@ -14922,7 +27229,7 @@ function addRequestAbortListener(signal, abort, requestSignal) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/shims.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/shims.mjs
 function getDefaultFetch$1() {
 	if (typeof fetch !== "undefined") return fetch;
 	throw new Error("`fetch` is not defined as a global; Either pass `fetch` to the client, `new OpenAI({ fetch })` or polyfill the global, `globalThis.fetch = fetch`");
@@ -14987,7 +27294,7 @@ async function CancelReadableStream$1(stream) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/utils/bytes.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/utils/bytes.mjs
 let encodeUTF8_;
 function encodeUTF8$1(str$2) {
 	let encoder;
@@ -15000,7 +27307,7 @@ function decodeUTF8$1(bytes) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/decoders/line.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/decoders/line.mjs
 var _LineDecoder_instances, _LineDecoder_buffer$1, _LineDecoder_start, _LineDecoder_end, _LineDecoder_searchIndex, _LineDecoder_skipLeadingLF, _LineDecoder_append;
 /** Maximum backing-buffer capacity retained when completed lines leave little active data. */
 const MAX_RETAINED_BUFFER_BYTES = 64 * 1024;
@@ -15147,7 +27454,7 @@ function lineEndingLength(buffer, index) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/utils/log.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/utils/log.mjs
 const levelNumbers = {
 	off: 0,
 	error: 200,
@@ -15242,9 +27549,9 @@ const formatRequestDetails = (details) => {
 		details.options = { ...details.options };
 		delete details.options["headers"];
 		if (details.options.path) {
-			const path$2 = details.options.path;
-			const redacted = new URL(redactURL(new URL(path$2, "https://redacted.invalid").href));
-			details.options.path = redacted.origin === "https://redacted.invalid" ? `${path$2.startsWith("/") ? "/" : ""}${redacted.pathname.slice(1)}${redacted.search}` : redacted.href;
+			const path$4 = details.options.path;
+			const redacted = new URL(redactURL(new URL(path$4, "https://redacted.invalid").href));
+			details.options.path = redacted.origin === "https://redacted.invalid" ? `${path$4.startsWith("/") ? "/" : ""}${redacted.pathname.slice(1)}${redacted.search}` : redacted.href;
 		}
 		if (details.options.query) details.options.query = Object.fromEntries(Object.entries(details.options.query).map(([name, value]) => [name, isSensitiveQueryParameter(name) ? "***" : value]));
 	}
@@ -15258,7 +27565,7 @@ const formatRequestDetails = (details) => {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/core/streaming.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/core/streaming.mjs
 var _Stream_instances, _Stream_client$1, _Stream_isTeeBranch, _Stream_cancelIterator;
 function isTransportAbortError(error$1) {
 	return !(error$1 instanceof APIError$1) && isAbortError$1(error$1);
@@ -15774,7 +28081,7 @@ function partition$1(str$2, delimiter) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/parse.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/parse.mjs
 async function defaultParseResponse$1(client, props) {
 	const { response, requestLogID, retryOfRequestLogID, startTime } = props;
 	let jsonBodyLength;
@@ -15830,11 +28137,11 @@ function addRequestID(value, response) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/version.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/version.mjs
 const VERSION$1 = "7.39.0";
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/detect-platform.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/detect-platform.mjs
 const isRunningInBrowser$1 = () => {
 	return typeof window !== "undefined" && typeof window.document !== "undefined" && typeof navigator !== "undefined";
 };
@@ -15959,7 +28266,7 @@ const getPlatformHeaders$1 = () => {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/request-options.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/request-options.mjs
 const jsonRequestBodyObservers = new WeakMap();
 function observeJSONRequestBody(body, observer) {
 	let observers = jsonRequestBodyObservers.get(body);
@@ -15998,7 +28305,7 @@ const FallbackEncoder$1 = ({ headers, body }) => {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/qs/formats.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/qs/formats.mjs
 const default_format$1 = "RFC3986";
 const default_formatter$1 = String;
 const formatters$1 = {
@@ -16008,7 +28315,7 @@ const formatters$1 = {
 const RFC1738$1 = "RFC1738";
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/qs/utils.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/qs/utils.mjs
 let cachedHas;
 const has$1 = (obj$1, key) => {
 	const resolvedHas = cachedHas ?? Object.hasOwn ?? Function.prototype.call.bind(Object.prototype.hasOwnProperty);
@@ -16021,7 +28328,7 @@ const hex_table$1 = /* @__PURE__ */ (() => {
 	return array$1;
 })();
 const limit$1 = 1024;
-const encode$2 = (str$2, _defaultEncoder, charset, _kind, format) => {
+const encode$2 = (str$2, _defaultEncoder, charset, _kind, format$2) => {
 	if (str$2.length === 0) return str$2;
 	let string$1 = str$2;
 	if (typeof str$2 === "symbol") string$1 = Symbol.prototype.toString.call(str$2);
@@ -16035,7 +28342,7 @@ const encode$2 = (str$2, _defaultEncoder, charset, _kind, format) => {
 		const arr = [];
 		for (let i = 0; i < segment.length; ++i) {
 			let c = segment.charCodeAt(i);
-			if (c === 45 || c === 46 || c === 95 || c === 126 || c >= 48 && c <= 57 || c >= 65 && c <= 90 || c >= 97 && c <= 122 || format === RFC1738$1 && (c === 40 || c === 41)) {
+			if (c === 45 || c === 46 || c === 95 || c === 126 || c >= 48 && c <= 57 || c >= 65 && c <= 90 || c >= 97 && c <= 122 || format$2 === RFC1738$1 && (c === 40 || c === 41)) {
 				arr[arr.length] = segment.charAt(i);
 				continue;
 			}
@@ -16074,7 +28381,7 @@ function maybe_map$1(val, fn) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/qs/stringify.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/qs/stringify.mjs
 const array_prefix_generators$1 = {
 	brackets(prefix) {
 		return String(prefix) + "[]";
@@ -16116,7 +28423,7 @@ function is_non_nullish_primitive$1(v) {
 	return typeof v === "string" || typeof v === "number" || typeof v === "boolean" || typeof v === "symbol" || typeof v === "bigint";
 }
 const sentinel$1 = {};
-function inner_stringify$1(object$1, prefix, generateArrayPrefix, commaRoundTrip, allowEmptyArrays, strictNullHandling, skipNulls, encodeDotInKeys, encoder, filter, sort, allowDots, serializeDate, format, formatter, encodeValuesOnly, charset, sideChannel) {
+function inner_stringify$1(object$1, prefix, generateArrayPrefix, commaRoundTrip, allowEmptyArrays, strictNullHandling, skipNulls, encodeDotInKeys, encoder, filter$1, sort, allowDots, serializeDate, format$2, formatter, encodeValuesOnly, charset, sideChannel) {
 	let obj$1 = object$1;
 	let tmp_sc = sideChannel;
 	let step = 0;
@@ -16128,20 +28435,20 @@ function inner_stringify$1(object$1, prefix, generateArrayPrefix, commaRoundTrip
 		else find_flag = true;
 		if (tmp_sc.get(sentinel$1) === void 0) step = 0;
 	}
-	if (typeof filter === "function") obj$1 = filter(prefix, obj$1);
+	if (typeof filter$1 === "function") obj$1 = filter$1(prefix, obj$1);
 	else if (obj$1 instanceof Date) obj$1 = serializeDate?.(obj$1);
 	else if (generateArrayPrefix === "comma" && isArray$1(obj$1)) obj$1 = maybe_map$1(obj$1, (value) => {
 		if (value instanceof Date) return serializeDate?.(value);
 		return value;
 	});
 	if (obj$1 === null) {
-		if (strictNullHandling) return encoder && !encodeValuesOnly ? encoder(prefix, defaults$1.encoder, charset, "key", format) : prefix;
+		if (strictNullHandling) return encoder && !encodeValuesOnly ? encoder(prefix, defaults$1.encoder, charset, "key", format$2) : prefix;
 		obj$1 = "";
 	}
 	if (is_non_nullish_primitive$1(obj$1) || is_buffer$1(obj$1)) {
 		if (encoder) {
-			const key_value = encodeValuesOnly ? prefix : encoder(prefix, defaults$1.encoder, charset, "key", format);
-			return [formatter?.(key_value) + "=" + formatter?.(encoder(obj$1, defaults$1.encoder, charset, "value", format))];
+			const key_value = encodeValuesOnly ? prefix : encoder(prefix, defaults$1.encoder, charset, "key", format$2);
+			return [formatter?.(key_value) + "=" + formatter?.(encoder(obj$1, defaults$1.encoder, charset, "value", format$2))];
 		}
 		return [formatter?.(prefix) + "=" + formatter?.(String(obj$1))];
 	}
@@ -16151,7 +28458,7 @@ function inner_stringify$1(object$1, prefix, generateArrayPrefix, commaRoundTrip
 	if (generateArrayPrefix === "comma" && isArray$1(obj$1)) {
 		if (encodeValuesOnly && encoder) obj$1 = maybe_map$1(obj$1, encoder);
 		obj_keys = [{ value: obj$1.length > 0 ? obj$1.join(",") || null : void 0 }];
-	} else if (isArray$1(filter)) obj_keys = filter;
+	} else if (isArray$1(filter$1)) obj_keys = filter$1;
 	else {
 		const keys = Object.keys(obj$1);
 		if (sort) keys.sort(sort);
@@ -16180,11 +28487,11 @@ function inner_stringify$1(object$1, prefix, generateArrayPrefix, commaRoundTrip
 			encodeDotInKeys,
 			// @ts-ignore
 			generateArrayPrefix === "comma" && encodeValuesOnly && isArray$1(obj$1) ? null : encoder,
-			filter,
+			filter$1,
 			sort,
 			allowDots,
 			serializeDate,
-			format,
+			format$2,
 			formatter,
 			encodeValuesOnly,
 			charset,
@@ -16199,14 +28506,14 @@ function normalize_stringify_options$1(opts = defaults$1) {
 	if (opts.encoder !== null && opts.encoder !== void 0 && typeof opts.encoder !== "function") throw new TypeError("Encoder has to be a function.");
 	const charset = opts.charset || defaults$1.charset;
 	if (opts.charset !== void 0 && opts.charset !== "utf-8" && opts.charset !== "iso-8859-1") throw new TypeError("The charset option must be either utf-8, iso-8859-1, or undefined");
-	let format = default_format$1;
+	let format$2 = default_format$1;
 	if (opts.format !== void 0) {
 		if (!has$1(formatters$1, opts.format)) throw new TypeError("Unknown format option provided.");
-		format = opts.format;
+		format$2 = opts.format;
 	}
-	const formatter = formatters$1[format];
-	let filter = defaults$1.filter;
-	if (typeof opts.filter === "function" || isArray$1(opts.filter)) filter = opts.filter;
+	const formatter = formatters$1[format$2];
+	let filter$1 = defaults$1.filter;
+	if (typeof opts.filter === "function" || isArray$1(opts.filter)) filter$1 = opts.filter;
 	let arrayFormat;
 	if (opts.arrayFormat && opts.arrayFormat in array_prefix_generators$1) arrayFormat = opts.arrayFormat;
 	else if ("indices" in opts) arrayFormat = opts.indices ? "indices" : "repeat";
@@ -16228,8 +28535,8 @@ function normalize_stringify_options$1(opts = defaults$1) {
 		encodeDotInKeys: typeof opts.encodeDotInKeys === "boolean" ? opts.encodeDotInKeys : defaults$1.encodeDotInKeys,
 		encoder: typeof opts.encoder === "function" ? opts.encoder : defaults$1.encoder,
 		encodeValuesOnly: typeof opts.encodeValuesOnly === "boolean" ? opts.encodeValuesOnly : defaults$1.encodeValuesOnly,
-		filter,
-		format,
+		filter: filter$1,
+		format: format$2,
 		formatter,
 		serializeDate: typeof opts.serializeDate === "function" ? opts.serializeDate : defaults$1.serializeDate,
 		skipNulls: typeof opts.skipNulls === "boolean" ? opts.skipNulls : defaults$1.skipNulls,
@@ -16241,13 +28548,13 @@ function stringify$1(object$1, opts = {}) {
 	let obj$1 = object$1;
 	const options = normalize_stringify_options$1(opts);
 	let obj_keys;
-	let filter;
+	let filter$1;
 	if (typeof options.filter === "function") {
-		filter = options.filter;
-		obj$1 = filter("", obj$1);
+		filter$1 = options.filter;
+		obj$1 = filter$1("", obj$1);
 	} else if (isArray$1(options.filter)) {
-		filter = options.filter;
-		obj_keys = filter;
+		filter$1 = options.filter;
+		obj_keys = filter$1;
 	}
 	const keys = [];
 	if (typeof obj$1 !== "object" || obj$1 === null) return "";
@@ -16287,13 +28594,13 @@ function stringify$1(object$1, opts = {}) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/utils/query.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/utils/query.mjs
 function stringifyQuery$1(query) {
 	return stringify$1(query, { arrayFormat: "brackets" });
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/data-residency.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/data-residency.mjs
 const endpoints = new Map([
 	["global", "https://api.openai.com/v1"],
 	["us", "https://us.api.openai.com/v1"],
@@ -16309,7 +28616,7 @@ function resolveDataResidency(options) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/core/api-promise.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/core/api-promise.mjs
 var _APIPromise_client$1;
 var APIPromise$1 = class APIPromise$1 extends Promise {
 	constructor(client, responsePromise, parseResponse$1 = defaultParseResponse$1) {
@@ -16375,7 +28682,7 @@ var APIPromise$1 = class APIPromise$1 extends Promise {
 _APIPromise_client$1 = new WeakMap();
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/core/pagination.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/core/pagination.mjs
 var _AbstractPage_client$1;
 var AbstractPage$1 = class {
 	constructor(client, response, body, options) {
@@ -16542,7 +28849,7 @@ var TokenPage = class extends AbstractPage$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/auth/workload-identity-auth.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/auth/workload-identity-auth.mjs
 const SUBJECT_TOKEN_TYPES = {
 	jwt: "urn:ietf:params:oauth:token-type:jwt",
 	id: "urn:ietf:params:oauth:token-type:id_token"
@@ -16716,7 +29023,7 @@ var WorkloadIdentityAuth = class WorkloadIdentityAuth {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/auth/x509-api-origin.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/auth/x509-api-origin.mjs
 const X509_API_BASE_URL = "https://mtls.api.openai.com/v1";
 function assertX509APIOrigin(value) {
 	let target;
@@ -16731,7 +29038,7 @@ function assertX509APIOrigin(value) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/headers.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/headers.mjs
 const brand_privateNullableHeaders$1 = /* @__PURE__ */ Symbol("brand.privateNullableHeaders");
 const httpTokenHeaderName = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 function* iterateHeaders$1(headers) {
@@ -16794,7 +29101,7 @@ const buildHeaders$1 = (newHeaders) => {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/auth/x509-transport-state-browser.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/auth/x509-transport-state-browser.mjs
 var x509_transport_state_browser_exports = {};
 __export(x509_transport_state_browser_exports, {
 	findRegisteredX509Transport: () => findRegisteredX509Transport$1,
@@ -16831,8 +29138,8 @@ const rememberX509Credential$1 = WeakMap.prototype.set.bind(approvedX509Credenti
 const findX509Credential$1 = WeakMap.prototype.get.bind(approvedX509Credentials);
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/auth/x509-transport-state.js
-var require_x509_transport_state = __commonJS({ "node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/auth/x509-transport-state.js"(exports, module) {
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/auth/x509-transport-state.js
+var require_x509_transport_state = __commonJS({ "node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/auth/x509-transport-state.js"(exports, module) {
 	if (typeof module !== "undefined" && module !== globalThis.module && typeof exports !== "undefined" && module.exports === exports) {
 		Object.defineProperty(exports, "__esModule", { value: true });
 		exports.findX509Credential = exports.rememberX509Credential = exports.findX509OAuthError = exports.rememberX509OAuthError = exports.isApprovedX509Client = exports.markApprovedX509Client = exports.isRetryableX509IssuerError = exports.markRetryableX509IssuerError = exports.isTransientX509ConnectionError = exports.markTransientX509ConnectionError = exports.rememberRegisteredX509Transport = exports.findRegisteredX509Transport = void 0;
@@ -16872,12 +29179,12 @@ var require_x509_transport_state = __commonJS({ "node_modules/.pnpm/openai@7.39.
 var import_x509_transport_state = __toESM(require_x509_transport_state(), 1);
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/auth/x509-transport-state.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/auth/x509-transport-state.mjs
 const state = typeof import_x509_transport_state.findRegisteredX509Transport === "function" ? import_x509_transport_state : x509_transport_state_browser_exports;
 const { findRegisteredX509Transport, rememberRegisteredX509Transport, markTransientX509ConnectionError, isTransientX509ConnectionError, markRetryableX509IssuerError, isRetryableX509IssuerError, markApprovedX509Client, isApprovedX509Client, rememberX509OAuthError, findX509OAuthError, rememberX509Credential, findX509Credential } = state;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/auth/x509-transport-registry.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/auth/x509-transport-registry.mjs
 const x509TransportBrand = Symbol("X.509 transport capability");
 function resolveX509Transport(value) {
 	if (!value || typeof value !== "object") throw new OpenAIError("X.509 workload identity requires an approved X.509 transport capability.");
@@ -16887,7 +29194,7 @@ function resolveX509Transport(value) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/auth/x509-workload-identity-auth.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/auth/x509-workload-identity-auth.mjs
 var _X509WorkloadIdentityAuth_instances, _a$4, _X509WorkloadIdentityAuth_identityProviderId, _X509WorkloadIdentityAuth_serviceAccountId, _X509WorkloadIdentityAuth_configuredRefreshBufferMs, _X509WorkloadIdentityAuth_configuredRefreshBufferSeconds, _X509WorkloadIdentityAuth_organization, _X509WorkloadIdentityAuth_project, _X509WorkloadIdentityAuth_transport, _X509WorkloadIdentityAuth_refreshBufferMs, _X509WorkloadIdentityAuth_cachedToken, _X509WorkloadIdentityAuth_refresh, _X509WorkloadIdentityAuth_tokenGeneration, _X509WorkloadIdentityAuth_cancelRequestBody, _X509WorkloadIdentityAuth_assignToken, _X509WorkloadIdentityAuth_recoverRefreshFailure, _X509WorkloadIdentityAuth_fallbackToken, _X509WorkloadIdentityAuth_retireRefresh, _X509WorkloadIdentityAuth_beginRefresh, _X509WorkloadIdentityAuth_refreshToken, _X509WorkloadIdentityAuth_preflight, _X509WorkloadIdentityAuth_scope, _X509WorkloadIdentityAuth_assertTenantHeaders;
 const FORBIDDEN_TRANSPORT_OPTIONS = [
 	"dispatcher",
@@ -17472,7 +29779,7 @@ _a$4 = X509WorkloadIdentityAuth, _X509WorkloadIdentityAuth_identityProviderId = 
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/auth/x509-credential-options.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/auth/x509-credential-options.mjs
 function normalizeX509CredentialOptions(options) {
 	const { credential } = options;
 	if (credential === void 0) return {
@@ -17575,7 +29882,7 @@ function prepareX509ClientClone(inherited, overrides, credential, currentlyX509)
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/uploads.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/uploads.mjs
 const brand_privateStreamingFile = /* @__PURE__ */ Symbol("brand.privateStreamingFile");
 function toStreamingFile(data, name, options) {
 	if (typeof name !== "string" || !name) throw new TypeError("toStreamingFile requires a non-empty file name");
@@ -17611,8 +29918,8 @@ function getName$1(value, options) {
 	} catch {
 		return basename(url);
 	}
-	const path$2 = "path" in value && value.path && String(value.path);
-	return path$2 ? basename(path$2) : void 0;
+	const path$4 = "path" in value && value.path && String(value.path);
+	return path$4 ? basename(path$4) : void 0;
 }
 function basename(value) {
 	return value.split(/[\\/]/).pop() || void 0;
@@ -17832,7 +30139,7 @@ const addFormValue$1 = async (form, key, value, options) => {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/to-file.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/to-file.mjs
 /**
 * This check adds the arrayBuffer() method type because it is available and used at runtime
 */
@@ -17897,7 +30204,7 @@ function propsForError$1(value) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/core/resource.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/core/resource.mjs
 var APIResource$1 = class {
 	constructor(client) {
 		this._client = client;
@@ -17905,16 +30212,16 @@ var APIResource$1 = class {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/utils/path.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/utils/path.mjs
 function encodeURIPath$1(str$2) {
 	return str$2.replace(/[^A-Za-z0-9\-._~!$&'()*+,;=:@]+/g, encodeURIComponent);
 }
 const EMPTY$1 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.create(null));
-const createPathTagFunction$1 = (pathEncoder = encodeURIPath$1) => function path$2(statics, ...params) {
+const createPathTagFunction$1 = (pathEncoder = encodeURIPath$1) => function path$4(statics, ...params) {
 	if (statics.length === 1) return statics[0];
 	let postPath = false;
 	const invalidSegments = [];
-	let path$2 = "";
+	let path$4 = "";
 	for (let index = 0; index < statics.length; index += 1) if (index in statics) {
 		const currentValue = statics[index];
 		if (/[?#]/.test(currentValue)) postPath = true;
@@ -17923,14 +30230,14 @@ const createPathTagFunction$1 = (pathEncoder = encodeURIPath$1) => function path
 		if (index !== params.length && (value == null || typeof value === "object" && value.toString === Object.getPrototypeOf(Object.getPrototypeOf(value.hasOwnProperty ?? EMPTY$1) ?? EMPTY$1)?.toString)) {
 			encoded = value + "";
 			invalidSegments.push({
-				start: path$2.length + currentValue.length,
+				start: path$4.length + currentValue.length,
 				length: encoded.length,
 				error: `Value of type ${Object.prototype.toString.call(value).slice(8, -1)} is not a valid path parameter`
 			});
 		}
-		path$2 += currentValue + (index === params.length ? "" : encoded);
+		path$4 += currentValue + (index === params.length ? "" : encoded);
 	}
-	const pathOnly = path$2.split(/[?#]/, 1)[0];
+	const pathOnly = path$4.split(/[?#]/, 1)[0];
 	const invalidSegmentPattern = /(?<=^|\/)(?:\.|%2e){1,2}(?=\/|$)/gi;
 	let match;
 	while ((match = invalidSegmentPattern.exec(pathOnly)) !== null) invalidSegments.push({
@@ -17948,14 +30255,14 @@ const createPathTagFunction$1 = (pathEncoder = encodeURIPath$1) => function path
 			lastEnd = segment.start + segment.length;
 			underline += spaces + arrows;
 		}
-		throw new OpenAIError(`Path parameters result in path with invalid segments:\n${invalidSegments.map((e) => e.error).join("\n")}\n${path$2}\n${underline}`);
+		throw new OpenAIError(`Path parameters result in path with invalid segments:\n${invalidSegments.map((e) => e.error).join("\n")}\n${path$4}\n${underline}`);
 	}
-	return path$2;
+	return path$4;
 };
-const path$1 = /* @__PURE__ */ createPathTagFunction$1(encodeURIPath$1);
+const path$2 = /* @__PURE__ */ createPathTagFunction$1(encodeURIPath$1);
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/chat/completions/messages.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/chat/completions/messages.mjs
 function resolveResourceRequestOptions$105(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -18012,7 +30319,7 @@ var Messages$3 = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/chat/completions/${completionID}/messages`, CursorPage, resolveResourceRequestOptions$105(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/chat/completions/${completionID}/messages`, CursorPage, resolveResourceRequestOptions$105(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -18021,7 +30328,7 @@ var Messages$3 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/chat-completions/streaming.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/chat-completions/streaming.mjs
 function normalizeChatCompletionChunk(chunk) {
 	if (!Array.isArray(chunk?.choices)) return chunk;
 	return {
@@ -18042,19 +30349,19 @@ function normalizeChatCompletionStream(stream) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/parser.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/parser.mjs
 function isChatCompletionFunctionTool(tool) {
 	return tool !== void 0 && "function" in tool && tool.function !== void 0;
 }
 function isAutoParsableResponseFormat(response_format) {
 	return response_format?.["$brand"] === "auto-parseable-response-format";
 }
-function isParseableResponseFormat(format) {
-	return isAutoParsableResponseFormat(format) || format?.type === "json_schema";
+function isParseableResponseFormat(format$2) {
+	return isAutoParsableResponseFormat(format$2) || format$2?.type === "json_schema";
 }
-function parseResponseFormatContent(format, content) {
-	if (!isParseableResponseFormat(format)) return null;
-	if (typeof format === "object" && format !== null && "$parseRaw" in format && typeof format.$parseRaw === "function") return format.$parseRaw(content);
+function parseResponseFormatContent(format$2, content) {
+	if (!isParseableResponseFormat(format$2)) return null;
+	if (typeof format$2 === "object" && format$2 !== null && "$parseRaw" in format$2 && typeof format$2.$parseRaw === "function") return format$2.$parseRaw(content);
 	try {
 		return JSON.parse(content);
 	} catch (error$1) {
@@ -18142,12 +30449,12 @@ function validateInputTools(tools) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/chatCompletionUtils.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/chatCompletionUtils.mjs
 const isAssistantMessage = (message) => message?.role === "assistant";
 const isToolMessage = (message) => message?.role === "tool";
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/EventStream.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/EventStream.mjs
 var _EventStream_instances, _EventStream_connectedPromise, _EventStream_resolveConnectedPromise, _EventStream_rejectConnectedPromise, _EventStream_endPromise, _EventStream_resolveEndPromise, _EventStream_rejectEndPromise, _EventStream_listeners, _EventStream_abortListeners, _EventStream_emittedListenerRegistrations, _EventStream_pendingListenerCleanup, _EventStream_pendingBufferedEventChecks, _EventStream_listenerDispatchDepth, _EventStream_ended, _EventStream_errored, _EventStream_aborted, _EventStream_catchingPromiseCreated, _EventStream_terminalFailure, _EventStream_abortFromSignal, _EventStream_removeAbortListeners, _EventStream_onceForEmitted, _EventStream_removeEmittedListener, _EventStream_cleanupEmittedListeners, _EventStream_handleError, _EventStream_settleTerminalEvent;
 const MAX_BUFFERED_ITERATOR_EVENTS = 4096;
 const MAX_BUFFERED_ITERATOR_BYTES = 8 * 1024 * 1024;
@@ -18199,9 +30506,9 @@ function captureNativeProxyDetector() {
 	try {
 		const loader = Object.getOwnPropertyDescriptor(process, "getBuiltinModule");
 		if (!loader || !("value" in loader) || typeof loader.value !== "function") return void 0;
-		const util = Reflect.apply(loader.value, process, ["node:util"]);
-		if (typeof util !== "object" || util === null) return void 0;
-		const types = Object.getOwnPropertyDescriptor(util, "types");
+		const util$6 = Reflect.apply(loader.value, process, ["node:util"]);
+		if (typeof util$6 !== "object" || util$6 === null) return void 0;
+		const types = Object.getOwnPropertyDescriptor(util$6, "types");
 		if (!types || !("value" in types) || typeof types.value !== "object" || types.value === null) return void 0;
 		const detector = Object.getOwnPropertyDescriptor(types.value, "isProxy");
 		if (!detector || !("value" in detector) || typeof detector.value !== "function") return void 0;
@@ -19012,15 +31319,15 @@ var EventStream = class {
 	emitted(event) {
 		return new Promise((resolve$1, reject) => {
 			__classPrivateFieldSet$1(this, _EventStream_catchingPromiseCreated, true, "f");
-			const onError = (error$1) => {
+			const onError$1 = (error$1) => {
 				this.off(event, onEvent);
 				reject(error$1);
 			};
 			const onEvent = (...values) => {
-				if (event !== "error") this.off("error", onError);
+				if (event !== "error") this.off("error", onError$1);
 				resolve$1(values.length > 1 ? values : values[0]);
 			};
-			if (event !== "error") __classPrivateFieldGet$1(this, _EventStream_instances, "m", _EventStream_onceForEmitted).call(this, "error", onError);
+			if (event !== "error") __classPrivateFieldGet$1(this, _EventStream_instances, "m", _EventStream_onceForEmitted).call(this, "error", onError$1);
 			__classPrivateFieldGet$1(this, _EventStream_instances, "m", _EventStream_onceForEmitted).call(this, event, onEvent);
 		});
 	}
@@ -19037,11 +31344,11 @@ var EventStream = class {
 	*   }
 	*/
 	events(event) {
-		return this._createIterator((push) => {
+		return this._createIterator((push$1) => {
 			const onEvent = (...args) => {
 				sdkOwnedBufferedEventArguments.add(args);
 				try {
-					push(args);
+					push$1(args);
 				} finally {
 					sdkOwnedBufferedEventArguments.delete(args);
 				}
@@ -19119,7 +31426,7 @@ var EventStream = class {
 			const graph = inspectBufferedEventGraph(value, MAX_BUFFERED_ITERATOR_BYTES);
 			if (!graph || !bufferedLedger.refresh(entry.retention, graph)) failBufferedEvents(true);
 		};
-		const push = (value) => {
+		const push$1 = (value) => {
 			if (ended) return;
 			const reader = readQueue.dequeue();
 			if (reader) reader.resolve({
@@ -19179,7 +31486,7 @@ var EventStream = class {
 			}
 		};
 		if (!ended) {
-			detach = attach(push);
+			detach = attach(push$1);
 			this.on("end", onEnd);
 			if (rejectOnError) this.on("error", onFailure);
 			if (rejectOnAbort) this.on("abort", onFailure);
@@ -19365,13 +31672,13 @@ _EventStream_connectedPromise = new WeakMap(), _EventStream_resolveConnectedProm
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/RunnableFunction.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/RunnableFunction.mjs
 function isRunnableFunctionWithParse(fn) {
 	return typeof fn.parse === "function";
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/AbstractChatCompletionRunner.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/AbstractChatCompletionRunner.mjs
 var _AbstractChatCompletionRunner_instances, _a$3, _AbstractChatCompletionRunner_completionArrivedBeforeAbort, _AbstractChatCompletionRunner_afterCompletionInvoked, _AbstractChatCompletionRunner_getFinalContent, _AbstractChatCompletionRunner_getFinalMessage, _AbstractChatCompletionRunner_getFinalFunctionToolCall, _AbstractChatCompletionRunner_getFinalFunctionToolCallResult, _AbstractChatCompletionRunner_calculateTotalUsage, _AbstractChatCompletionRunner_throwIfAborted, _AbstractChatCompletionRunner_validateParams, _AbstractChatCompletionRunner_stringifyFunctionCallResult;
 const DEFAULT_MAX_CHAT_COMPLETIONS = 10;
 function normalizeToolCallIds(chatCompletion) {
@@ -19740,7 +32047,7 @@ _a$3 = AbstractChatCompletionRunner, _AbstractChatCompletionRunner_completionArr
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/ChatCompletionRunner.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/ChatCompletionRunner.mjs
 var ChatCompletionRunner = class ChatCompletionRunner extends AbstractChatCompletionRunner {
 	/** Starts a non-streaming tool loop and returns its event-driven conversation runner. */
 	static runTools(client, params, options) {
@@ -19766,7 +32073,7 @@ var ChatCompletionRunner = class ChatCompletionRunner extends AbstractChatComple
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/_vendor/partial-json-parser/parser.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/_vendor/partial-json-parser/parser.mjs
 const STR = 1;
 const NUM = 2;
 const ARR = 4;
@@ -19959,7 +32266,7 @@ const _parseJSON = (jsonString, allow) => {
 const partialParse$1 = (input) => parseJSON(input, Allow.ALL ^ Allow.NUM);
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/ChatCompletionStream.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/ChatCompletionStream.mjs
 var _ChatCompletionStream_instances, _ChatCompletionStream_params, _ChatCompletionStream_rejectsUnfinishedTurns, _ChatCompletionStream_audioDoneChoiceIndexes, _ChatCompletionStream_choiceEventStates, _ChatCompletionStream_currentChatCompletionSnapshot, _ChatCompletionStream_hasAutoParseableTool, _ChatCompletionStream_partialJSONParseBudget, _ChatCompletionStream_beginRequest, _ChatCompletionStream_getChoiceEventState, _ChatCompletionStream_addChunk, _ChatCompletionStream_emitToolCallDoneEvent, _ChatCompletionStream_emitContentDoneEvents, _ChatCompletionStream_validateStructuredSnapshots, _ChatCompletionStream_endRequest, _ChatCompletionStream_accumulateChatCompletion;
 function parseStructuredStreamingJSON(content) {
 	try {
@@ -21071,8 +33378,8 @@ var ChatCompletionStream = class ChatCompletionStream extends AbstractChatComple
 		}
 		return snapshot;
 	}, Symbol.asyncIterator)]() {
-		return this._createIterator((push) => {
-			const onChunk = (chunk) => push(chunk);
+		return this._createIterator((push$1) => {
+			const onChunk = (chunk) => push$1(chunk);
 			this.on("chunk", onChunk);
 			return () => this.off("chunk", onChunk);
 		}, { onReturn: () => this.abort() });
@@ -21227,7 +33534,7 @@ function assertNever$2(_x) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/ChatCompletionStreamingRunner.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/ChatCompletionStreamingRunner.mjs
 var ChatCompletionStreamingRunner = class ChatCompletionStreamingRunner extends ChatCompletionStream {
 	/** Restores a serialized tool run, including intermediate completions and tool-result messages. */
 	static fromReadableStream(stream) {
@@ -21239,10 +33546,10 @@ var ChatCompletionStreamingRunner = class ChatCompletionStreamingRunner extends 
 	toReadableStream() {
 		let lastChunk;
 		let toolCallIds;
-		const iterator = this._createIterator((push) => {
+		const iterator = this._createIterator((push$1) => {
 			const onChunk = (chunk) => {
 				lastChunk = chunk;
-				push(chunk);
+				push$1(chunk);
 			};
 			const onMessage = (message) => {
 				if (isAssistantMessage(message)) {
@@ -21251,7 +33558,7 @@ var ChatCompletionStreamingRunner = class ChatCompletionStreamingRunner extends 
 				}
 				if (isToolMessage(message)) {
 					if (!lastChunk) throw new OpenAIError("cannot serialize a tool message before receiving any chunks");
-					push(makeChatCompletionReadableStreamMessageChunk(lastChunk, message, toolCallIds));
+					push$1(makeChatCompletionReadableStreamMessageChunk(lastChunk, message, toolCallIds));
 					toolCallIds = void 0;
 				}
 			};
@@ -21284,7 +33591,7 @@ var ChatCompletionStreamingRunner = class ChatCompletionStreamingRunner extends 
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/chat/completions/completions.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/chat/completions/completions.mjs
 function resolveResourceRequestOptions$104(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -21353,7 +33660,7 @@ var Completions$2 = class extends APIResource$1 {
 	* ```
 	*/
 	retrieve(completionID, options) {
-		return this._client.get(path$1`/chat/completions/${completionID}`, resolveResourceRequestOptions$104(options, (options$1) => ({
+		return this._client.get(path$2`/chat/completions/${completionID}`, resolveResourceRequestOptions$104(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -21372,7 +33679,7 @@ var Completions$2 = class extends APIResource$1 {
 	* ```
 	*/
 	update(completionID, body, options) {
-		return this._client.post(path$1`/chat/completions/${completionID}`, resolveResourceRequestOptions$104(options, (options$1) => ({
+		return this._client.post(path$2`/chat/completions/${completionID}`, resolveResourceRequestOptions$104(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -21408,7 +33715,7 @@ var Completions$2 = class extends APIResource$1 {
 	* ```
 	*/
 	delete(completionID, options) {
-		return this._client.delete(path$1`/chat/completions/${completionID}`, resolveResourceRequestOptions$104(options, (options$1) => ({
+		return this._client.delete(path$2`/chat/completions/${completionID}`, resolveResourceRequestOptions$104(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -21437,7 +33744,7 @@ var Completions$2 = class extends APIResource$1 {
 Completions$2.Messages = Messages$3;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/chat/chat.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/chat/chat.mjs
 var Chat$1 = class extends APIResource$1 {
 	constructor() {
 		super(...arguments);
@@ -21447,7 +33754,7 @@ var Chat$1 = class extends APIResource$1 {
 Chat$1.Completions = Completions$2;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/admin-api-keys.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/admin-api-keys.mjs
 function resolveResourceRequestOptions$103(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -21523,7 +33830,7 @@ var AdminAPIKeys = class extends APIResource$1 {
 	* ```
 	*/
 	retrieve(keyID, options) {
-		return this._client.get(path$1`/organization/admin_api_keys/${keyID}`, resolveResourceRequestOptions$103(options, (options$1) => ({
+		return this._client.get(path$2`/organization/admin_api_keys/${keyID}`, resolveResourceRequestOptions$103(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -21557,7 +33864,7 @@ var AdminAPIKeys = class extends APIResource$1 {
 	* ```
 	*/
 	delete(keyID, options) {
-		return this._client.delete(path$1`/organization/admin_api_keys/${keyID}`, resolveResourceRequestOptions$103(options, (options$1) => ({
+		return this._client.delete(path$2`/organization/admin_api_keys/${keyID}`, resolveResourceRequestOptions$103(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -21565,7 +33872,7 @@ var AdminAPIKeys = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/audit-logs.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/audit-logs.mjs
 function resolveResourceRequestOptions$102(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -21638,7 +33945,7 @@ var AuditLogs = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/certificates.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/certificates.mjs
 function resolveResourceRequestOptions$101(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -21712,7 +34019,7 @@ var Certificates$2 = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.get(path$1`/organization/certificates/${certificateID}`, resolveResourceRequestOptions$101(options, (options$1) => ({
+		return this._client.get(path$2`/organization/certificates/${certificateID}`, resolveResourceRequestOptions$101(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -21730,7 +34037,7 @@ var Certificates$2 = class extends APIResource$1 {
 	* ```
 	*/
 	update(certificateID, body, options) {
-		return this._client.post(path$1`/organization/certificates/${certificateID}`, resolveResourceRequestOptions$101(options, (options$1) => ({
+		return this._client.post(path$2`/organization/certificates/${certificateID}`, resolveResourceRequestOptions$101(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -21767,7 +34074,7 @@ var Certificates$2 = class extends APIResource$1 {
 	* ```
 	*/
 	delete(certificateID, options) {
-		return this._client.delete(path$1`/organization/certificates/${certificateID}`, resolveResourceRequestOptions$101(options, (options$1) => ({
+		return this._client.delete(path$2`/organization/certificates/${certificateID}`, resolveResourceRequestOptions$101(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -21821,7 +34128,7 @@ var Certificates$2 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/data-retention.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/data-retention.mjs
 function resolveResourceRequestOptions$100(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -21862,7 +34169,7 @@ var DataRetention$1 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/external-storage.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/external-storage.mjs
 function resolveResourceRequestOptions$99(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -21943,7 +34250,7 @@ var ExternalStorage = class extends APIResource$1 {
 	* ```
 	*/
 	retrieve(externalStorageID, options) {
-		return this._client.get(path$1`/organization/external_storage/${externalStorageID}`, resolveResourceRequestOptions$99(options, (options$1) => ({
+		return this._client.get(path$2`/organization/external_storage/${externalStorageID}`, resolveResourceRequestOptions$99(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -21981,7 +34288,7 @@ var ExternalStorage = class extends APIResource$1 {
 	* ```
 	*/
 	delete(externalStorageID, options) {
-		return this._client.delete(path$1`/organization/external_storage/${externalStorageID}`, resolveResourceRequestOptions$99(options, (options$1) => ({
+		return this._client.delete(path$2`/organization/external_storage/${externalStorageID}`, resolveResourceRequestOptions$99(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -21998,7 +34305,7 @@ var ExternalStorage = class extends APIResource$1 {
 	* ```
 	*/
 	validate(externalStorageID, options) {
-		return this._client.post(path$1`/organization/external_storage/${externalStorageID}/validate`, resolveResourceRequestOptions$99(options, (options$1) => ({
+		return this._client.post(path$2`/organization/external_storage/${externalStorageID}/validate`, resolveResourceRequestOptions$99(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -22006,7 +34313,7 @@ var ExternalStorage = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/invites.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/invites.mjs
 function resolveResourceRequestOptions$98(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -22084,7 +34391,7 @@ var Invites$2 = class extends APIResource$1 {
 	* ```
 	*/
 	retrieve(inviteID, options) {
-		return this._client.get(path$1`/organization/invites/${inviteID}`, resolveResourceRequestOptions$98(options, (options$1) => ({
+		return this._client.get(path$2`/organization/invites/${inviteID}`, resolveResourceRequestOptions$98(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -22114,7 +34421,7 @@ var Invites$2 = class extends APIResource$1 {
 	* ```
 	*/
 	delete(inviteID, options) {
-		return this._client.delete(path$1`/organization/invites/${inviteID}`, resolveResourceRequestOptions$98(options, (options$1) => ({
+		return this._client.delete(path$2`/organization/invites/${inviteID}`, resolveResourceRequestOptions$98(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -22122,7 +34429,7 @@ var Invites$2 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/roles.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/roles.mjs
 function resolveResourceRequestOptions$97(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -22197,7 +34504,7 @@ var Roles$5 = class extends APIResource$1 {
 	* ```
 	*/
 	retrieve(roleID, options) {
-		return this._client.get(path$1`/organization/roles/${roleID}`, resolveResourceRequestOptions$97(options, (options$1) => ({
+		return this._client.get(path$2`/organization/roles/${roleID}`, resolveResourceRequestOptions$97(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -22213,7 +34520,7 @@ var Roles$5 = class extends APIResource$1 {
 	* ```
 	*/
 	update(roleID, body, options) {
-		return this._client.post(path$1`/organization/roles/${roleID}`, resolveResourceRequestOptions$97(options, (options$1) => ({
+		return this._client.post(path$2`/organization/roles/${roleID}`, resolveResourceRequestOptions$97(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -22247,7 +34554,7 @@ var Roles$5 = class extends APIResource$1 {
 	* ```
 	*/
 	delete(roleID, options) {
-		return this._client.delete(path$1`/organization/roles/${roleID}`, resolveResourceRequestOptions$97(options, (options$1) => ({
+		return this._client.delete(path$2`/organization/roles/${roleID}`, resolveResourceRequestOptions$97(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -22255,7 +34562,7 @@ var Roles$5 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/spend-alerts.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/spend-alerts.mjs
 function resolveResourceRequestOptions$96(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -22337,7 +34644,7 @@ var SpendAlerts$1 = class extends APIResource$1 {
 	* ```
 	*/
 	retrieve(alertID, options) {
-		return this._client.get(path$1`/organization/spend_alerts/${alertID}`, resolveResourceRequestOptions$96(options, (options$1) => ({
+		return this._client.get(path$2`/organization/spend_alerts/${alertID}`, resolveResourceRequestOptions$96(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -22363,7 +34670,7 @@ var SpendAlerts$1 = class extends APIResource$1 {
 	* ```
 	*/
 	update(alertID, body, options) {
-		return this._client.post(path$1`/organization/spend_alerts/${alertID}`, resolveResourceRequestOptions$96(options, (options$1) => ({
+		return this._client.post(path$2`/organization/spend_alerts/${alertID}`, resolveResourceRequestOptions$96(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -22399,7 +34706,7 @@ var SpendAlerts$1 = class extends APIResource$1 {
 	* ```
 	*/
 	delete(alertID, options) {
-		return this._client.delete(path$1`/organization/spend_alerts/${alertID}`, resolveResourceRequestOptions$96(options, (options$1) => ({
+		return this._client.delete(path$2`/organization/spend_alerts/${alertID}`, resolveResourceRequestOptions$96(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -22407,7 +34714,7 @@ var SpendAlerts$1 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/spend-limit.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/spend-limit.mjs
 function resolveResourceRequestOptions$95(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -22465,7 +34772,7 @@ var SpendLimit$1 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/usage.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/usage.mjs
 function resolveResourceRequestOptions$94(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -22689,7 +34996,7 @@ var Usage = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/groups/roles.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/groups/roles.mjs
 function resolveResourceRequestOptions$93(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -22748,7 +35055,7 @@ var Roles$4 = class extends APIResource$1 {
 	* ```
 	*/
 	create(groupID, body, options) {
-		return this._client.post(path$1`/organization/groups/${groupID}/roles`, resolveResourceRequestOptions$93(options, (options$1) => ({
+		return this._client.post(path$2`/organization/groups/${groupID}/roles`, resolveResourceRequestOptions$93(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -22768,7 +35075,7 @@ var Roles$4 = class extends APIResource$1 {
 	*/
 	retrieve(roleID, params, options) {
 		const { group_id } = params;
-		return this._client.get(path$1`/organization/groups/${group_id}/roles/${roleID}`, resolveResourceRequestOptions$93(options, (options$1) => ({
+		return this._client.get(path$2`/organization/groups/${group_id}/roles/${roleID}`, resolveResourceRequestOptions$93(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -22784,7 +35091,7 @@ var Roles$4 = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/organization/groups/${groupID}/roles`, NextCursorPage, resolveResourceRequestOptions$93(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/organization/groups/${groupID}/roles`, NextCursorPage, resolveResourceRequestOptions$93(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -22804,7 +35111,7 @@ var Roles$4 = class extends APIResource$1 {
 	*/
 	delete(roleID, params, options) {
 		const { group_id } = params;
-		return this._client.delete(path$1`/organization/groups/${group_id}/roles/${roleID}`, resolveResourceRequestOptions$93(options, (options$1) => ({
+		return this._client.delete(path$2`/organization/groups/${group_id}/roles/${roleID}`, resolveResourceRequestOptions$93(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -22812,7 +35119,7 @@ var Roles$4 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/groups/users.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/groups/users.mjs
 function resolveResourceRequestOptions$92(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -22871,7 +35178,7 @@ var Users$5 = class extends APIResource$1 {
 	* ```
 	*/
 	create(groupID, body, options) {
-		return this._client.post(path$1`/organization/groups/${groupID}/users`, resolveResourceRequestOptions$92(options, (options$1) => ({
+		return this._client.post(path$2`/organization/groups/${groupID}/users`, resolveResourceRequestOptions$92(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -22891,7 +35198,7 @@ var Users$5 = class extends APIResource$1 {
 	*/
 	retrieve(userID, params, options) {
 		const { group_id } = params;
-		return this._client.get(path$1`/organization/groups/${group_id}/users/${userID}`, resolveResourceRequestOptions$92(options, (options$1) => ({
+		return this._client.get(path$2`/organization/groups/${group_id}/users/${userID}`, resolveResourceRequestOptions$92(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -22907,7 +35214,7 @@ var Users$5 = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/organization/groups/${groupID}/users`, NextCursorPage, resolveResourceRequestOptions$92(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/organization/groups/${groupID}/users`, NextCursorPage, resolveResourceRequestOptions$92(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -22927,7 +35234,7 @@ var Users$5 = class extends APIResource$1 {
 	*/
 	delete(userID, params, options) {
 		const { group_id } = params;
-		return this._client.delete(path$1`/organization/groups/${group_id}/users/${userID}`, resolveResourceRequestOptions$92(options, (options$1) => ({
+		return this._client.delete(path$2`/organization/groups/${group_id}/users/${userID}`, resolveResourceRequestOptions$92(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -22935,7 +35242,7 @@ var Users$5 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/groups/groups.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/groups/groups.mjs
 function resolveResourceRequestOptions$91(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -23015,7 +35322,7 @@ var Groups$1 = class extends APIResource$1 {
 	* ```
 	*/
 	retrieve(groupID, options) {
-		return this._client.get(path$1`/organization/groups/${groupID}`, resolveResourceRequestOptions$91(options, (options$1) => ({
+		return this._client.get(path$2`/organization/groups/${groupID}`, resolveResourceRequestOptions$91(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -23032,7 +35339,7 @@ var Groups$1 = class extends APIResource$1 {
 	* ```
 	*/
 	update(groupID, body, options) {
-		return this._client.post(path$1`/organization/groups/${groupID}`, resolveResourceRequestOptions$91(options, (options$1) => ({
+		return this._client.post(path$2`/organization/groups/${groupID}`, resolveResourceRequestOptions$91(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -23066,7 +35373,7 @@ var Groups$1 = class extends APIResource$1 {
 	* ```
 	*/
 	delete(groupID, options) {
-		return this._client.delete(path$1`/organization/groups/${groupID}`, resolveResourceRequestOptions$91(options, (options$1) => ({
+		return this._client.delete(path$2`/organization/groups/${groupID}`, resolveResourceRequestOptions$91(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -23076,7 +35383,7 @@ Groups$1.Users = Users$5;
 Groups$1.Roles = Roles$4;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/api-keys.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/api-keys.mjs
 function resolveResourceRequestOptions$90(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -23136,7 +35443,7 @@ var APIKeys$3 = class extends APIResource$1 {
 	*/
 	retrieve(apiKeyID, params, options) {
 		const { project_id } = params;
-		return this._client.get(path$1`/organization/projects/${project_id}/api_keys/${apiKeyID}`, resolveResourceRequestOptions$90(options, (options$1) => ({
+		return this._client.get(path$2`/organization/projects/${project_id}/api_keys/${apiKeyID}`, resolveResourceRequestOptions$90(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -23176,7 +35483,7 @@ var APIKeys$3 = class extends APIResource$1 {
 	*/
 	update(apiKeyID, params, options) {
 		const { project_id,...body } = params;
-		return this._client.post(path$1`/organization/projects/${project_id}/api_keys/${apiKeyID}`, resolveResourceRequestOptions$90(options, (options$1) => ({
+		return this._client.post(path$2`/organization/projects/${project_id}/api_keys/${apiKeyID}`, resolveResourceRequestOptions$90(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -23193,7 +35500,7 @@ var APIKeys$3 = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/organization/projects/${projectID}/api_keys`, ConversationCursorPage, resolveResourceRequestOptions$90(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/organization/projects/${projectID}/api_keys`, ConversationCursorPage, resolveResourceRequestOptions$90(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -23216,7 +35523,7 @@ var APIKeys$3 = class extends APIResource$1 {
 	*/
 	delete(apiKeyID, params, options) {
 		const { project_id } = params;
-		return this._client.delete(path$1`/organization/projects/${project_id}/api_keys/${apiKeyID}`, resolveResourceRequestOptions$90(options, (options$1) => ({
+		return this._client.delete(path$2`/organization/projects/${project_id}/api_keys/${apiKeyID}`, resolveResourceRequestOptions$90(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -23224,7 +35531,7 @@ var APIKeys$3 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/certificates.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/certificates.mjs
 function resolveResourceRequestOptions$89(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -23281,7 +35588,7 @@ var Certificates$1 = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/organization/projects/${projectID}/certificates`, ConversationCursorPage, resolveResourceRequestOptions$89(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/organization/projects/${projectID}/certificates`, ConversationCursorPage, resolveResourceRequestOptions$89(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -23304,7 +35611,7 @@ var Certificates$1 = class extends APIResource$1 {
 	* ```
 	*/
 	activate(projectID, body, options) {
-		return this._client.getAPIList(path$1`/organization/projects/${projectID}/certificates/activate`, Page$1, resolveResourceRequestOptions$89(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/organization/projects/${projectID}/certificates/activate`, Page$1, resolveResourceRequestOptions$89(options, (options$1) => ({
 			body,
 			method: "post",
 			...options$1,
@@ -23327,7 +35634,7 @@ var Certificates$1 = class extends APIResource$1 {
 	* ```
 	*/
 	deactivate(projectID, body, options) {
-		return this._client.getAPIList(path$1`/organization/projects/${projectID}/certificates/deactivate`, Page$1, resolveResourceRequestOptions$89(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/organization/projects/${projectID}/certificates/deactivate`, Page$1, resolveResourceRequestOptions$89(options, (options$1) => ({
 			body,
 			method: "post",
 			...options$1,
@@ -23337,7 +35644,7 @@ var Certificates$1 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/data-retention.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/data-retention.mjs
 function resolveResourceRequestOptions$88(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -23354,7 +35661,7 @@ var DataRetention = class extends APIResource$1 {
 	* ```
 	*/
 	retrieve(projectID, options) {
-		return this._client.get(path$1`/organization/projects/${projectID}/data_retention`, resolveResourceRequestOptions$88(options, (options$1) => ({
+		return this._client.get(path$2`/organization/projects/${projectID}/data_retention`, resolveResourceRequestOptions$88(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -23372,7 +35679,7 @@ var DataRetention = class extends APIResource$1 {
 	* ```
 	*/
 	update(projectID, body, options) {
-		return this._client.post(path$1`/organization/projects/${projectID}/data_retention`, resolveResourceRequestOptions$88(options, (options$1) => ({
+		return this._client.post(path$2`/organization/projects/${projectID}/data_retention`, resolveResourceRequestOptions$88(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -23381,7 +35688,7 @@ var DataRetention = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/hosted-tool-permissions.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/hosted-tool-permissions.mjs
 function resolveResourceRequestOptions$87(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -23398,7 +35705,7 @@ var HostedToolPermissions = class extends APIResource$1 {
 	* ```
 	*/
 	retrieve(projectID, options) {
-		return this._client.get(path$1`/organization/projects/${projectID}/hosted_tool_permissions`, resolveResourceRequestOptions$87(options, (options$1) => ({
+		return this._client.get(path$2`/organization/projects/${projectID}/hosted_tool_permissions`, resolveResourceRequestOptions$87(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -23415,7 +35722,7 @@ var HostedToolPermissions = class extends APIResource$1 {
 	* ```
 	*/
 	update(projectID, body, options) {
-		return this._client.post(path$1`/organization/projects/${projectID}/hosted_tool_permissions`, resolveResourceRequestOptions$87(options, (options$1) => ({
+		return this._client.post(path$2`/organization/projects/${projectID}/hosted_tool_permissions`, resolveResourceRequestOptions$87(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -23424,7 +35731,7 @@ var HostedToolPermissions = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/model-permissions.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/model-permissions.mjs
 function resolveResourceRequestOptions$86(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -23441,7 +35748,7 @@ var ModelPermissions = class extends APIResource$1 {
 	* ```
 	*/
 	retrieve(projectID, options) {
-		return this._client.get(path$1`/organization/projects/${projectID}/model_permissions`, resolveResourceRequestOptions$86(options, (options$1) => ({
+		return this._client.get(path$2`/organization/projects/${projectID}/model_permissions`, resolveResourceRequestOptions$86(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -23459,7 +35766,7 @@ var ModelPermissions = class extends APIResource$1 {
 	* ```
 	*/
 	update(projectID, body, options) {
-		return this._client.post(path$1`/organization/projects/${projectID}/model_permissions`, resolveResourceRequestOptions$86(options, (options$1) => ({
+		return this._client.post(path$2`/organization/projects/${projectID}/model_permissions`, resolveResourceRequestOptions$86(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -23477,7 +35784,7 @@ var ModelPermissions = class extends APIResource$1 {
 	* ```
 	*/
 	delete(projectID, options) {
-		return this._client.delete(path$1`/organization/projects/${projectID}/model_permissions`, resolveResourceRequestOptions$86(options, (options$1) => ({
+		return this._client.delete(path$2`/organization/projects/${projectID}/model_permissions`, resolveResourceRequestOptions$86(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -23485,7 +35792,7 @@ var ModelPermissions = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/rate-limits.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/rate-limits.mjs
 function resolveResourceRequestOptions$85(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -23542,7 +35849,7 @@ var RateLimits$4 = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/organization/projects/${projectID}/rate_limits`, ConversationCursorPage, resolveResourceRequestOptions$85(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/organization/projects/${projectID}/rate_limits`, ConversationCursorPage, resolveResourceRequestOptions$85(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -23562,7 +35869,7 @@ var RateLimits$4 = class extends APIResource$1 {
 	*/
 	updateRateLimit(rateLimitID, params, options) {
 		const { project_id,...body } = params;
-		return this._client.post(path$1`/organization/projects/${project_id}/rate_limits/${rateLimitID}`, resolveResourceRequestOptions$85(options, (options$1) => ({
+		return this._client.post(path$2`/organization/projects/${project_id}/rate_limits/${rateLimitID}`, resolveResourceRequestOptions$85(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -23571,7 +35878,7 @@ var RateLimits$4 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/roles.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/roles.mjs
 function resolveResourceRequestOptions$84(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -23630,7 +35937,7 @@ var Roles$3 = class extends APIResource$1 {
 	* ```
 	*/
 	create(projectID, body, options) {
-		return this._client.post(path$1`/projects/${projectID}/roles`, resolveResourceRequestOptions$84(options, (options$1) => ({
+		return this._client.post(path$2`/projects/${projectID}/roles`, resolveResourceRequestOptions$84(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -23650,7 +35957,7 @@ var Roles$3 = class extends APIResource$1 {
 	*/
 	retrieve(roleID, params, options) {
 		const { project_id } = params;
-		return this._client.get(path$1`/projects/${project_id}/roles/${roleID}`, resolveResourceRequestOptions$84(options, (options$1) => ({
+		return this._client.get(path$2`/projects/${project_id}/roles/${roleID}`, resolveResourceRequestOptions$84(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -23669,7 +35976,7 @@ var Roles$3 = class extends APIResource$1 {
 	*/
 	update(roleID, params, options) {
 		const { project_id,...body } = params;
-		return this._client.post(path$1`/projects/${project_id}/roles/${roleID}`, resolveResourceRequestOptions$84(options, (options$1) => ({
+		return this._client.post(path$2`/projects/${project_id}/roles/${roleID}`, resolveResourceRequestOptions$84(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -23686,7 +35993,7 @@ var Roles$3 = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/projects/${projectID}/roles`, NextCursorPage, resolveResourceRequestOptions$84(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/projects/${projectID}/roles`, NextCursorPage, resolveResourceRequestOptions$84(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -23706,7 +36013,7 @@ var Roles$3 = class extends APIResource$1 {
 	*/
 	delete(roleID, params, options) {
 		const { project_id } = params;
-		return this._client.delete(path$1`/projects/${project_id}/roles/${roleID}`, resolveResourceRequestOptions$84(options, (options$1) => ({
+		return this._client.delete(path$2`/projects/${project_id}/roles/${roleID}`, resolveResourceRequestOptions$84(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -23714,7 +36021,7 @@ var Roles$3 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/spend-alerts.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/spend-alerts.mjs
 function resolveResourceRequestOptions$83(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -23781,7 +36088,7 @@ var SpendAlerts = class extends APIResource$1 {
 	* ```
 	*/
 	create(projectID, body, options) {
-		return this._client.post(path$1`/organization/projects/${projectID}/spend_alerts`, resolveResourceRequestOptions$83(options, (options$1) => ({
+		return this._client.post(path$2`/organization/projects/${projectID}/spend_alerts`, resolveResourceRequestOptions$83(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -23801,7 +36108,7 @@ var SpendAlerts = class extends APIResource$1 {
 	*/
 	retrieve(alertID, params, options) {
 		const { project_id } = params;
-		return this._client.get(path$1`/organization/projects/${project_id}/spend_alerts/${alertID}`, resolveResourceRequestOptions$83(options, (options$1) => ({
+		return this._client.get(path$2`/organization/projects/${project_id}/spend_alerts/${alertID}`, resolveResourceRequestOptions$83(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -23829,7 +36136,7 @@ var SpendAlerts = class extends APIResource$1 {
 	*/
 	update(alertID, params, options) {
 		const { project_id,...body } = params;
-		return this._client.post(path$1`/organization/projects/${project_id}/spend_alerts/${alertID}`, resolveResourceRequestOptions$83(options, (options$1) => ({
+		return this._client.post(path$2`/organization/projects/${project_id}/spend_alerts/${alertID}`, resolveResourceRequestOptions$83(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -23847,7 +36154,7 @@ var SpendAlerts = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/organization/projects/${projectID}/spend_alerts`, ConversationCursorPage, resolveResourceRequestOptions$83(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/organization/projects/${projectID}/spend_alerts`, ConversationCursorPage, resolveResourceRequestOptions$83(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -23867,7 +36174,7 @@ var SpendAlerts = class extends APIResource$1 {
 	*/
 	delete(alertID, params, options) {
 		const { project_id } = params;
-		return this._client.delete(path$1`/organization/projects/${project_id}/spend_alerts/${alertID}`, resolveResourceRequestOptions$83(options, (options$1) => ({
+		return this._client.delete(path$2`/organization/projects/${project_id}/spend_alerts/${alertID}`, resolveResourceRequestOptions$83(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -23875,7 +36182,7 @@ var SpendAlerts = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/spend-limit.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/spend-limit.mjs
 function resolveResourceRequestOptions$82(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -23892,7 +36199,7 @@ var SpendLimit = class extends APIResource$1 {
 	* ```
 	*/
 	retrieve(projectID, options) {
-		return this._client.get(path$1`/organization/projects/${projectID}/spend_limit`, resolveResourceRequestOptions$82(options, (options$1) => ({
+		return this._client.get(path$2`/organization/projects/${projectID}/spend_limit`, resolveResourceRequestOptions$82(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -23914,7 +36221,7 @@ var SpendLimit = class extends APIResource$1 {
 	* ```
 	*/
 	update(projectID, body, options) {
-		return this._client.post(path$1`/organization/projects/${projectID}/spend_limit`, resolveResourceRequestOptions$82(options, (options$1) => ({
+		return this._client.post(path$2`/organization/projects/${projectID}/spend_limit`, resolveResourceRequestOptions$82(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -23932,7 +36239,7 @@ var SpendLimit = class extends APIResource$1 {
 	* ```
 	*/
 	delete(projectID, options) {
-		return this._client.delete(path$1`/organization/projects/${projectID}/spend_limit`, resolveResourceRequestOptions$82(options, (options$1) => ({
+		return this._client.delete(path$2`/organization/projects/${projectID}/spend_limit`, resolveResourceRequestOptions$82(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -23940,7 +36247,7 @@ var SpendLimit = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/groups/roles.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/groups/roles.mjs
 function resolveResourceRequestOptions$81(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -23959,7 +36266,7 @@ var Roles$2 = class extends APIResource$1 {
 	*/
 	create(groupID, params, options) {
 		const { project_id,...body } = params;
-		return this._client.post(path$1`/projects/${project_id}/groups/${groupID}/roles`, resolveResourceRequestOptions$81(options, (options$1) => ({
+		return this._client.post(path$2`/projects/${project_id}/groups/${groupID}/roles`, resolveResourceRequestOptions$81(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -23979,7 +36286,7 @@ var Roles$2 = class extends APIResource$1 {
 	*/
 	retrieve(roleID, params, options) {
 		const { project_id, group_id } = params;
-		return this._client.get(path$1`/projects/${project_id}/groups/${group_id}/roles/${roleID}`, resolveResourceRequestOptions$81(options, (options$1) => ({
+		return this._client.get(path$2`/projects/${project_id}/groups/${group_id}/roles/${roleID}`, resolveResourceRequestOptions$81(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -24000,7 +36307,7 @@ var Roles$2 = class extends APIResource$1 {
 	*/
 	list(groupID, params, options) {
 		const { project_id,...query } = params;
-		return this._client.getAPIList(path$1`/projects/${project_id}/groups/${groupID}/roles`, NextCursorPage, resolveResourceRequestOptions$81(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/projects/${project_id}/groups/${groupID}/roles`, NextCursorPage, resolveResourceRequestOptions$81(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -24020,7 +36327,7 @@ var Roles$2 = class extends APIResource$1 {
 	*/
 	delete(roleID, params, options) {
 		const { project_id, group_id } = params;
-		return this._client.delete(path$1`/projects/${project_id}/groups/${group_id}/roles/${roleID}`, resolveResourceRequestOptions$81(options, (options$1) => ({
+		return this._client.delete(path$2`/projects/${project_id}/groups/${group_id}/roles/${roleID}`, resolveResourceRequestOptions$81(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -24028,7 +36335,7 @@ var Roles$2 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/groups/groups.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/groups/groups.mjs
 function resolveResourceRequestOptions$80(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -24091,7 +36398,7 @@ var Groups = class extends APIResource$1 {
 	* ```
 	*/
 	create(projectID, body, options) {
-		return this._client.post(path$1`/organization/projects/${projectID}/groups`, resolveResourceRequestOptions$80(options, (options$1) => ({
+		return this._client.post(path$2`/organization/projects/${projectID}/groups`, resolveResourceRequestOptions$80(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -24111,7 +36418,7 @@ var Groups = class extends APIResource$1 {
 	*/
 	retrieve(groupID, params, options) {
 		const { project_id,...query } = params;
-		return this._client.get(path$1`/organization/projects/${project_id}/groups/${groupID}`, resolveResourceRequestOptions$80(options, (options$1) => ({
+		return this._client.get(path$2`/organization/projects/${project_id}/groups/${groupID}`, resolveResourceRequestOptions$80(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -24128,7 +36435,7 @@ var Groups = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/organization/projects/${projectID}/groups`, NextCursorPage, resolveResourceRequestOptions$80(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/organization/projects/${projectID}/groups`, NextCursorPage, resolveResourceRequestOptions$80(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -24148,7 +36455,7 @@ var Groups = class extends APIResource$1 {
 	*/
 	delete(groupID, params, options) {
 		const { project_id } = params;
-		return this._client.delete(path$1`/organization/projects/${project_id}/groups/${groupID}`, resolveResourceRequestOptions$80(options, (options$1) => ({
+		return this._client.delete(path$2`/organization/projects/${project_id}/groups/${groupID}`, resolveResourceRequestOptions$80(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -24157,7 +36464,7 @@ var Groups = class extends APIResource$1 {
 Groups.Roles = Roles$2;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/service-accounts/api-keys.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/service-accounts/api-keys.mjs
 function resolveResourceRequestOptions$79(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -24176,7 +36483,7 @@ var APIKeys$2 = class extends APIResource$1 {
 	*/
 	create(serviceAccountID, params, options) {
 		const { project_id,...body } = params;
-		return this._client.post(path$1`/organization/projects/${project_id}/service_accounts/${serviceAccountID}/api_keys`, resolveResourceRequestOptions$79(options, (options$1) => ({
+		return this._client.post(path$2`/organization/projects/${project_id}/service_accounts/${serviceAccountID}/api_keys`, resolveResourceRequestOptions$79(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -24185,7 +36492,7 @@ var APIKeys$2 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/service-accounts/service-accounts.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/service-accounts/service-accounts.mjs
 function resolveResourceRequestOptions$78(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -24249,7 +36556,7 @@ var ServiceAccounts$4 = class extends APIResource$1 {
 	* ```
 	*/
 	create(projectID, body, options) {
-		return this._client.post(path$1`/organization/projects/${projectID}/service_accounts`, resolveResourceRequestOptions$78(options, (options$1) => ({
+		return this._client.post(path$2`/organization/projects/${projectID}/service_accounts`, resolveResourceRequestOptions$78(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -24269,7 +36576,7 @@ var ServiceAccounts$4 = class extends APIResource$1 {
 	*/
 	retrieve(serviceAccountID, params, options) {
 		const { project_id } = params;
-		return this._client.get(path$1`/organization/projects/${project_id}/service_accounts/${serviceAccountID}`, resolveResourceRequestOptions$78(options, (options$1) => ({
+		return this._client.get(path$2`/organization/projects/${project_id}/service_accounts/${serviceAccountID}`, resolveResourceRequestOptions$78(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -24288,7 +36595,7 @@ var ServiceAccounts$4 = class extends APIResource$1 {
 	*/
 	update(serviceAccountID, params, options) {
 		const { project_id,...body } = params;
-		return this._client.post(path$1`/organization/projects/${project_id}/service_accounts/${serviceAccountID}`, resolveResourceRequestOptions$78(options, (options$1) => ({
+		return this._client.post(path$2`/organization/projects/${project_id}/service_accounts/${serviceAccountID}`, resolveResourceRequestOptions$78(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -24301,7 +36608,7 @@ var ServiceAccounts$4 = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/organization/projects/${projectID}/service_accounts`, ConversationCursorPage, resolveResourceRequestOptions$78(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/organization/projects/${projectID}/service_accounts`, ConversationCursorPage, resolveResourceRequestOptions$78(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -24324,7 +36631,7 @@ var ServiceAccounts$4 = class extends APIResource$1 {
 	*/
 	delete(serviceAccountID, params, options) {
 		const { project_id } = params;
-		return this._client.delete(path$1`/organization/projects/${project_id}/service_accounts/${serviceAccountID}`, resolveResourceRequestOptions$78(options, (options$1) => ({
+		return this._client.delete(path$2`/organization/projects/${project_id}/service_accounts/${serviceAccountID}`, resolveResourceRequestOptions$78(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -24333,7 +36640,7 @@ var ServiceAccounts$4 = class extends APIResource$1 {
 ServiceAccounts$4.APIKeys = APIKeys$2;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/users/roles.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/users/roles.mjs
 function resolveResourceRequestOptions$77(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -24352,7 +36659,7 @@ var Roles$1 = class extends APIResource$1 {
 	*/
 	create(userID, params, options) {
 		const { project_id,...body } = params;
-		return this._client.post(path$1`/projects/${project_id}/users/${userID}/roles`, resolveResourceRequestOptions$77(options, (options$1) => ({
+		return this._client.post(path$2`/projects/${project_id}/users/${userID}/roles`, resolveResourceRequestOptions$77(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -24372,7 +36679,7 @@ var Roles$1 = class extends APIResource$1 {
 	*/
 	retrieve(roleID, params, options) {
 		const { project_id, user_id } = params;
-		return this._client.get(path$1`/projects/${project_id}/users/${user_id}/roles/${roleID}`, resolveResourceRequestOptions$77(options, (options$1) => ({
+		return this._client.get(path$2`/projects/${project_id}/users/${user_id}/roles/${roleID}`, resolveResourceRequestOptions$77(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -24393,7 +36700,7 @@ var Roles$1 = class extends APIResource$1 {
 	*/
 	list(userID, params, options) {
 		const { project_id,...query } = params;
-		return this._client.getAPIList(path$1`/projects/${project_id}/users/${userID}/roles`, NextCursorPage, resolveResourceRequestOptions$77(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/projects/${project_id}/users/${userID}/roles`, NextCursorPage, resolveResourceRequestOptions$77(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -24413,7 +36720,7 @@ var Roles$1 = class extends APIResource$1 {
 	*/
 	delete(roleID, params, options) {
 		const { project_id, user_id } = params;
-		return this._client.delete(path$1`/projects/${project_id}/users/${user_id}/roles/${roleID}`, resolveResourceRequestOptions$77(options, (options$1) => ({
+		return this._client.delete(path$2`/projects/${project_id}/users/${user_id}/roles/${roleID}`, resolveResourceRequestOptions$77(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -24421,7 +36728,7 @@ var Roles$1 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/users/users.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/users/users.mjs
 function resolveResourceRequestOptions$76(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -24485,7 +36792,7 @@ var Users$4 = class extends APIResource$1 {
 	* ```
 	*/
 	create(projectID, body, options) {
-		return this._client.post(path$1`/organization/projects/${projectID}/users`, resolveResourceRequestOptions$76(options, (options$1) => ({
+		return this._client.post(path$2`/organization/projects/${projectID}/users`, resolveResourceRequestOptions$76(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -24505,7 +36812,7 @@ var Users$4 = class extends APIResource$1 {
 	*/
 	retrieve(userID, params, options) {
 		const { project_id } = params;
-		return this._client.get(path$1`/organization/projects/${project_id}/users/${userID}`, resolveResourceRequestOptions$76(options, (options$1) => ({
+		return this._client.get(path$2`/organization/projects/${project_id}/users/${userID}`, resolveResourceRequestOptions$76(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -24524,7 +36831,7 @@ var Users$4 = class extends APIResource$1 {
 	*/
 	update(userID, params, options) {
 		const { project_id,...body } = params;
-		return this._client.post(path$1`/organization/projects/${project_id}/users/${userID}`, resolveResourceRequestOptions$76(options, (options$1) => ({
+		return this._client.post(path$2`/organization/projects/${project_id}/users/${userID}`, resolveResourceRequestOptions$76(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -24537,7 +36844,7 @@ var Users$4 = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/organization/projects/${projectID}/users`, ConversationCursorPage, resolveResourceRequestOptions$76(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/organization/projects/${projectID}/users`, ConversationCursorPage, resolveResourceRequestOptions$76(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -24560,7 +36867,7 @@ var Users$4 = class extends APIResource$1 {
 	*/
 	delete(userID, params, options) {
 		const { project_id } = params;
-		return this._client.delete(path$1`/organization/projects/${project_id}/users/${userID}`, resolveResourceRequestOptions$76(options, (options$1) => ({
+		return this._client.delete(path$2`/organization/projects/${project_id}/users/${userID}`, resolveResourceRequestOptions$76(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -24569,7 +36876,7 @@ var Users$4 = class extends APIResource$1 {
 Users$4.Roles = Roles$1;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/projects.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/projects/projects.mjs
 function resolveResourceRequestOptions$75(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -24661,7 +36968,7 @@ var Projects$1 = class extends APIResource$1 {
 	* ```
 	*/
 	retrieve(projectID, options) {
-		return this._client.get(path$1`/organization/projects/${projectID}`, resolveResourceRequestOptions$75(options, (options$1) => ({
+		return this._client.get(path$2`/organization/projects/${projectID}`, resolveResourceRequestOptions$75(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -24678,7 +36985,7 @@ var Projects$1 = class extends APIResource$1 {
 	* ```
 	*/
 	update(projectID, body, options) {
-		return this._client.post(path$1`/organization/projects/${projectID}`, resolveResourceRequestOptions$75(options, (options$1) => ({
+		return this._client.post(path$2`/organization/projects/${projectID}`, resolveResourceRequestOptions$75(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -24714,7 +37021,7 @@ var Projects$1 = class extends APIResource$1 {
 	* ```
 	*/
 	archive(projectID, options) {
-		return this._client.post(path$1`/organization/projects/${projectID}/archive`, resolveResourceRequestOptions$75(options, (options$1) => ({
+		return this._client.post(path$2`/organization/projects/${projectID}/archive`, resolveResourceRequestOptions$75(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -24734,7 +37041,7 @@ Projects$1.SpendAlerts = SpendAlerts;
 Projects$1.Certificates = Certificates$1;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/users/roles.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/users/roles.mjs
 function resolveResourceRequestOptions$74(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -24793,7 +37100,7 @@ var Roles = class extends APIResource$1 {
 	* ```
 	*/
 	create(userID, body, options) {
-		return this._client.post(path$1`/organization/users/${userID}/roles`, resolveResourceRequestOptions$74(options, (options$1) => ({
+		return this._client.post(path$2`/organization/users/${userID}/roles`, resolveResourceRequestOptions$74(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -24813,7 +37120,7 @@ var Roles = class extends APIResource$1 {
 	*/
 	retrieve(roleID, params, options) {
 		const { user_id } = params;
-		return this._client.get(path$1`/organization/users/${user_id}/roles/${roleID}`, resolveResourceRequestOptions$74(options, (options$1) => ({
+		return this._client.get(path$2`/organization/users/${user_id}/roles/${roleID}`, resolveResourceRequestOptions$74(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -24829,7 +37136,7 @@ var Roles = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/organization/users/${userID}/roles`, NextCursorPage, resolveResourceRequestOptions$74(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/organization/users/${userID}/roles`, NextCursorPage, resolveResourceRequestOptions$74(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -24849,7 +37156,7 @@ var Roles = class extends APIResource$1 {
 	*/
 	delete(roleID, params, options) {
 		const { user_id } = params;
-		return this._client.delete(path$1`/organization/users/${user_id}/roles/${roleID}`, resolveResourceRequestOptions$74(options, (options$1) => ({
+		return this._client.delete(path$2`/organization/users/${user_id}/roles/${roleID}`, resolveResourceRequestOptions$74(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -24857,7 +37164,7 @@ var Roles = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/users/users.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/users/users.mjs
 function resolveResourceRequestOptions$73(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -24917,7 +37224,7 @@ var Users$3 = class extends APIResource$1 {
 	* ```
 	*/
 	retrieve(userID, options) {
-		return this._client.get(path$1`/organization/users/${userID}`, resolveResourceRequestOptions$73(options, (options$1) => ({
+		return this._client.get(path$2`/organization/users/${userID}`, resolveResourceRequestOptions$73(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -24932,7 +37239,7 @@ var Users$3 = class extends APIResource$1 {
 	* ```
 	*/
 	update(userID, body, options) {
-		return this._client.post(path$1`/organization/users/${userID}`, resolveResourceRequestOptions$73(options, (options$1) => ({
+		return this._client.post(path$2`/organization/users/${userID}`, resolveResourceRequestOptions$73(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -24966,7 +37273,7 @@ var Users$3 = class extends APIResource$1 {
 	* ```
 	*/
 	delete(userID, options) {
-		return this._client.delete(path$1`/organization/users/${userID}`, resolveResourceRequestOptions$73(options, (options$1) => ({
+		return this._client.delete(path$2`/organization/users/${userID}`, resolveResourceRequestOptions$73(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -24975,7 +37282,7 @@ var Users$3 = class extends APIResource$1 {
 Users$3.Roles = Roles;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/organization/organization.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/organization/organization.mjs
 var Organization$2 = class extends APIResource$1 {
 	constructor() {
 		super(...arguments);
@@ -25009,7 +37316,7 @@ Organization$2.Certificates = Certificates$2;
 Organization$2.Projects = Projects$1;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/admin/admin.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/admin/admin.mjs
 var Admin = class extends APIResource$1 {
 	constructor() {
 		super(...arguments);
@@ -25019,7 +37326,7 @@ var Admin = class extends APIResource$1 {
 Admin.Organization = Organization$2;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/audio/speech.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/audio/speech.mjs
 function resolveResourceRequestOptions$72(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -25053,7 +37360,7 @@ var Speech = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/audio/transcriptions.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/audio/transcriptions.mjs
 function resolveResourceRequestOptions$71(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -25070,7 +37377,7 @@ var Transcriptions = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/audio/translations.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/audio/translations.mjs
 function resolveResourceRequestOptions$70(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -25086,7 +37393,7 @@ var Translations$1 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/audio/voices.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/audio/voices.mjs
 function resolveResourceRequestOptions$69(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -25123,7 +37430,7 @@ var Voices = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/audio/audio.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/audio/audio.mjs
 var Audio = class extends APIResource$1 {
 	constructor() {
 		super(...arguments);
@@ -25139,7 +37446,7 @@ Audio.Speech = Speech;
 Audio.Voices = Voices;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/batches.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/batches.mjs
 function resolveResourceRequestOptions$68(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -25199,7 +37506,7 @@ var Batches$2 = class extends APIResource$1 {
 	* Retrieves a batch.
 	*/
 	retrieve(batchID, options) {
-		return this._client.get(path$1`/batches/${batchID}`, resolveResourceRequestOptions$68(options, (options$1) => ({
+		return this._client.get(path$2`/batches/${batchID}`, resolveResourceRequestOptions$68(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -25223,7 +37530,7 @@ var Batches$2 = class extends APIResource$1 {
 	* (if any) available in the output file.
 	*/
 	cancel(batchID, options) {
-		return this._client.post(path$1`/batches/${batchID}/cancel`, resolveResourceRequestOptions$68(options, (options$1) => ({
+		return this._client.post(path$2`/batches/${batchID}/cancel`, resolveResourceRequestOptions$68(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -25231,7 +37538,7 @@ var Batches$2 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/assistants.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/assistants.mjs
 function resolveResourceRequestOptions$67(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -25296,7 +37603,7 @@ var Assistants = class extends APIResource$1 {
 	* @deprecated
 	*/
 	retrieve(assistantID, options) {
-		return this._client.get(path$1`/assistants/${assistantID}`, resolveResourceRequestOptions$67(options, (options$1) => ({
+		return this._client.get(path$2`/assistants/${assistantID}`, resolveResourceRequestOptions$67(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -25308,7 +37615,7 @@ var Assistants = class extends APIResource$1 {
 	* @deprecated
 	*/
 	update(assistantID, body, options) {
-		return this._client.post(path$1`/assistants/${assistantID}`, resolveResourceRequestOptions$67(options, (options$1) => ({
+		return this._client.post(path$2`/assistants/${assistantID}`, resolveResourceRequestOptions$67(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
@@ -25340,7 +37647,7 @@ var Assistants = class extends APIResource$1 {
 	* @deprecated
 	*/
 	delete(assistantID, options) {
-		return this._client.delete(path$1`/assistants/${assistantID}`, resolveResourceRequestOptions$67(options, (options$1) => ({
+		return this._client.delete(path$2`/assistants/${assistantID}`, resolveResourceRequestOptions$67(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -25349,7 +37656,7 @@ var Assistants = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/realtime/sessions.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/realtime/sessions.mjs
 var Sessions$4 = class extends APIResource$1 {
 	/**
 	* Create an ephemeral API token for use in client-side applications with the
@@ -25377,7 +37684,7 @@ var Sessions$4 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/realtime/transcription-sessions.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/realtime/transcription-sessions.mjs
 var TranscriptionSessions = class extends APIResource$1 {
 	/**
 	* Create an ephemeral API token for use in client-side applications with the
@@ -25405,7 +37712,7 @@ var TranscriptionSessions = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/realtime/realtime.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/realtime/realtime.mjs
 var Realtime$1 = class extends APIResource$1 {
 	constructor() {
 		super(...arguments);
@@ -25417,7 +37724,7 @@ Realtime$1.Sessions = Sessions$4;
 Realtime$1.TranscriptionSessions = TranscriptionSessions;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/beta/agents/files.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/beta/agents/files.mjs
 var AgentFileUploadError = class extends OpenAIError {
 	constructor(uploadedFiles, cause) {
 		super("Agent file preparation or staging failed; uploaded files remain caller-owned.");
@@ -25429,19 +37736,19 @@ var AgentFileUploadError = class extends OpenAIError {
 		});
 	}
 };
-function validateAgentFilePath(path$2) {
-	const parts = path$2.split("/");
+function validateAgentFilePath(path$4) {
+	const parts = path$4.split("/");
 	const root = parts[2] ?? "";
-	if (!path$2.startsWith("/workspace/") || path$2.includes("\\") || path$2.includes("\0") || parts.slice(1).some((part) => part === "" || part === "." || part === "..") || root === ".codex" || root === ".managed-agents" || root.startsWith(".managed-agents-") || path$2 === "/workspace/outputs") throw new OpenAIError("Agent files require a non-reserved absolute file path inside /workspace");
+	if (!path$4.startsWith("/workspace/") || path$4.includes("\\") || path$4.includes("\0") || parts.slice(1).some((part) => part === "" || part === "." || part === "..") || root === ".codex" || root === ".managed-agents" || root.startsWith(".managed-agents-") || path$4 === "/workspace/outputs") throw new OpenAIError("Agent files require a non-reserved absolute file path inside /workspace");
 }
 function preflight(files, options) {
 	const entries = Object.entries(files);
 	const headers = buildHeaders$1([options.headers]);
 	if (entries.length > 1 && (headers.values.has("idempotency-key") || !headers.nulls.has("idempotency-key") && options?.idempotencyKey !== void 0)) throw new OpenAIError("Do not reuse an Idempotency-Key across multiple file uploads");
-	const paths = new Set(entries.map(([path$2]) => path$2));
-	for (const [path$2] of entries) {
-		validateAgentFilePath(path$2);
-		for (let slash = path$2.lastIndexOf("/"); slash > 0; slash = path$2.lastIndexOf("/", slash - 1)) if (paths.has(path$2.slice(0, slash))) throw new OpenAIError("Agent file destinations conflict");
+	const paths = new Set(entries.map(([path$4]) => path$4));
+	for (const [path$4] of entries) {
+		validateAgentFilePath(path$4);
+		for (let slash = path$4.lastIndexOf("/"); slash > 0; slash = path$4.lastIndexOf("/", slash - 1)) if (paths.has(path$4.slice(0, slash))) throw new OpenAIError("Agent file destinations conflict");
 	}
 	return entries;
 }
@@ -25456,7 +37763,7 @@ async function prepareAgentFiles(client, files, options) {
 		uploadedFiles: []
 	};
 	try {
-		for (const [path$2, file] of entries) {
+		for (const [path$4, file] of entries) {
 			const uploaded = await client.files.create({
 				file,
 				purpose: "user_data"
@@ -25465,7 +37772,7 @@ async function prepareAgentFiles(client, files, options) {
 			prepared.files.push({
 				type: "file_id",
 				file_id: uploaded.id,
-				path: path$2
+				path: path$4
 			});
 		}
 		return prepared;
@@ -25489,7 +37796,7 @@ async function uploadAgentFile(client, resource, environmentID, params, options)
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/agents/environments/files.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/agents/environments/files.mjs
 function resolveResourceRequestOptions$66(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -25522,7 +37829,7 @@ var Files$5 = class extends APIResource$1 {
 	* ```
 	*/
 	create(environmentID, body, options) {
-		return this._client.post(path$1`/agents/environments/${environmentID}/files`, resolveResourceRequestOptions$66(options, (options$1) => ({
+		return this._client.post(path$2`/agents/environments/${environmentID}/files`, resolveResourceRequestOptions$66(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
@@ -25545,7 +37852,7 @@ var Files$5 = class extends APIResource$1 {
 	* ```
 	*/
 	list(environmentID, query = {}, options) {
-		return this._client.getAPIList(path$1`/agents/environments/${environmentID}/files`, TokenPage, resolveResourceRequestOptions$66(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/agents/environments/${environmentID}/files`, TokenPage, resolveResourceRequestOptions$66(options, (options$1) => ({
 			query,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
@@ -25555,7 +37862,7 @@ var Files$5 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/agents/environments/templates.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/agents/environments/templates.mjs
 function resolveResourceRequestOptions$65(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -25634,7 +37941,7 @@ var Templates = class extends APIResource$1 {
 	* ```
 	*/
 	retrieve(environmentTemplateID, options) {
-		return this._client.get(path$1`/agents/environments/templates/${environmentTemplateID}`, resolveResourceRequestOptions$65(options, (options$1) => ({
+		return this._client.get(path$2`/agents/environments/templates/${environmentTemplateID}`, resolveResourceRequestOptions$65(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -25654,7 +37961,7 @@ var Templates = class extends APIResource$1 {
 	* ```
 	*/
 	update(environmentTemplateID, body = {}, options) {
-		return this._client.post(path$1`/agents/environments/templates/${environmentTemplateID}`, resolveResourceRequestOptions$65(options, (options$1) => ({
+		return this._client.post(path$2`/agents/environments/templates/${environmentTemplateID}`, resolveResourceRequestOptions$65(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
@@ -25693,7 +38000,7 @@ var Templates = class extends APIResource$1 {
 	* ```
 	*/
 	delete(environmentTemplateID, options) {
-		return this._client.delete(path$1`/agents/environments/templates/${environmentTemplateID}`, resolveResourceRequestOptions$65(options, (options$1) => ({
+		return this._client.delete(path$2`/agents/environments/templates/${environmentTemplateID}`, resolveResourceRequestOptions$65(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -25702,7 +38009,7 @@ var Templates = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/agents/environments/environments.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/agents/environments/environments.mjs
 function resolveResourceRequestOptions$64(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -25791,7 +38098,7 @@ var Environments$1 = class extends APIResource$1 {
 	* ```
 	*/
 	retrieve(environmentID, options) {
-		return this._client.get(path$1`/agents/environments/${environmentID}`, resolveResourceRequestOptions$64(options, (options$1) => ({
+		return this._client.get(path$2`/agents/environments/${environmentID}`, resolveResourceRequestOptions$64(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -25829,7 +38136,7 @@ Environments$1.Files = Files$5;
 Environments$1.Templates = Templates;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/agents/turn-state.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/agents/turn-state.mjs
 var _TurnState_turnID, _TurnState_turnEnded, _TurnState_eventIDs, _TurnState_calls;
 var TurnState = class {
 	constructor() {
@@ -25867,7 +38174,7 @@ var TurnState = class {
 _TurnState_turnID = new WeakMap(), _TurnState_turnEnded = new WeakMap(), _TurnState_eventIDs = new WeakMap(), _TurnState_calls = new WeakMap();
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/beta/agents/tool-output.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/beta/agents/tool-output.mjs
 function isInputContent(value) {
 	if (!isObj$1(value)) return false;
 	const content = value;
@@ -25879,11 +38186,11 @@ function isInputContent(value) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/beta/agents/tool-stages.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/beta/agents/tool-stages.mjs
 const toolStages = Symbol.for("openai.beta.agents.toolStages");
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/beta/agents/tool-dispatcher.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/beta/agents/tool-dispatcher.mjs
 var _AgentToolDispatcher_instances, _AgentToolDispatcher_handlers, _AgentToolDispatcher_options, _AgentToolDispatcher_sessions, _AgentToolDispatcher_controller, _AgentToolDispatcher_onToolError, _AgentToolDispatcher_result, _AgentToolDispatcher_checkAbort, _AgentToolDispatcher_abortError, _AgentToolDispatcher_wait, _AgentToolDispatcher_submit;
 function normalizedOutput(value) {
 	if (value === null) return null;
@@ -26028,13 +38335,13 @@ _AgentToolDispatcher_handlers = new WeakMap(), _AgentToolDispatcher_options = ne
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/agents/output-text.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/agents/output-text.mjs
 function outputText(message) {
 	return message.content.map((block) => block.type === "output_text" ? block.text : "").join("");
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/beta/agents/agent-turn-result.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/beta/agents/agent-turn-result.mjs
 var AgentTurnResult = class {
 	constructor(turn, messages) {
 		this.turn = turn;
@@ -26052,7 +38359,7 @@ var AgentTurnResult = class {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/beta/agents/parsed-agent-turn-result.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/beta/agents/parsed-agent-turn-result.mjs
 var ParsedAgentTurnResult = class extends AgentTurnResult {
 	constructor(result, parsed) {
 		super(result.turn, result.messages);
@@ -26062,7 +38369,7 @@ var ParsedAgentTurnResult = class extends AgentTurnResult {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/beta/agents/output-parse-error.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/beta/agents/output-parse-error.mjs
 var _AgentOutputParseError_rawResult;
 var AgentOutputParseError = class extends OpenAIError {
 	constructor(result) {
@@ -26079,13 +38386,13 @@ var AgentOutputParseError = class extends OpenAIError {
 _AgentOutputParseError_rawResult = new WeakMap();
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/beta/agents/parse-result.mjs
-function parseAgentResult(result, format) {
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/beta/agents/parse-result.mjs
+function parseAgentResult(result, format$2) {
 	try {
-		if (!format) return result;
+		if (!format$2) return result;
 		let first;
 		for (const message of result.messages) for (const content of message.content) if (content.type === "output_text") {
-			const value = format.$parseRaw(content.text);
+			const value = format$2.$parseRaw(content.text);
 			first ?? (first = { value });
 		}
 		if (!first) throw new AgentOutputParseError(result);
@@ -26098,17 +38405,17 @@ function ownJSONValue(object$1, key) {
 	const descriptor = object$1 && Object.getOwnPropertyDescriptor(object$1, key);
 	return descriptor?.enumerable && "value" in descriptor ? descriptor.value : void 0;
 }
-function agentFormatParser(format) {
-	if (!format) return void 0;
-	const descriptor = Object.getOwnPropertyDescriptor(format, "$parseRaw");
+function agentFormatParser(format$2) {
+	if (!format$2) return void 0;
+	const descriptor = Object.getOwnPropertyDescriptor(format$2, "$parseRaw");
 	if (!descriptor || !("value" in descriptor) || typeof descriptor.value !== "function") return void 0;
-	const schema = ownJSONValue(format, "schema");
-	if (ownJSONValue(format, "type") !== "json_schema" || !schema) throw new OpenAIError("Typed agent formats require own enumerable type and schema data properties");
-	const parse$2 = descriptor.value;
+	const schema = ownJSONValue(format$2, "schema");
+	if (ownJSONValue(format$2, "type") !== "json_schema" || !schema) throw new OpenAIError("Typed agent formats require own enumerable type and schema data properties");
+	const parse$6 = descriptor.value;
 	return {
 		type: "json_schema",
 		schema,
-		$parseRaw: (text$3) => parse$2.call(format, text$3)
+		$parseRaw: (text$3) => parse$6.call(format$2, text$3)
 	};
 }
 function snapshotJSONProperty(object$1, key, capture = (value$1) => value$1) {
@@ -26130,12 +38437,12 @@ function captureAgentOutput(input, options) {
 	const body = snapshotJSONProperty(input, "agent", (agent$1) => agent$1 ? snapshotJSONProperty(agent$1, "text", (text$4) => text$4 ? snapshotJSONProperty(text$4, "format") : text$4) : agent$1);
 	const agent = ownJSONValue(body, "agent");
 	const text$3 = ownJSONValue(agent, "text");
-	const format = agentFormatParser(ownJSONValue(text$3, "format"));
-	if (!format) return {
+	const format$2 = agentFormatParser(ownJSONValue(text$3, "format"));
+	if (!format$2) return {
 		body,
 		options
 	};
-	const schema = structuredClone(format.schema);
+	const schema = structuredClone(format$2.schema);
 	for (const envelope of [
 		body,
 		agent,
@@ -26159,15 +38466,15 @@ function captureAgentOutput(input, options) {
 				}
 			}
 		},
-		format
+		format: format$2
 	};
 }
-async function parseAgentResultPromise(result, format) {
-	return parseAgentResult(await result, format);
+async function parseAgentResultPromise(result, format$2) {
+	return parseAgentResult(await result, format$2);
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/beta/agents/agent-turn-result-error.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/beta/agents/agent-turn-result-error.mjs
 var AgentTurnResultError = class extends OpenAIError {
 	constructor(reason, session_id, turn, messages, required_actions = [], cause) {
 		super(`Could not collect the agent turn result: ${reason}`);
@@ -26185,7 +38492,7 @@ var AgentTurnResultError = class extends OpenAIError {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/beta/agents/agent-turn-result-collector.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/beta/agents/agent-turn-result-collector.mjs
 var _AgentTurnResultCollector_instances, _AgentTurnResultCollector_sessionID, _AgentTurnResultCollector_turn, _AgentTurnResultCollector_messages, _AgentTurnResultCollector_requiredActions, _AgentTurnResultCollector_sessionFailed, _AgentTurnResultCollector_terminal, _AgentTurnResultCollector_idle, _AgentTurnResultCollector_acceptTurn, _AgentTurnResultCollector_acceptOutput, _AgentTurnResultCollector_finalMessages;
 var AgentTurnResultCollector = class {
 	constructor(sessionID) {
@@ -26254,7 +38561,7 @@ _AgentTurnResultCollector_sessionID = new WeakMap(), _AgentTurnResultCollector_t
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/beta/agents/result-collection.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/beta/agents/result-collection.mjs
 var _ResultCollection_instances, _ResultCollection_iterator, _ResultCollection_ended, _ResultCollection_enabled, _ResultCollection_uncollectedEvents, _ResultCollection_error, _ResultCollection_result, _ResultCollection_source, _ResultCollection_signal, _ResultCollection_canHandle, _ResultCollection_observe, _ResultCollection_collect;
 var ResultCollection = class {
 	constructor(source, canHandle = () => false, sessionID, signal) {
@@ -26330,7 +38637,7 @@ _ResultCollection_iterator = new WeakMap(), _ResultCollection_ended = new WeakMa
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/agents/agent-session-stream.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/agents/agent-session-stream.mjs
 var _AgentSessionStream_instances, _AgentSessionStream_consumed, _AgentSessionStream_format, _AgentSessionStream_parsedResult, _AgentSessionStream_collection, _AgentSessionStream_stream, _AgentSessionStream_response, _AgentSessionStream_reading, _AgentSessionStream_sessions, _AgentSessionStream_sessionID, _AgentSessionStream_input, _AgentSessionStream_dispatcher, _AgentSessionStream_inputKey, _AgentSessionStream_options, _AgentSessionStream_iterate, _AgentSessionStream_checkAbort, _AgentSessionStream_abortError;
 async function cancelBody(response) {
 	try {
@@ -26465,7 +38772,7 @@ _AgentSessionStream_iterate = async function* _AgentSessionStream_iterate$1() {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/beta/agents/agent-session-create-stream.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/beta/agents/agent-session-create-stream.mjs
 async function* dispatchCreationTools(source, dispatcher, signal) {
 	const state$1 = new TurnState();
 	let sessionID;
@@ -26482,7 +38789,7 @@ async function* dispatchCreationTools(source, dispatcher, signal) {
 		}
 	}
 }
-function withAgentTurnResult(stream, format, tools) {
+function withAgentTurnResult(stream, format$2, tools) {
 	let collection;
 	stream.__betaTransformIterator((source) => {
 		const { path: _path, method: _method, stream: _stream,...options } = tools?.options ?? {};
@@ -26492,7 +38799,7 @@ function withAgentTurnResult(stream, format, tools) {
 	});
 	let parsed;
 	const result = Object.assign(stream, {
-		finalResult: () => parsed ?? (parsed = parseAgentResultPromise(collection.finalResult(), format)),
+		finalResult: () => parsed ?? (parsed = parseAgentResultPromise(collection.finalResult(), format$2)),
 		withResultCollection: () => {
 			collection.enable();
 			return result;
@@ -26537,7 +38844,7 @@ function captureCreationTools(body, options) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/beta/agents/pages.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/beta/agents/pages.mjs
 async function* agentItems(load) {
 	let after;
 	while (true) {
@@ -26553,7 +38860,7 @@ async function* agentItems(load) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/beta/agents/result-artifacts.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/beta/agents/result-artifacts.mjs
 var _AgentResultArtifacts_resource, _AgentResultArtifacts_sessionID, _AgentResultArtifacts_turnID;
 var AgentResultArtifacts = class {
 	constructor(resource, result) {
@@ -26565,7 +38872,7 @@ var AgentResultArtifacts = class {
 		__classPrivateFieldSet$1(this, _AgentResultArtifacts_turnID, result.turn_id, "f");
 	}
 	/** Find one immutable artifact by its exact hosted path, across all pages. */
-	async retrieve(path$2, options) {
+	async retrieve(path$4, options) {
 		let selected;
 		for await (const artifact of agentItems((after) => __classPrivateFieldGet$1(this, _AgentResultArtifacts_resource, "f").list(__classPrivateFieldGet$1(this, _AgentResultArtifacts_sessionID, "f"), {}, {
 			...options,
@@ -26574,7 +38881,7 @@ var AgentResultArtifacts = class {
 				after,
 				environment_id: void 0
 			}
-		}))) if (artifact.session_id === __classPrivateFieldGet$1(this, _AgentResultArtifacts_sessionID, "f") && artifact.turn_id === __classPrivateFieldGet$1(this, _AgentResultArtifacts_turnID, "f") && artifact.path === path$2) {
+		}))) if (artifact.session_id === __classPrivateFieldGet$1(this, _AgentResultArtifacts_sessionID, "f") && artifact.turn_id === __classPrivateFieldGet$1(this, _AgentResultArtifacts_turnID, "f") && artifact.path === path$4) {
 			if (selected) throw new OpenAIError("Multiple artifacts match this result and path");
 			selected = artifact;
 		}
@@ -26582,14 +38889,14 @@ var AgentResultArtifacts = class {
 		return selected;
 	}
 	/** Return the native binary response for this result's exact artifact path. */
-	async content(path$2, options) {
-		const artifact = await this.retrieve(path$2, options);
+	async content(path$4, options) {
+		const artifact = await this.retrieve(path$4, options);
 		return __classPrivateFieldGet$1(this, _AgentResultArtifacts_resource, "f").content(artifact.id, { session_id: __classPrivateFieldGet$1(this, _AgentResultArtifacts_sessionID, "f") }, options);
 	}
 	/** Stream bytes to a caller-chosen destination; the hosted path never selects a local path. */
 	async download(params, options) {
-		const { path: path$2, to } = params;
-		const artifact = await this.retrieve(path$2, options);
+		const { path: path$4, to } = params;
+		const artifact = await this.retrieve(path$4, options);
 		const response = await __classPrivateFieldGet$1(this, _AgentResultArtifacts_resource, "f").content(artifact.id, { session_id: __classPrivateFieldGet$1(this, _AgentResultArtifacts_sessionID, "f") }, options);
 		if (!response.body) throw new OpenAIError("Artifact response has no content stream");
 		try {
@@ -26606,7 +38913,7 @@ var AgentResultArtifacts = class {
 _AgentResultArtifacts_resource = new WeakMap(), _AgentResultArtifacts_sessionID = new WeakMap(), _AgentResultArtifacts_turnID = new WeakMap();
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/artifacts.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/artifacts.mjs
 function resolveResourceRequestOptions$63(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -26671,7 +38978,7 @@ var Artifacts$1 = class extends APIResource$1 {
 	*/
 	retrieve(artifactID, params, options) {
 		const { session_id } = params;
-		return this._client.get(path$1`/agents/sessions/${session_id}/artifacts/${artifactID}`, resolveResourceRequestOptions$63(options, (options$1) => ({
+		return this._client.get(path$2`/agents/sessions/${session_id}/artifacts/${artifactID}`, resolveResourceRequestOptions$63(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -26689,7 +38996,7 @@ var Artifacts$1 = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/agents/sessions/${sessionID}/artifacts`, CursorPage, resolveResourceRequestOptions$63(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/agents/sessions/${sessionID}/artifacts`, CursorPage, resolveResourceRequestOptions$63(options, (options$1) => ({
 			query,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
@@ -26712,7 +39019,7 @@ var Artifacts$1 = class extends APIResource$1 {
 	*/
 	delete(artifactID, params, options) {
 		const { session_id } = params;
-		return this._client.delete(path$1`/agents/sessions/${session_id}/artifacts/${artifactID}`, resolveResourceRequestOptions$63(options, (options$1) => ({
+		return this._client.delete(path$2`/agents/sessions/${session_id}/artifacts/${artifactID}`, resolveResourceRequestOptions$63(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -26737,7 +39044,7 @@ var Artifacts$1 = class extends APIResource$1 {
 	*/
 	content(artifactID, params, options) {
 		const { session_id } = params;
-		return this._client.get(path$1`/agents/sessions/${session_id}/artifacts/${artifactID}/content`, resolveResourceRequestOptions$63(options, (options$1) => ({
+		return this._client.get(path$2`/agents/sessions/${session_id}/artifacts/${artifactID}/content`, resolveResourceRequestOptions$63(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{
 				"OpenAI-Beta": "agents=v1",
@@ -26750,7 +39057,7 @@ var Artifacts$1 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/events.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/events.mjs
 function resolveResourceRequestOptions$62(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -26789,7 +39096,7 @@ var Events$2 = class extends APIResource$1 {
 	*/
 	create(sessionID, params, options) {
 		const { "Idempotency-Key": idempotencyKey,...body } = params;
-		return this._client.post(path$1`/agents/sessions/${sessionID}/events`, resolveResourceRequestOptions$62(options, (options$1) => ({
+		return this._client.post(path$2`/agents/sessions/${sessionID}/events`, resolveResourceRequestOptions$62(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{
@@ -26813,7 +39120,7 @@ var Events$2 = class extends APIResource$1 {
 	* ```
 	*/
 	stream(sessionID, options) {
-		return this._client.get(path$1`/agents/sessions/${sessionID}/events`, resolveResourceRequestOptions$62(options, (options$1) => ({
+		return this._client.get(path$2`/agents/sessions/${sessionID}/events`, resolveResourceRequestOptions$62(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{
 				"OpenAI-Beta": "agents=v1",
@@ -26826,7 +39133,7 @@ var Events$2 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/items.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/items.mjs
 function resolveResourceRequestOptions$61(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -26883,7 +39190,7 @@ var Items$4 = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/agents/sessions/${sessionID}/items`, CursorPage, resolveResourceRequestOptions$61(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/agents/sessions/${sessionID}/items`, CursorPage, resolveResourceRequestOptions$61(options, (options$1) => ({
 			query,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
@@ -26893,7 +39200,7 @@ var Items$4 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/traces.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/traces.mjs
 function resolveResourceRequestOptions$60(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -26950,7 +39257,7 @@ var Traces = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/agents/sessions/${sessionID}/traces`, CursorPage, resolveResourceRequestOptions$60(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/agents/sessions/${sessionID}/traces`, CursorPage, resolveResourceRequestOptions$60(options, (options$1) => ({
 			query,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
@@ -26960,7 +39267,7 @@ var Traces = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/subagents/items.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/subagents/items.mjs
 function resolveResourceRequestOptions$59(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -26982,7 +39289,7 @@ var Items$3 = class extends APIResource$1 {
 	*/
 	list(subagentID, params, options) {
 		const { session_id,...query } = params;
-		return this._client.getAPIList(path$1`/agents/sessions/${session_id}/subagents/${subagentID}/items`, CursorPage, resolveResourceRequestOptions$59(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/agents/sessions/${session_id}/subagents/${subagentID}/items`, CursorPage, resolveResourceRequestOptions$59(options, (options$1) => ({
 			query,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
@@ -26992,7 +39299,7 @@ var Items$3 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/subagents/turns/items.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/subagents/turns/items.mjs
 function resolveResourceRequestOptions$58(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -27014,7 +39321,7 @@ var Items$2 = class extends APIResource$1 {
 	*/
 	list(turnID, params, options) {
 		const { session_id, subagent_id,...query } = params;
-		return this._client.getAPIList(path$1`/agents/sessions/${session_id}/subagents/${subagent_id}/turns/${turnID}/items`, CursorPage, resolveResourceRequestOptions$58(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/agents/sessions/${session_id}/subagents/${subagent_id}/turns/${turnID}/items`, CursorPage, resolveResourceRequestOptions$58(options, (options$1) => ({
 			query,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
@@ -27024,7 +39331,7 @@ var Items$2 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/subagents/turns/turns.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/subagents/turns/turns.mjs
 function resolveResourceRequestOptions$57(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -27051,7 +39358,7 @@ var Turns$1 = class extends APIResource$1 {
 	*/
 	retrieve(turnID, params, options) {
 		const { session_id, subagent_id } = params;
-		return this._client.get(path$1`/agents/sessions/${session_id}/subagents/${subagent_id}/turns/${turnID}`, resolveResourceRequestOptions$57(options, (options$1) => ({
+		return this._client.get(path$2`/agents/sessions/${session_id}/subagents/${subagent_id}/turns/${turnID}`, resolveResourceRequestOptions$57(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -27074,7 +39381,7 @@ var Turns$1 = class extends APIResource$1 {
 	*/
 	list(subagentID, params, options) {
 		const { session_id,...query } = params;
-		return this._client.getAPIList(path$1`/agents/sessions/${session_id}/subagents/${subagentID}/turns`, CursorPage, resolveResourceRequestOptions$57(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/agents/sessions/${session_id}/subagents/${subagentID}/turns`, CursorPage, resolveResourceRequestOptions$57(options, (options$1) => ({
 			query,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
@@ -27085,7 +39392,7 @@ var Turns$1 = class extends APIResource$1 {
 Turns$1.Items = Items$2;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/subagents/subagents.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/subagents/subagents.mjs
 function resolveResourceRequestOptions$56(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -27151,7 +39458,7 @@ var Subagents = class extends APIResource$1 {
 	*/
 	retrieve(subagentID, params, options) {
 		const { session_id } = params;
-		return this._client.get(path$1`/agents/sessions/${session_id}/subagents/${subagentID}`, resolveResourceRequestOptions$56(options, (options$1) => ({
+		return this._client.get(path$2`/agents/sessions/${session_id}/subagents/${subagentID}`, resolveResourceRequestOptions$56(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -27168,7 +39475,7 @@ var Subagents = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/agents/sessions/${sessionID}/subagents`, CursorPage, resolveResourceRequestOptions$56(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/agents/sessions/${sessionID}/subagents`, CursorPage, resolveResourceRequestOptions$56(options, (options$1) => ({
 			query,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
@@ -27180,7 +39487,7 @@ Subagents.Items = Items$3;
 Subagents.Turns = Turns$1;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/turns/items.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/turns/items.mjs
 function resolveResourceRequestOptions$55(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -27203,7 +39510,7 @@ var Items$1 = class extends APIResource$1 {
 	*/
 	list(turnID, params, options) {
 		const { session_id,...query } = params;
-		return this._client.getAPIList(path$1`/agents/sessions/${session_id}/turns/${turnID}/items`, ConversationCursorPage, resolveResourceRequestOptions$55(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/agents/sessions/${session_id}/turns/${turnID}/items`, ConversationCursorPage, resolveResourceRequestOptions$55(options, (options$1) => ({
 			query,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
@@ -27213,7 +39520,7 @@ var Items$1 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/turns/turns.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/turns/turns.mjs
 function resolveResourceRequestOptions$54(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -27279,7 +39586,7 @@ var Turns = class extends APIResource$1 {
 	*/
 	retrieve(turnID, params, options) {
 		const { session_id } = params;
-		return this._client.get(path$1`/agents/sessions/${session_id}/turns/${turnID}`, resolveResourceRequestOptions$54(options, (options$1) => ({
+		return this._client.get(path$2`/agents/sessions/${session_id}/turns/${turnID}`, resolveResourceRequestOptions$54(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -27296,7 +39603,7 @@ var Turns = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/agents/sessions/${sessionID}/turns`, CursorPage, resolveResourceRequestOptions$54(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/agents/sessions/${sessionID}/turns`, CursorPage, resolveResourceRequestOptions$54(options, (options$1) => ({
 			query,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
@@ -27307,7 +39614,7 @@ var Turns = class extends APIResource$1 {
 Turns.Items = Items$1;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/sessions.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/agents/sessions/sessions.mjs
 function resolveResourceRequestOptions$53(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -27392,7 +39699,7 @@ var Sessions$3 = class extends APIResource$1 {
 	* ```
 	*/
 	retrieve(sessionID, options) {
-		return this._client.get(path$1`/agents/sessions/${sessionID}`, resolveResourceRequestOptions$53(options, (options$1) => ({
+		return this._client.get(path$2`/agents/sessions/${sessionID}`, resolveResourceRequestOptions$53(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -27410,7 +39717,7 @@ var Sessions$3 = class extends APIResource$1 {
 	* ```
 	*/
 	update(sessionID, body = {}, options) {
-		return this._client.post(path$1`/agents/sessions/${sessionID}`, resolveResourceRequestOptions$53(options, (options$1) => ({
+		return this._client.post(path$2`/agents/sessions/${sessionID}`, resolveResourceRequestOptions$53(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
@@ -27450,7 +39757,7 @@ var Sessions$3 = class extends APIResource$1 {
 	* ```
 	*/
 	delete(sessionID, options) {
-		return this._client.delete(path$1`/agents/sessions/${sessionID}`, resolveResourceRequestOptions$53(options, (options$1) => ({
+		return this._client.delete(path$2`/agents/sessions/${sessionID}`, resolveResourceRequestOptions$53(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -27465,7 +39772,7 @@ Sessions$3.Traces = Traces;
 Sessions$3.Turns = Turns;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/agents/vaults/credentials.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/agents/vaults/credentials.mjs
 function resolveResourceRequestOptions$52(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -27533,7 +39840,7 @@ var Credentials$1 = class extends APIResource$1 {
 	* ```
 	*/
 	create(vaultID, body, options) {
-		return this._client.post(path$1`/vaults/${vaultID}/credentials`, resolveResourceRequestOptions$52(options, (options$1) => ({
+		return this._client.post(path$2`/vaults/${vaultID}/credentials`, resolveResourceRequestOptions$52(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
@@ -27555,7 +39862,7 @@ var Credentials$1 = class extends APIResource$1 {
 	*/
 	retrieve(credentialID, params, options) {
 		const { vault_id } = params;
-		return this._client.get(path$1`/vaults/${vault_id}/credentials/${credentialID}`, resolveResourceRequestOptions$52(options, (options$1) => ({
+		return this._client.get(path$2`/vaults/${vault_id}/credentials/${credentialID}`, resolveResourceRequestOptions$52(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -27576,7 +39883,7 @@ var Credentials$1 = class extends APIResource$1 {
 	*/
 	update(credentialID, params, options) {
 		const { vault_id,...body } = params;
-		return this._client.post(path$1`/vaults/${vault_id}/credentials/${credentialID}`, resolveResourceRequestOptions$52(options, (options$1) => ({
+		return this._client.post(path$2`/vaults/${vault_id}/credentials/${credentialID}`, resolveResourceRequestOptions$52(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
@@ -27596,7 +39903,7 @@ var Credentials$1 = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/vaults/${vaultID}/credentials`, CursorPage, resolveResourceRequestOptions$52(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/vaults/${vaultID}/credentials`, CursorPage, resolveResourceRequestOptions$52(options, (options$1) => ({
 			query,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
@@ -27618,7 +39925,7 @@ var Credentials$1 = class extends APIResource$1 {
 	*/
 	delete(credentialID, params, options) {
 		const { vault_id } = params;
-		return this._client.delete(path$1`/vaults/${vault_id}/credentials/${credentialID}`, resolveResourceRequestOptions$52(options, (options$1) => ({
+		return this._client.delete(path$2`/vaults/${vault_id}/credentials/${credentialID}`, resolveResourceRequestOptions$52(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -27627,7 +39934,7 @@ var Credentials$1 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/agents/vaults/vaults.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/agents/vaults/vaults.mjs
 function resolveResourceRequestOptions$51(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -27706,7 +40013,7 @@ var Vaults$1 = class extends APIResource$1 {
 	* ```
 	*/
 	retrieve(vaultID, options) {
-		return this._client.get(path$1`/vaults/${vaultID}`, resolveResourceRequestOptions$51(options, (options$1) => ({
+		return this._client.get(path$2`/vaults/${vaultID}`, resolveResourceRequestOptions$51(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -27726,7 +40033,7 @@ var Vaults$1 = class extends APIResource$1 {
 	* ```
 	*/
 	update(vaultID, body, options) {
-		return this._client.post(path$1`/vaults/${vaultID}`, resolveResourceRequestOptions$51(options, (options$1) => ({
+		return this._client.post(path$2`/vaults/${vaultID}`, resolveResourceRequestOptions$51(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
@@ -27765,7 +40072,7 @@ var Vaults$1 = class extends APIResource$1 {
 	* ```
 	*/
 	delete(vaultID, options) {
-		return this._client.delete(path$1`/vaults/${vaultID}`, resolveResourceRequestOptions$51(options, (options$1) => ({
+		return this._client.delete(path$2`/vaults/${vaultID}`, resolveResourceRequestOptions$51(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -27775,7 +40082,7 @@ var Vaults$1 = class extends APIResource$1 {
 Vaults$1.Credentials = Credentials$1;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/agents/agents.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/agents/agents.mjs
 function resolveResourceRequestOptions$50(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -27856,7 +40163,7 @@ var Agents$1 = class extends APIResource$1 {
 	* ```
 	*/
 	retrieve(agentID, options) {
-		return this._client.get(path$1`/agents/${agentID}`, resolveResourceRequestOptions$50(options, (options$1) => ({
+		return this._client.get(path$2`/agents/${agentID}`, resolveResourceRequestOptions$50(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -27872,7 +40179,7 @@ var Agents$1 = class extends APIResource$1 {
 	* ```
 	*/
 	update(agentID, body = {}, options) {
-		return this._client.post(path$1`/agents/${agentID}`, resolveResourceRequestOptions$50(options, (options$1) => ({
+		return this._client.post(path$2`/agents/${agentID}`, resolveResourceRequestOptions$50(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
@@ -27909,7 +40216,7 @@ var Agents$1 = class extends APIResource$1 {
 	* ```
 	*/
 	delete(agentID, options) {
-		return this._client.delete(path$1`/agents/${agentID}`, resolveResourceRequestOptions$50(options, (options$1) => ({
+		return this._client.delete(path$2`/agents/${agentID}`, resolveResourceRequestOptions$50(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "agents=v1" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -27921,7 +40228,7 @@ Agents$1.Vaults = Vaults$1;
 Agents$1.Sessions = Sessions$3;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/chatkit/sessions.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/chatkit/sessions.mjs
 function resolveResourceRequestOptions$49(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -27958,7 +40265,7 @@ var Sessions$2 = class extends APIResource$1 {
 	* ```
 	*/
 	cancel(sessionID, options) {
-		return this._client.post(path$1`/chatkit/sessions/${sessionID}/cancel`, resolveResourceRequestOptions$49(options, (options$1) => ({
+		return this._client.post(path$2`/chatkit/sessions/${sessionID}/cancel`, resolveResourceRequestOptions$49(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "chatkit_beta=v1" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -27967,7 +40274,7 @@ var Sessions$2 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/chatkit/threads.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/chatkit/threads.mjs
 function resolveResourceRequestOptions$48(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -28023,7 +40330,7 @@ var Threads$2 = class extends APIResource$1 {
 	* ```
 	*/
 	retrieve(threadID, options) {
-		return this._client.get(path$1`/chatkit/threads/${threadID}`, resolveResourceRequestOptions$48(options, (options$1) => ({
+		return this._client.get(path$2`/chatkit/threads/${threadID}`, resolveResourceRequestOptions$48(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "chatkit_beta=v1" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -28060,7 +40367,7 @@ var Threads$2 = class extends APIResource$1 {
 	* ```
 	*/
 	delete(threadID, options) {
-		return this._client.delete(path$1`/chatkit/threads/${threadID}`, resolveResourceRequestOptions$48(options, (options$1) => ({
+		return this._client.delete(path$2`/chatkit/threads/${threadID}`, resolveResourceRequestOptions$48(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "chatkit_beta=v1" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -28078,7 +40385,7 @@ var Threads$2 = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/chatkit/threads/${threadID}/items`, ConversationCursorPage, resolveResourceRequestOptions$48(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/chatkit/threads/${threadID}/items`, ConversationCursorPage, resolveResourceRequestOptions$48(options, (options$1) => ({
 			query,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "chatkit_beta=v1" }, options$1?.headers]),
@@ -28088,7 +40395,7 @@ var Threads$2 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/chatkit/chatkit.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/chatkit/chatkit.mjs
 var ChatKit = class extends APIResource$1 {
 	constructor() {
 		super(...arguments);
@@ -28100,7 +40407,7 @@ ChatKit.Sessions = Sessions$2;
 ChatKit.Threads = Threads$2;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/responses/input-items.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/responses/input-items.mjs
 function resolveResourceRequestOptions$47(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -28160,7 +40467,7 @@ var InputItems$1 = class extends APIResource$1 {
 		}
 		params = params;
 		const { betas,...query } = params ?? {};
-		return this._client.getAPIList(path$1`/responses/${responseID}/input_items?beta=true`, CursorPage, resolveResourceRequestOptions$47(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/responses/${responseID}/input_items?beta=true`, CursorPage, resolveResourceRequestOptions$47(options, (options$1) => ({
 			query,
 			...options$1,
 			headers: buildHeaders$1([{ ...betas?.toString() != null ? { "openai-beta": betas?.toString() } : void 0 }, options$1?.headers]),
@@ -28170,7 +40477,7 @@ var InputItems$1 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/responses/input-tokens.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/responses/input-tokens.mjs
 function resolveResourceRequestOptions$46(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -28199,7 +40506,7 @@ var InputTokens$1 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/responses/responses.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/responses/responses.mjs
 function resolveResourceRequestOptions$45(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -28274,7 +40581,7 @@ var Responses$1 = class extends APIResource$1 {
 		}
 		params = params;
 		const { betas,...query } = params ?? {};
-		return this._client.get(path$1`/responses/${responseID}?beta=true`, resolveResourceRequestOptions$45(options, (options$1) => ({
+		return this._client.get(path$2`/responses/${responseID}?beta=true`, resolveResourceRequestOptions$45(options, (options$1) => ({
 			query,
 			...options$1,
 			headers: buildHeaders$1([{ ...betas?.toString() != null ? { "openai-beta": betas?.toString() } : void 0 }, options$1?.headers]),
@@ -28294,7 +40601,7 @@ var Responses$1 = class extends APIResource$1 {
 	*/
 	delete(responseID, params = {}, options) {
 		const { betas } = params ?? {};
-		return this._client.delete(path$1`/responses/${responseID}?beta=true`, resolveResourceRequestOptions$45(options, (options$1) => ({
+		return this._client.delete(path$2`/responses/${responseID}?beta=true`, resolveResourceRequestOptions$45(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{
 				Accept: "*/*",
@@ -28317,7 +40624,7 @@ var Responses$1 = class extends APIResource$1 {
 	*/
 	cancel(responseID, params = {}, options) {
 		const { betas } = params ?? {};
-		return this._client.post(path$1`/responses/${responseID}/cancel?beta=true`, resolveResourceRequestOptions$45(options, (options$1) => ({
+		return this._client.post(path$2`/responses/${responseID}/cancel?beta=true`, resolveResourceRequestOptions$45(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ ...betas?.toString() != null ? { "openai-beta": betas?.toString() } : void 0 }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -28353,7 +40660,7 @@ Responses$1.InputItems = InputItems$1;
 Responses$1.InputTokens = InputTokens$1;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/threads/messages.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/threads/messages.mjs
 function resolveResourceRequestOptions$44(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -28405,7 +40712,7 @@ var Messages$2 = class extends APIResource$1 {
 	* @deprecated The Assistants API is deprecated in favor of the Responses API
 	*/
 	create(threadID, body, options) {
-		return this._client.post(path$1`/threads/${threadID}/messages`, resolveResourceRequestOptions$44(options, (options$1) => ({
+		return this._client.post(path$2`/threads/${threadID}/messages`, resolveResourceRequestOptions$44(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
@@ -28419,7 +40726,7 @@ var Messages$2 = class extends APIResource$1 {
 	*/
 	retrieve(messageID, params, options) {
 		const { thread_id } = params;
-		return this._client.get(path$1`/threads/${thread_id}/messages/${messageID}`, resolveResourceRequestOptions$44(options, (options$1) => ({
+		return this._client.get(path$2`/threads/${thread_id}/messages/${messageID}`, resolveResourceRequestOptions$44(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -28432,7 +40739,7 @@ var Messages$2 = class extends APIResource$1 {
 	*/
 	update(messageID, params, options) {
 		const { thread_id,...body } = params;
-		return this._client.post(path$1`/threads/${thread_id}/messages/${messageID}`, resolveResourceRequestOptions$44(options, (options$1) => ({
+		return this._client.post(path$2`/threads/${thread_id}/messages/${messageID}`, resolveResourceRequestOptions$44(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
@@ -28452,7 +40759,7 @@ var Messages$2 = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/threads/${threadID}/messages`, CursorPage, resolveResourceRequestOptions$44(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/threads/${threadID}/messages`, CursorPage, resolveResourceRequestOptions$44(options, (options$1) => ({
 			query,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
@@ -28466,7 +40773,7 @@ var Messages$2 = class extends APIResource$1 {
 	*/
 	delete(messageID, params, options) {
 		const { thread_id } = params;
-		return this._client.delete(path$1`/threads/${thread_id}/messages/${messageID}`, resolveResourceRequestOptions$44(options, (options$1) => ({
+		return this._client.delete(path$2`/threads/${thread_id}/messages/${messageID}`, resolveResourceRequestOptions$44(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -28475,7 +40782,7 @@ var Messages$2 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/threads/runs/steps.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/threads/runs/steps.mjs
 function resolveResourceRequestOptions$43(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -28487,7 +40794,7 @@ var Steps = class extends APIResource$1 {
 	*/
 	retrieve(stepID, params, options) {
 		const { thread_id, run_id,...query } = params;
-		return this._client.get(path$1`/threads/${thread_id}/runs/${run_id}/steps/${stepID}`, resolveResourceRequestOptions$43(options, (options$1) => ({
+		return this._client.get(path$2`/threads/${thread_id}/runs/${run_id}/steps/${stepID}`, resolveResourceRequestOptions$43(options, (options$1) => ({
 			query,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
@@ -28501,7 +40808,7 @@ var Steps = class extends APIResource$1 {
 	*/
 	list(runID, params, options) {
 		const { thread_id,...query } = params;
-		return this._client.getAPIList(path$1`/threads/${thread_id}/runs/${runID}/steps`, CursorPage, resolveResourceRequestOptions$43(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/threads/${thread_id}/runs/${runID}/steps`, CursorPage, resolveResourceRequestOptions$43(options, (options$1) => ({
 			query,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
@@ -28511,7 +40818,7 @@ var Steps = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/utils/base64.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/utils/base64.mjs
 const fromBase64$1 = (str$2) => {
 	if (typeof globalThis.Buffer !== "undefined") {
 		const buf = globalThis.Buffer.from(str$2, "base64");
@@ -28540,7 +40847,7 @@ const toFloat32Array = (base64Str) => {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/utils/env.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/utils/env.mjs
 const readEnv$1 = (env) => {
 	try {
 		if (typeof globalThis.process !== "undefined") return globalThis.process.env?.[env]?.trim() || void 0;
@@ -28552,7 +40859,7 @@ const readEnv$1 = (env) => {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/assistant-stream-delta.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/assistant-stream-delta.mjs
 const MAX_ASSISTANT_STREAM_ARRAY_GROWTH = 1024;
 const MAX_EXTERNALLY_MUTABLE_ASSISTANT_STREAM_ARRAY_LENGTH = 65536;
 function getAssistantStreamDiagnosticProperty(property) {
@@ -28769,7 +41076,7 @@ function createAssistantStreamArrayDeltaCommit(accumulator, delta, kind, cacheAr
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/AssistantStream.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/AssistantStream.mjs
 var _AssistantStream_instances, _AssistantStream_runStepSnapshots, _AssistantStream_runStepIDOwners, _AssistantStream_activeRunStepID, _AssistantStream_messageSnapshots, _AssistantStream_messageIDOwners, _AssistantStream_messageSnapshot, _AssistantStream_activeMessageID, _AssistantStream_finalRun, _AssistantStream_currentContentIndex, _AssistantStream_currentContent, _AssistantStream_currentToolCallIndex, _AssistantStream_currentToolCall, _AssistantStream_currentEvent, _AssistantStream_currentRunSnapshot, _AssistantStream_currentRunStepSnapshot, _AssistantStream_addEvent, _AssistantStream_endRequest, _AssistantStream_validateRunStepEvent, _AssistantStream_reserveRunStepAlias, _AssistantStream_validateMessageEvent, _AssistantStream_reserveMessageAlias, _AssistantStream_handleMessage, _AssistantStream_handleRunStep, _AssistantStream_emitExposed, _AssistantStream_handleEvent, _AssistantStream_accumulateRunStep, _AssistantStream_accumulateMessage, _AssistantStream_accumulateContent, _AssistantStream_handleRun;
 function stabilizeAssistantStreamEvent(event) {
 	const eventDescriptor = Object.getOwnPropertyDescriptor(event, "event");
@@ -28821,8 +41128,8 @@ var AssistantStream = class AssistantStream extends EventStream {
 	}
 	/** Iterates over cloned raw assistant events; stopping early aborts the underlying request. */
 	[(_AssistantStream_runStepSnapshots = new WeakMap(), _AssistantStream_runStepIDOwners = new WeakMap(), _AssistantStream_activeRunStepID = new WeakMap(), _AssistantStream_messageSnapshots = new WeakMap(), _AssistantStream_messageIDOwners = new WeakMap(), _AssistantStream_messageSnapshot = new WeakMap(), _AssistantStream_activeMessageID = new WeakMap(), _AssistantStream_finalRun = new WeakMap(), _AssistantStream_currentContentIndex = new WeakMap(), _AssistantStream_currentContent = new WeakMap(), _AssistantStream_currentToolCallIndex = new WeakMap(), _AssistantStream_currentToolCall = new WeakMap(), _AssistantStream_currentEvent = new WeakMap(), _AssistantStream_currentRunSnapshot = new WeakMap(), _AssistantStream_currentRunStepSnapshot = new WeakMap(), _AssistantStream_instances = new WeakSet(), Symbol.asyncIterator)]() {
-		return this._createIterator((push) => {
-			const onEvent = (event) => push(structuredClone(event));
+		return this._createIterator((push$1) => {
+			const onEvent = (event) => push$1(structuredClone(event));
 			this.on("event", onEvent);
 			return () => this.off("event", onEvent);
 		}, { onReturn: () => this.abort() });
@@ -29324,7 +41631,7 @@ function assertNever$1(_x) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/polling.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/polling.mjs
 function sleepUntilAborted(milliseconds, signal) {
 	return new Promise((resolve$1, reject) => {
 		let timer;
@@ -29413,7 +41720,7 @@ async function pollWithResponse(retrieve, intermediateStatuses, terminalStatuses
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/assistant-run-polling.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/assistant-run-polling.mjs
 function pollAssistantRun(resource, runID, params, options) {
 	return pollWithResponse((headers) => resource.retrieve(runID, params, {
 		...options,
@@ -29436,7 +41743,7 @@ function pollAssistantRun(resource, runID, params, options) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/threads/runs/runs.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/threads/runs/runs.mjs
 function resolveResourceRequestOptions$42(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -29488,7 +41795,7 @@ var Runs$1 = class extends APIResource$1 {
 	}
 	create(threadID, params, options) {
 		const { include,...body } = params;
-		return this._client.post(path$1`/threads/${threadID}/runs`, resolveResourceRequestOptions$42(options, (options$1) => ({
+		return this._client.post(path$2`/threads/${threadID}/runs`, resolveResourceRequestOptions$42(options, (options$1) => ({
 			query: { include },
 			body,
 			...options$1,
@@ -29505,7 +41812,7 @@ var Runs$1 = class extends APIResource$1 {
 	*/
 	retrieve(runID, params, options) {
 		const { thread_id } = params;
-		return this._client.get(path$1`/threads/${thread_id}/runs/${runID}`, resolveResourceRequestOptions$42(options, (options$1) => ({
+		return this._client.get(path$2`/threads/${thread_id}/runs/${runID}`, resolveResourceRequestOptions$42(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -29518,7 +41825,7 @@ var Runs$1 = class extends APIResource$1 {
 	*/
 	update(runID, params, options) {
 		const { thread_id,...body } = params;
-		return this._client.post(path$1`/threads/${thread_id}/runs/${runID}`, resolveResourceRequestOptions$42(options, (options$1) => ({
+		return this._client.post(path$2`/threads/${thread_id}/runs/${runID}`, resolveResourceRequestOptions$42(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
@@ -29537,7 +41844,7 @@ var Runs$1 = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/threads/${threadID}/runs`, CursorPage, resolveResourceRequestOptions$42(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/threads/${threadID}/runs`, CursorPage, resolveResourceRequestOptions$42(options, (options$1) => ({
 			query,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
@@ -29551,7 +41858,7 @@ var Runs$1 = class extends APIResource$1 {
 	*/
 	cancel(runID, params, options) {
 		const { thread_id } = params;
-		return this._client.post(path$1`/threads/${thread_id}/runs/${runID}/cancel`, resolveResourceRequestOptions$42(options, (options$1) => ({
+		return this._client.post(path$2`/threads/${thread_id}/runs/${runID}/cancel`, resolveResourceRequestOptions$42(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -29590,7 +41897,7 @@ var Runs$1 = class extends APIResource$1 {
 	}
 	submitToolOutputs(runID, params, options) {
 		const { thread_id,...body } = params;
-		return this._client.post(path$1`/threads/${thread_id}/runs/${runID}/submit_tool_outputs`, resolveResourceRequestOptions$42(options, (options$1) => ({
+		return this._client.post(path$2`/threads/${thread_id}/runs/${runID}/submit_tool_outputs`, resolveResourceRequestOptions$42(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
@@ -29620,7 +41927,7 @@ var Runs$1 = class extends APIResource$1 {
 Runs$1.Steps = Steps;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/threads/threads.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/threads/threads.mjs
 function resolveResourceRequestOptions$41(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -29649,7 +41956,7 @@ var Threads$1 = class extends APIResource$1 {
 	* @deprecated The Assistants API is deprecated in favor of the Responses API
 	*/
 	retrieve(threadID, options) {
-		return this._client.get(path$1`/threads/${threadID}`, resolveResourceRequestOptions$41(options, (options$1) => ({
+		return this._client.get(path$2`/threads/${threadID}`, resolveResourceRequestOptions$41(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -29661,7 +41968,7 @@ var Threads$1 = class extends APIResource$1 {
 	* @deprecated The Assistants API is deprecated in favor of the Responses API
 	*/
 	update(threadID, body, options) {
-		return this._client.post(path$1`/threads/${threadID}`, resolveResourceRequestOptions$41(options, (options$1) => ({
+		return this._client.post(path$2`/threads/${threadID}`, resolveResourceRequestOptions$41(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
@@ -29674,7 +41981,7 @@ var Threads$1 = class extends APIResource$1 {
 	* @deprecated The Assistants API is deprecated in favor of the Responses API
 	*/
 	delete(threadID, options) {
-		return this._client.delete(path$1`/threads/${threadID}`, resolveResourceRequestOptions$41(options, (options$1) => ({
+		return this._client.delete(path$2`/threads/${threadID}`, resolveResourceRequestOptions$41(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -29710,7 +42017,7 @@ Threads$1.Runs = Runs$1;
 Threads$1.Messages = Messages$2;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/beta/beta.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/beta/beta.mjs
 var Beta$1 = class extends APIResource$1 {
 	constructor() {
 		super(...arguments);
@@ -29730,7 +42037,7 @@ Beta$1.Assistants = Assistants;
 Beta$1.Threads = Threads$1;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/completions.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/completions.mjs
 function resolveResourceRequestOptions$40(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -29746,7 +42053,7 @@ var Completions$1 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/containers/files/content.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/containers/files/content.mjs
 function resolveResourceRequestOptions$39(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -29756,7 +42063,7 @@ var Content$2 = class extends APIResource$1 {
 	*/
 	retrieve(fileID, params, options) {
 		const { container_id } = params;
-		return this._client.get(path$1`/containers/${container_id}/files/${fileID}/content`, resolveResourceRequestOptions$39(options, (options$1) => ({
+		return this._client.get(path$2`/containers/${container_id}/files/${fileID}/content`, resolveResourceRequestOptions$39(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ Accept: "application/binary" }, options$1?.headers]),
 			__security: { bearerAuth: true },
@@ -29766,7 +42073,7 @@ var Content$2 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/containers/files/files.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/containers/files/files.mjs
 function resolveResourceRequestOptions$38(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -29823,7 +42130,7 @@ var Files$4 = class extends APIResource$1 {
 	* a JSON request with a file ID.
 	*/
 	create(containerID, body, options) {
-		return this._client.post(path$1`/containers/${containerID}/files`, resolveResourceRequestOptions$38(options, (options$1) => maybeMultipartFormRequestOptions({
+		return this._client.post(path$2`/containers/${containerID}/files`, resolveResourceRequestOptions$38(options, (options$1) => maybeMultipartFormRequestOptions({
 			body,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -29834,7 +42141,7 @@ var Files$4 = class extends APIResource$1 {
 	*/
 	retrieve(fileID, params, options) {
 		const { container_id } = params;
-		return this._client.get(path$1`/containers/${container_id}/files/${fileID}`, resolveResourceRequestOptions$38(options, (options$1) => ({
+		return this._client.get(path$2`/containers/${container_id}/files/${fileID}`, resolveResourceRequestOptions$38(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -29850,7 +42157,7 @@ var Files$4 = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/containers/${containerID}/files`, CursorPage, resolveResourceRequestOptions$38(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/containers/${containerID}/files`, CursorPage, resolveResourceRequestOptions$38(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -29861,7 +42168,7 @@ var Files$4 = class extends APIResource$1 {
 	*/
 	delete(fileID, params, options) {
 		const { container_id } = params;
-		return this._client.delete(path$1`/containers/${container_id}/files/${fileID}`, resolveResourceRequestOptions$38(options, (options$1) => ({
+		return this._client.delete(path$2`/containers/${container_id}/files/${fileID}`, resolveResourceRequestOptions$38(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ Accept: "*/*" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -29871,7 +42178,7 @@ var Files$4 = class extends APIResource$1 {
 Files$4.Content = Content$2;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/containers/containers.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/containers/containers.mjs
 function resolveResourceRequestOptions$37(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -29935,7 +42242,7 @@ var Containers = class extends APIResource$1 {
 	* Retrieve Container
 	*/
 	retrieve(containerID, options) {
-		return this._client.get(path$1`/containers/${containerID}`, resolveResourceRequestOptions$37(options, (options$1) => ({
+		return this._client.get(path$2`/containers/${containerID}`, resolveResourceRequestOptions$37(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -29962,7 +42269,7 @@ var Containers = class extends APIResource$1 {
 	* Delete Container
 	*/
 	delete(containerID, options) {
-		return this._client.delete(path$1`/containers/${containerID}`, resolveResourceRequestOptions$37(options, (options$1) => ({
+		return this._client.delete(path$2`/containers/${containerID}`, resolveResourceRequestOptions$37(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ Accept: "*/*" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -29972,7 +42279,7 @@ var Containers = class extends APIResource$1 {
 Containers.Files = Files$4;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/content-provenance-checks.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/content-provenance-checks.mjs
 function resolveResourceRequestOptions$36(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -29998,7 +42305,7 @@ var ContentProvenanceChecks = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/conversations/items.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/conversations/items.mjs
 function resolveResourceRequestOptions$35(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -30049,7 +42356,7 @@ var Items = class extends APIResource$1 {
 	*/
 	create(conversationID, params, options) {
 		const { include,...body } = params;
-		return this._client.post(path$1`/conversations/${conversationID}/items`, resolveResourceRequestOptions$35(options, (options$1) => ({
+		return this._client.post(path$2`/conversations/${conversationID}/items`, resolveResourceRequestOptions$35(options, (options$1) => ({
 			query: { include },
 			body,
 			...options$1,
@@ -30061,7 +42368,7 @@ var Items = class extends APIResource$1 {
 	*/
 	retrieve(itemID, params, options) {
 		const { conversation_id,...query } = params;
-		return this._client.get(path$1`/conversations/${conversation_id}/items/${itemID}`, resolveResourceRequestOptions$35(options, (options$1) => ({
+		return this._client.get(path$2`/conversations/${conversation_id}/items/${itemID}`, resolveResourceRequestOptions$35(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -30079,7 +42386,7 @@ var Items = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/conversations/${conversationID}/items`, ConversationCursorPage, resolveResourceRequestOptions$35(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/conversations/${conversationID}/items`, ConversationCursorPage, resolveResourceRequestOptions$35(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -30090,7 +42397,7 @@ var Items = class extends APIResource$1 {
 	*/
 	delete(itemID, params, options) {
 		const { conversation_id } = params;
-		return this._client.delete(path$1`/conversations/${conversation_id}/items/${itemID}`, resolveResourceRequestOptions$35(options, (options$1) => ({
+		return this._client.delete(path$2`/conversations/${conversation_id}/items/${itemID}`, resolveResourceRequestOptions$35(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -30098,7 +42405,7 @@ var Items = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/conversations/conversations.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/conversations/conversations.mjs
 function resolveResourceRequestOptions$34(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -30121,7 +42428,7 @@ var Conversations = class extends APIResource$1 {
 	* Get a conversation
 	*/
 	retrieve(conversationID, options) {
-		return this._client.get(path$1`/conversations/${conversationID}`, resolveResourceRequestOptions$34(options, (options$1) => ({
+		return this._client.get(path$2`/conversations/${conversationID}`, resolveResourceRequestOptions$34(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -30130,7 +42437,7 @@ var Conversations = class extends APIResource$1 {
 	* Update a conversation
 	*/
 	update(conversationID, body, options) {
-		return this._client.post(path$1`/conversations/${conversationID}`, resolveResourceRequestOptions$34(options, (options$1) => ({
+		return this._client.post(path$2`/conversations/${conversationID}`, resolveResourceRequestOptions$34(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -30140,7 +42447,7 @@ var Conversations = class extends APIResource$1 {
 	* Delete a conversation. Items in the conversation will not be deleted.
 	*/
 	delete(conversationID, options) {
-		return this._client.delete(path$1`/conversations/${conversationID}`, resolveResourceRequestOptions$34(options, (options$1) => ({
+		return this._client.delete(path$2`/conversations/${conversationID}`, resolveResourceRequestOptions$34(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -30149,7 +42456,7 @@ var Conversations = class extends APIResource$1 {
 Conversations.Items = Items;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/decisions.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/decisions.mjs
 function resolveResourceRequestOptions$33(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -30168,7 +42475,7 @@ var Decisions = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/embeddings.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/embeddings.mjs
 function createEmbedding(client, body, options) {
 	const hasUserProvidedEncodingFormat = !!body.encoding_format;
 	const encodingFormat = hasUserProvidedEncodingFormat ? body.encoding_format : "base64";
@@ -30202,7 +42509,7 @@ function createEmbedding(client, body, options) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/embeddings.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/embeddings.mjs
 var Embeddings = class extends APIResource$1 {
 	create(body, options) {
 		return createEmbedding(this._client, body, options);
@@ -30210,7 +42517,7 @@ var Embeddings = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/evals/runs/output-items.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/evals/runs/output-items.mjs
 function resolveResourceRequestOptions$32(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -30220,7 +42527,7 @@ var OutputItems = class extends APIResource$1 {
 	*/
 	retrieve(outputItemID, params, options) {
 		const { eval_id, run_id } = params;
-		return this._client.get(path$1`/evals/${eval_id}/runs/${run_id}/output_items/${outputItemID}`, resolveResourceRequestOptions$32(options, (options$1) => ({
+		return this._client.get(path$2`/evals/${eval_id}/runs/${run_id}/output_items/${outputItemID}`, resolveResourceRequestOptions$32(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -30230,7 +42537,7 @@ var OutputItems = class extends APIResource$1 {
 	*/
 	list(runID, params, options) {
 		const { eval_id,...query } = params;
-		return this._client.getAPIList(path$1`/evals/${eval_id}/runs/${runID}/output_items`, CursorPage, resolveResourceRequestOptions$32(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/evals/${eval_id}/runs/${runID}/output_items`, CursorPage, resolveResourceRequestOptions$32(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -30239,7 +42546,7 @@ var OutputItems = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/evals/runs/runs.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/evals/runs/runs.mjs
 function resolveResourceRequestOptions$31(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -30295,7 +42602,7 @@ var Runs = class extends APIResource$1 {
 	* schema specified in the config of the evaluation.
 	*/
 	create(evalID, body, options) {
-		return this._client.post(path$1`/evals/${evalID}/runs`, resolveResourceRequestOptions$31(options, (options$1) => ({
+		return this._client.post(path$2`/evals/${evalID}/runs`, resolveResourceRequestOptions$31(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -30306,7 +42613,7 @@ var Runs = class extends APIResource$1 {
 	*/
 	retrieve(runID, params, options) {
 		const { eval_id } = params;
-		return this._client.get(path$1`/evals/${eval_id}/runs/${runID}`, resolveResourceRequestOptions$31(options, (options$1) => ({
+		return this._client.get(path$2`/evals/${eval_id}/runs/${runID}`, resolveResourceRequestOptions$31(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -30323,7 +42630,7 @@ var Runs = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/evals/${evalID}/runs`, CursorPage, resolveResourceRequestOptions$31(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/evals/${evalID}/runs`, CursorPage, resolveResourceRequestOptions$31(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -30334,7 +42641,7 @@ var Runs = class extends APIResource$1 {
 	*/
 	delete(runID, params, options) {
 		const { eval_id } = params;
-		return this._client.delete(path$1`/evals/${eval_id}/runs/${runID}`, resolveResourceRequestOptions$31(options, (options$1) => ({
+		return this._client.delete(path$2`/evals/${eval_id}/runs/${runID}`, resolveResourceRequestOptions$31(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -30344,7 +42651,7 @@ var Runs = class extends APIResource$1 {
 	*/
 	cancel(runID, params, options) {
 		const { eval_id } = params;
-		return this._client.post(path$1`/evals/${eval_id}/runs/${runID}/cancel`, resolveResourceRequestOptions$31(options, (options$1) => ({
+		return this._client.post(path$2`/evals/${eval_id}/runs/${runID}/cancel`, resolveResourceRequestOptions$31(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -30353,7 +42660,7 @@ var Runs = class extends APIResource$1 {
 Runs.OutputItems = OutputItems;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/evals/evals.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/evals/evals.mjs
 function resolveResourceRequestOptions$30(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -30422,7 +42729,7 @@ var Evals = class extends APIResource$1 {
 	* Get an evaluation by ID.
 	*/
 	retrieve(evalID, options) {
-		return this._client.get(path$1`/evals/${evalID}`, resolveResourceRequestOptions$30(options, (options$1) => ({
+		return this._client.get(path$2`/evals/${evalID}`, resolveResourceRequestOptions$30(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -30431,7 +42738,7 @@ var Evals = class extends APIResource$1 {
 	* Update certain properties of an evaluation.
 	*/
 	update(evalID, body, options) {
-		return this._client.post(path$1`/evals/${evalID}`, resolveResourceRequestOptions$30(options, (options$1) => ({
+		return this._client.post(path$2`/evals/${evalID}`, resolveResourceRequestOptions$30(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -30459,7 +42766,7 @@ var Evals = class extends APIResource$1 {
 	* Delete an evaluation.
 	*/
 	delete(evalID, options) {
-		return this._client.delete(path$1`/evals/${evalID}`, resolveResourceRequestOptions$30(options, (options$1) => ({
+		return this._client.delete(path$2`/evals/${evalID}`, resolveResourceRequestOptions$30(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -30468,7 +42775,7 @@ var Evals = class extends APIResource$1 {
 Evals.Runs = Runs;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/file-processing.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/file-processing.mjs
 async function waitForFileProcessing(resource, id, pollInterval, maxWait) {
 	const terminalStates = new Set([
 		"processed",
@@ -30486,7 +42793,7 @@ async function waitForFileProcessing(resource, id, pollInterval, maxWait) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/files.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/files.mjs
 function resolveResourceRequestOptions$29(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -30572,7 +42879,7 @@ var Files$3 = class extends APIResource$1 {
 	* Returns information about a specific file.
 	*/
 	retrieve(fileID, options) {
-		return this._client.get(path$1`/files/${fileID}`, resolveResourceRequestOptions$29(options, (options$1) => ({
+		return this._client.get(path$2`/files/${fileID}`, resolveResourceRequestOptions$29(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -30599,7 +42906,7 @@ var Files$3 = class extends APIResource$1 {
 	* Delete a file and remove it from all vector stores.
 	*/
 	delete(fileID, options) {
-		return this._client.delete(path$1`/files/${fileID}`, resolveResourceRequestOptions$29(options, (options$1) => ({
+		return this._client.delete(path$2`/files/${fileID}`, resolveResourceRequestOptions$29(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -30608,7 +42915,7 @@ var Files$3 = class extends APIResource$1 {
 	* Returns a response containing the contents of the specified file.
 	*/
 	content(fileID, options) {
-		return this._client.get(path$1`/files/${fileID}/content`, resolveResourceRequestOptions$29(options, (options$1) => ({
+		return this._client.get(path$2`/files/${fileID}/content`, resolveResourceRequestOptions$29(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ Accept: "application/binary" }, options$1?.headers]),
 			__security: { bearerAuth: true },
@@ -30624,11 +42931,11 @@ var Files$3 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/fine-tuning/methods.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/fine-tuning/methods.mjs
 var Methods = class extends APIResource$1 {};
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/fine-tuning/alpha/graders.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/fine-tuning/alpha/graders.mjs
 function resolveResourceRequestOptions$28(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -30684,7 +42991,7 @@ var Graders$1 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/fine-tuning/alpha/alpha.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/fine-tuning/alpha/alpha.mjs
 var Alpha = class extends APIResource$1 {
 	constructor() {
 		super(...arguments);
@@ -30694,7 +43001,7 @@ var Alpha = class extends APIResource$1 {
 Alpha.Graders = Graders$1;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/fine-tuning/checkpoints/permissions.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/fine-tuning/checkpoints/permissions.mjs
 function resolveResourceRequestOptions$27(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -30759,7 +43066,7 @@ var Permissions$1 = class extends APIResource$1 {
 	* ```
 	*/
 	create(fineTunedModelCheckpoint, body, options) {
-		return this._client.getAPIList(path$1`/fine_tuning/checkpoints/${fineTunedModelCheckpoint}/permissions`, Page$1, resolveResourceRequestOptions$27(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/fine_tuning/checkpoints/${fineTunedModelCheckpoint}/permissions`, Page$1, resolveResourceRequestOptions$27(options, (options$1) => ({
 			body,
 			method: "post",
 			...options$1,
@@ -30778,7 +43085,7 @@ var Permissions$1 = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.get(path$1`/fine_tuning/checkpoints/${fineTunedModelCheckpoint}/permissions`, resolveResourceRequestOptions$27(options, (options$1) => ({
+		return this._client.get(path$2`/fine_tuning/checkpoints/${fineTunedModelCheckpoint}/permissions`, resolveResourceRequestOptions$27(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -30796,7 +43103,7 @@ var Permissions$1 = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/fine_tuning/checkpoints/${fineTunedModelCheckpoint}/permissions`, ConversationCursorPage, resolveResourceRequestOptions$27(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/fine_tuning/checkpoints/${fineTunedModelCheckpoint}/permissions`, ConversationCursorPage, resolveResourceRequestOptions$27(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
@@ -30823,7 +43130,7 @@ var Permissions$1 = class extends APIResource$1 {
 	*/
 	delete(permissionID, params, options) {
 		const { fine_tuned_model_checkpoint } = params;
-		return this._client.delete(path$1`/fine_tuning/checkpoints/${fine_tuned_model_checkpoint}/permissions/${permissionID}`, resolveResourceRequestOptions$27(options, (options$1) => ({
+		return this._client.delete(path$2`/fine_tuning/checkpoints/${fine_tuned_model_checkpoint}/permissions/${permissionID}`, resolveResourceRequestOptions$27(options, (options$1) => ({
 			...options$1,
 			__security: { adminAPIKeyAuth: true }
 		})));
@@ -30831,7 +43138,7 @@ var Permissions$1 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/fine-tuning/checkpoints/checkpoints.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/fine-tuning/checkpoints/checkpoints.mjs
 var Checkpoints$1 = class extends APIResource$1 {
 	constructor() {
 		super(...arguments);
@@ -30841,7 +43148,7 @@ var Checkpoints$1 = class extends APIResource$1 {
 Checkpoints$1.Permissions = Permissions$1;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/fine-tuning/jobs/checkpoints.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/fine-tuning/jobs/checkpoints.mjs
 function resolveResourceRequestOptions$26(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -30894,7 +43201,7 @@ var Checkpoints = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/fine_tuning/jobs/${fineTuningJobID}/checkpoints`, CursorPage, resolveResourceRequestOptions$26(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/fine_tuning/jobs/${fineTuningJobID}/checkpoints`, CursorPage, resolveResourceRequestOptions$26(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -30903,7 +43210,7 @@ var Checkpoints = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/fine-tuning/jobs/jobs.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/fine-tuning/jobs/jobs.mjs
 function resolveResourceRequestOptions$25(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -30990,7 +43297,7 @@ var Jobs = class extends APIResource$1 {
 	* ```
 	*/
 	retrieve(fineTuningJobID, options) {
-		return this._client.get(path$1`/fine_tuning/jobs/${fineTuningJobID}`, resolveResourceRequestOptions$25(options, (options$1) => ({
+		return this._client.get(path$2`/fine_tuning/jobs/${fineTuningJobID}`, resolveResourceRequestOptions$25(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -31023,7 +43330,7 @@ var Jobs = class extends APIResource$1 {
 	* ```
 	*/
 	cancel(fineTuningJobID, options) {
-		return this._client.post(path$1`/fine_tuning/jobs/${fineTuningJobID}/cancel`, resolveResourceRequestOptions$25(options, (options$1) => ({
+		return this._client.post(path$2`/fine_tuning/jobs/${fineTuningJobID}/cancel`, resolveResourceRequestOptions$25(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -31035,7 +43342,7 @@ var Jobs = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/fine_tuning/jobs/${fineTuningJobID}/events`, CursorPage, resolveResourceRequestOptions$25(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/fine_tuning/jobs/${fineTuningJobID}/events`, CursorPage, resolveResourceRequestOptions$25(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -31052,7 +43359,7 @@ var Jobs = class extends APIResource$1 {
 	* ```
 	*/
 	pause(fineTuningJobID, options) {
-		return this._client.post(path$1`/fine_tuning/jobs/${fineTuningJobID}/pause`, resolveResourceRequestOptions$25(options, (options$1) => ({
+		return this._client.post(path$2`/fine_tuning/jobs/${fineTuningJobID}/pause`, resolveResourceRequestOptions$25(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -31068,7 +43375,7 @@ var Jobs = class extends APIResource$1 {
 	* ```
 	*/
 	resume(fineTuningJobID, options) {
-		return this._client.post(path$1`/fine_tuning/jobs/${fineTuningJobID}/resume`, resolveResourceRequestOptions$25(options, (options$1) => ({
+		return this._client.post(path$2`/fine_tuning/jobs/${fineTuningJobID}/resume`, resolveResourceRequestOptions$25(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -31077,7 +43384,7 @@ var Jobs = class extends APIResource$1 {
 Jobs.Checkpoints = Checkpoints;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/fine-tuning/fine-tuning.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/fine-tuning/fine-tuning.mjs
 var FineTuning = class extends APIResource$1 {
 	constructor() {
 		super(...arguments);
@@ -31093,11 +43400,11 @@ FineTuning.Checkpoints = Checkpoints$1;
 FineTuning.Alpha = Alpha;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/graders/grader-models.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/graders/grader-models.mjs
 var GraderModels = class extends APIResource$1 {};
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/graders/graders.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/graders/graders.mjs
 var Graders = class extends APIResource$1 {
 	constructor() {
 		super(...arguments);
@@ -31107,7 +43414,7 @@ var Graders = class extends APIResource$1 {
 Graders.GraderModels = GraderModels;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/images.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/images.mjs
 function resolveResourceRequestOptions$24(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -31152,7 +43459,7 @@ var Images = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/live/sessions.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/live/sessions.mjs
 function resolveResourceRequestOptions$23(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -31172,7 +43479,7 @@ var Sessions$1 = class extends APIResource$1 {
 	* ```
 	*/
 	accept(sessionID, body, options) {
-		return this._client.post(path$1`/live/sessions/${sessionID}/accept`, resolveResourceRequestOptions$23(options, (options$1) => ({
+		return this._client.post(path$2`/live/sessions/${sessionID}/accept`, resolveResourceRequestOptions$23(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ Accept: "*/*" }, options$1?.headers]),
@@ -31192,7 +43499,7 @@ var Sessions$1 = class extends APIResource$1 {
 	* ```
 	*/
 	downloadRecording(sessionID, options) {
-		return this._client.get(path$1`/live/sessions/${sessionID}/content`, resolveResourceRequestOptions$23(options, (options$1) => ({
+		return this._client.get(path$2`/live/sessions/${sessionID}/content`, resolveResourceRequestOptions$23(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ Accept: "application/binary" }, options$1?.headers]),
 			__security: { bearerAuth: true },
@@ -31211,7 +43518,7 @@ var Sessions$1 = class extends APIResource$1 {
 	* ```
 	*/
 	fork(sessionID, body, options) {
-		return this._client.post(path$1`/live/sessions/${sessionID}/fork`, resolveResourceRequestOptions$23(options, (options$1) => ({
+		return this._client.post(path$2`/live/sessions/${sessionID}/fork`, resolveResourceRequestOptions$23(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -31226,7 +43533,7 @@ var Sessions$1 = class extends APIResource$1 {
 	* ```
 	*/
 	hangup(sessionID, options) {
-		return this._client.post(path$1`/live/sessions/${sessionID}/hangup`, resolveResourceRequestOptions$23(options, (options$1) => ({
+		return this._client.post(path$2`/live/sessions/${sessionID}/hangup`, resolveResourceRequestOptions$23(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ Accept: "*/*" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -31244,7 +43551,7 @@ var Sessions$1 = class extends APIResource$1 {
 	* ```
 	*/
 	refer(sessionID, body, options) {
-		return this._client.post(path$1`/live/sessions/${sessionID}/refer`, resolveResourceRequestOptions$23(options, (options$1) => ({
+		return this._client.post(path$2`/live/sessions/${sessionID}/refer`, resolveResourceRequestOptions$23(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ Accept: "*/*" }, options$1?.headers]),
@@ -31263,7 +43570,7 @@ var Sessions$1 = class extends APIResource$1 {
 	* ```
 	*/
 	reject(sessionID, body, options) {
-		return this._client.post(path$1`/live/sessions/${sessionID}/reject`, resolveResourceRequestOptions$23(options, (options$1) => ({
+		return this._client.post(path$2`/live/sessions/${sessionID}/reject`, resolveResourceRequestOptions$23(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ Accept: "*/*" }, options$1?.headers]),
@@ -31273,15 +43580,15 @@ var Sessions$1 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/live/forks/forks.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/live/forks/forks.mjs
 var Forks = class extends APIResource$1 {};
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/live/sideband/sideband.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/live/sideband/sideband.mjs
 var Sideband = class extends APIResource$1 {};
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/live/live.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/live/live.mjs
 function resolveResourceRequestOptions$22(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -31317,7 +43624,7 @@ Live.Forks = Forks;
 Live.Sessions = Sessions$1;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/models.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/models.mjs
 function resolveResourceRequestOptions$21(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -31327,7 +43634,7 @@ var Models$2 = class extends APIResource$1 {
 	* the owner and permissioning.
 	*/
 	retrieve(model, options) {
-		return this._client.get(path$1`/models/${model}`, resolveResourceRequestOptions$21(options, (options$1) => ({
+		return this._client.get(path$2`/models/${model}`, resolveResourceRequestOptions$21(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -31347,7 +43654,7 @@ var Models$2 = class extends APIResource$1 {
 	* delete a model.
 	*/
 	delete(model, options) {
-		return this._client.delete(path$1`/models/${model}`, resolveResourceRequestOptions$21(options, (options$1) => ({
+		return this._client.delete(path$2`/models/${model}`, resolveResourceRequestOptions$21(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -31355,7 +43662,7 @@ var Models$2 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/moderations.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/moderations.mjs
 function resolveResourceRequestOptions$20(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -31375,7 +43682,7 @@ var Moderations = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/multipart-encoding.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/multipart-encoding.mjs
 async function encodedMultipartFormRequestOptions(options, client, encodings, rawBodyField = null) {
 	if (options.body === null || typeof options.body !== "object" || Array.isArray(options.body)) throw new TypeError("Multipart request body must be an object");
 	const body = Object.fromEntries(Object.entries(options.body).filter(([, value]) => value !== void 0));
@@ -31415,7 +43722,7 @@ async function encodedMultipartFormRequestOptions(options, client, encodings, ra
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/realtime/calls.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/realtime/calls.mjs
 function resolveResourceRequestOptions$19(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -31461,7 +43768,7 @@ var Calls = class extends APIResource$1 {
 	* ```
 	*/
 	accept(callID, body, options) {
-		return this._client.post(path$1`/realtime/calls/${callID}/accept`, resolveResourceRequestOptions$19(options, (options$1) => ({
+		return this._client.post(path$2`/realtime/calls/${callID}/accept`, resolveResourceRequestOptions$19(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ Accept: "*/*" }, options$1?.headers]),
@@ -31477,7 +43784,7 @@ var Calls = class extends APIResource$1 {
 	* ```
 	*/
 	hangup(callID, options) {
-		return this._client.post(path$1`/realtime/calls/${callID}/hangup`, resolveResourceRequestOptions$19(options, (options$1) => ({
+		return this._client.post(path$2`/realtime/calls/${callID}/hangup`, resolveResourceRequestOptions$19(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ Accept: "*/*" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -31494,7 +43801,7 @@ var Calls = class extends APIResource$1 {
 	* ```
 	*/
 	refer(callID, body, options) {
-		return this._client.post(path$1`/realtime/calls/${callID}/refer`, resolveResourceRequestOptions$19(options, (options$1) => ({
+		return this._client.post(path$2`/realtime/calls/${callID}/refer`, resolveResourceRequestOptions$19(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ Accept: "*/*" }, options$1?.headers]),
@@ -31510,7 +43817,7 @@ var Calls = class extends APIResource$1 {
 	* ```
 	*/
 	reject(callID, body = {}, options) {
-		return this._client.post(path$1`/realtime/calls/${callID}/reject`, resolveResourceRequestOptions$19(options, (options$1) => ({
+		return this._client.post(path$2`/realtime/calls/${callID}/reject`, resolveResourceRequestOptions$19(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ Accept: "*/*" }, options$1?.headers]),
@@ -31520,7 +43827,7 @@ var Calls = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/realtime/client-secrets.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/realtime/client-secrets.mjs
 function resolveResourceRequestOptions$18(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -31558,7 +43865,7 @@ var ClientSecrets$1 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/realtime/translations/client-secrets.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/realtime/translations/client-secrets.mjs
 function resolveResourceRequestOptions$17(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -31593,7 +43900,7 @@ var ClientSecrets = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/realtime/translations/translations.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/realtime/translations/translations.mjs
 var Translations = class extends APIResource$1 {
 	constructor() {
 		super(...arguments);
@@ -31603,7 +43910,7 @@ var Translations = class extends APIResource$1 {
 Translations.ClientSecrets = ClientSecrets;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/realtime/realtime.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/realtime/realtime.mjs
 var Realtime = class extends APIResource$1 {
 	constructor() {
 		super(...arguments);
@@ -31617,7 +43924,7 @@ Realtime.Calls = Calls;
 Realtime.Translations = Translations;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/ResponsesParser.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/ResponsesParser.mjs
 function maybeParseResponse(response, params) {
 	if (!params || !hasAutoParseableInput(params)) {
 		const parsed = {
@@ -31725,7 +44032,7 @@ function addOutputText(rsp) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/responses/output-text-index.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/responses/output-text-index.mjs
 var OutputTextIndex = class {
 	constructor() {
 		this.capacity = 1;
@@ -31781,7 +44088,7 @@ var OutputTextIndex = class {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/responses/canonical-output-text.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/responses/canonical-output-text.mjs
 function createCanonicalResponseContext() {
 	return {
 		canonicalSnapshot: void 0,
@@ -31877,7 +44184,7 @@ function updateOutputText(context, snapshot, outputIndex, previousText, nextText
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/responses/response-accumulator.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/responses/response-accumulator.mjs
 const responseOutputIdentityIndexes = new WeakMap();
 function validateArrayIndex(collection, index, kind, allowAppend = false) {
 	if (!Array.isArray(collection) || !Number.isSafeInteger(index) || index < 0 || index > collection.length || (index === collection.length ? !allowAppend || index in collection : !hasOwn(collection, index))) throw new OpenAIError(`missing ${kind} at index ${index}`);
@@ -32235,7 +44542,7 @@ function accumulateContentPartDoneEvent(event, snapshot, context) {
 	}
 }
 function isLogprobWithBytes(value) {
-	return isObj$1(value) && typeof value["token"] === "string" && typeof value["logprob"] === "number" && Array.isArray(value["bytes"]) && value["bytes"].every((byte) => typeof byte === "number");
+	return isObj$1(value) && typeof value["token"] === "string" && typeof value["logprob"] === "number" && Array.isArray(value["bytes"]) && value["bytes"].every((byte$1) => typeof byte$1 === "number");
 }
 function isOutputLogprobs(value) {
 	return Array.isArray(value) && value.every((entry) => isLogprobWithBytes(entry) && "top_logprobs" in entry && Array.isArray(entry.top_logprobs) && entry.top_logprobs.every(isLogprobWithBytes));
@@ -32577,42 +44884,42 @@ function isIgnoredResponseEvent(event) {
 function createResponseContext() {
 	return createCanonicalResponseContext();
 }
-function accumulateResponseOutput(dispatchEvent, snapshot, context, rejectInvalidShellTargets) {
-	validateOutputItemIdentity(dispatchEvent, snapshot, rejectInvalidShellTargets);
-	if (accumulateOutputItemEvent(dispatchEvent, snapshot, context)) return true;
-	if (accumulateContentPartAddedEvent(dispatchEvent, snapshot, context)) return true;
-	if (accumulateContentPartDoneEvent(dispatchEvent, snapshot, context)) return true;
-	if (accumulateOutputTextEvent(dispatchEvent, snapshot, context)) return true;
-	if (accumulateRefusalAndArgumentsEvent(dispatchEvent, snapshot)) return true;
-	if (accumulateShellEvent(dispatchEvent, snapshot)) return true;
-	if (accumulateReasoningEvent(dispatchEvent, snapshot)) return true;
-	if (accumulateCodeInterpreterEvent(dispatchEvent, snapshot)) return true;
-	if (accumulateSearchStatusEvent(dispatchEvent, snapshot)) return true;
-	if (accumulateImageAndMcpStatusEvent(dispatchEvent, snapshot)) return true;
-	if (isIgnoredResponseEvent(dispatchEvent)) return true;
+function accumulateResponseOutput(dispatchEvent$1, snapshot, context, rejectInvalidShellTargets) {
+	validateOutputItemIdentity(dispatchEvent$1, snapshot, rejectInvalidShellTargets);
+	if (accumulateOutputItemEvent(dispatchEvent$1, snapshot, context)) return true;
+	if (accumulateContentPartAddedEvent(dispatchEvent$1, snapshot, context)) return true;
+	if (accumulateContentPartDoneEvent(dispatchEvent$1, snapshot, context)) return true;
+	if (accumulateOutputTextEvent(dispatchEvent$1, snapshot, context)) return true;
+	if (accumulateRefusalAndArgumentsEvent(dispatchEvent$1, snapshot)) return true;
+	if (accumulateShellEvent(dispatchEvent$1, snapshot)) return true;
+	if (accumulateReasoningEvent(dispatchEvent$1, snapshot)) return true;
+	if (accumulateCodeInterpreterEvent(dispatchEvent$1, snapshot)) return true;
+	if (accumulateSearchStatusEvent(dispatchEvent$1, snapshot)) return true;
+	if (accumulateImageAndMcpStatusEvent(dispatchEvent$1, snapshot)) return true;
+	if (isIgnoredResponseEvent(dispatchEvent$1)) return true;
 	return false;
 }
 function accumulateResponseWithContext(event, snapshot, context, rejectInvalidShellTargets = false, prepareSanitizedEvent) {
-	let dispatchEvent = sanitizeResponseEvent(event);
-	if (prepareSanitizedEvent && dispatchEvent.type !== "keepalive") {
-		const prepared = prepareSanitizedEvent(dispatchEvent);
+	let dispatchEvent$1 = sanitizeResponseEvent(event);
+	if (prepareSanitizedEvent && dispatchEvent$1.type !== "keepalive") {
+		const prepared = prepareSanitizedEvent(dispatchEvent$1);
 		if (prepared === null) {
 			if (!snapshot) throw new OpenAIError("Cannot ignore a response event before response.created.");
 			return snapshot;
 		}
-		dispatchEvent = prepared;
+		dispatchEvent$1 = prepared;
 	}
 	if (!snapshot) {
-		if (dispatchEvent.type !== "response.created") throw new OpenAIError(`When snapshot hasn't been set yet, expected 'response.created' event, got ${dispatchEvent.type}`);
-		return cloneValidatedResponse(context, dispatchEvent.response);
+		if (dispatchEvent$1.type !== "response.created") throw new OpenAIError(`When snapshot hasn't been set yet, expected 'response.created' event, got ${dispatchEvent$1.type}`);
+		return cloneValidatedResponse(context, dispatchEvent$1.response);
 	}
-	if (accumulateResponseOutput(dispatchEvent, snapshot, context, rejectInvalidShellTargets)) return snapshot;
-	if (isResponseLifecycleEvent(dispatchEvent)) return cloneValidatedResponse(context, dispatchEvent.response);
-	return assertNever(dispatchEvent);
+	if (accumulateResponseOutput(dispatchEvent$1, snapshot, context, rejectInvalidShellTargets)) return snapshot;
+	if (isResponseLifecycleEvent(dispatchEvent$1)) return cloneValidatedResponse(context, dispatchEvent$1.response);
+	return assertNever(dispatchEvent$1);
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/responses/ResponseStream.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/responses/ResponseStream.mjs
 var _ResponseStream_instances, _ResponseStream_params, _ResponseStream_currentResponseSnapshot, _ResponseStream_finalResponse, _ResponseStream_accumulatorContext, _ResponseStream_outputPositions, _ResponseStream_wireByIdentity, _ResponseStream_interimOrderDirty, _ResponseStream_completedOutput, _ResponseStream_unfinishedOutput, _ResponseStream_beginRequest, _ResponseStream_prepareEvent, _ResponseStream_prepareOutputEvent, _ResponseStream_outputAtWireIndex, _ResponseStream_assertComplete, _ResponseStream_recordOutput, _ResponseStream_reorderInterimOutput, _ResponseStream_updateInterimResponse, _ResponseStream_addEvent, _ResponseStream_endRequest;
 const nativeEventFields = {
 	annotation: true,
@@ -32896,15 +45203,15 @@ var ResponseStream = class ResponseStream extends EventStream {
 			const error$1 = "error" in event && typeof event.error === "object" && event.error !== null ? event.error : event;
 			throw new APIError$1(void 0, error$1, event.message, void 0);
 		}
-		let dispatchEvent = event;
+		let dispatchEvent$1 = event;
 		let outputPosition;
 		const response = accumulateResponseWithContext(event, __classPrivateFieldGet$1(this, _ResponseStream_currentResponseSnapshot, "f"), __classPrivateFieldGet$1(this, _ResponseStream_accumulatorContext, "f"), true, (sanitizedEvent) => {
-			dispatchEvent = sanitizedEvent;
+			dispatchEvent$1 = sanitizedEvent;
 			const prepared = __classPrivateFieldGet$1(this, _ResponseStream_instances, "m", _ResponseStream_prepareEvent).call(this, sanitizedEvent);
 			if (prepared) {
 				if (hasOwn(prepared, "output_index") && "output_index" in prepared) outputPosition = prepared.output_index;
 				else if (hasOwn(prepared, "response") && "response" in prepared) {
-					dispatchEvent = prepared;
+					dispatchEvent$1 = prepared;
 					if ((prepared.type === "response.created" || prepared.type === "response.queued" || prepared.type === "response.in_progress") && __classPrivateFieldGet$1(this, _ResponseStream_currentResponseSnapshot, "f")) {
 						if (__classPrivateFieldGet$1(this, _ResponseStream_instances, "m", _ResponseStream_updateInterimResponse).call(this, prepared.response, __classPrivateFieldGet$1(this, _ResponseStream_currentResponseSnapshot, "f"))) return null;
 						const identities = new Set(prepared.response.output.map(outputIdentity));
@@ -32921,14 +45228,14 @@ var ResponseStream = class ResponseStream extends EventStream {
 			}
 			return prepared;
 		});
-		__classPrivateFieldGet$1(this, _ResponseStream_instances, "m", _ResponseStream_recordOutput).call(this, dispatchEvent, response, outputPosition);
+		__classPrivateFieldGet$1(this, _ResponseStream_instances, "m", _ResponseStream_recordOutput).call(this, dispatchEvent$1, response, outputPosition);
 		__classPrivateFieldSet$1(this, _ResponseStream_currentResponseSnapshot, response, "f");
-		if (dispatchEvent.type === "response.output_item.added" && dispatchEvent.item == null) return;
-		const wireSnapshot = { ...dispatchEvent };
+		if (dispatchEvent$1.type === "response.output_item.added" && dispatchEvent$1.item == null) return;
+		const wireSnapshot = { ...dispatchEvent$1 };
 		for (const key of Object.keys(nativeEventFields)) {
-			const descriptor = Object.getOwnPropertyDescriptor(dispatchEvent, key);
+			const descriptor = Object.getOwnPropertyDescriptor(dispatchEvent$1, key);
 			if (descriptor && !descriptor.enumerable) Object.defineProperty(wireSnapshot, key, {
-				value: Reflect.get(dispatchEvent, key, dispatchEvent),
+				value: Reflect.get(dispatchEvent$1, key, dispatchEvent$1),
 				enumerable: true
 			});
 		}
@@ -32979,8 +45286,8 @@ var ResponseStream = class ResponseStream extends EventStream {
 		__classPrivateFieldSet$1(this, _ResponseStream_finalResponse, parsedResponse, "f");
 		return parsedResponse;
 	}, Symbol.asyncIterator)]() {
-		return this._createIterator((push) => {
-			const onEvent = (event) => push(event);
+		return this._createIterator((push$1) => {
+			const onEvent = (event) => push$1(event);
 			this.on("event", onEvent);
 			return () => this.off("event", onEvent);
 		}, { onReturn: () => this.abort() });
@@ -33010,7 +45317,7 @@ function finalizeResponse(snapshot, params) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/responses/input-items.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/responses/input-items.mjs
 function resolveResourceRequestOptions$16(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -33068,7 +45375,7 @@ var InputItems = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/responses/${responseID}/input_items`, CursorPage, resolveResourceRequestOptions$16(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/responses/${responseID}/input_items`, CursorPage, resolveResourceRequestOptions$16(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -33077,7 +45384,7 @@ var InputItems = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/responses/input-tokens.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/responses/input-tokens.mjs
 function resolveResourceRequestOptions$15(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -33103,7 +45410,7 @@ var InputTokens = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/responses/responses.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/responses/responses.mjs
 function resolveResourceRequestOptions$14(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -33177,7 +45484,7 @@ var Responses = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.get(path$1`/responses/${responseID}`, resolveResourceRequestOptions$14(options, (options$1) => ({
+		return this._client.get(path$2`/responses/${responseID}`, resolveResourceRequestOptions$14(options, (options$1) => ({
 			query,
 			...options$1,
 			stream: query?.stream ?? false,
@@ -33198,7 +45505,7 @@ var Responses = class extends APIResource$1 {
 	* ```
 	*/
 	delete(responseID, options) {
-		return this._client.delete(path$1`/responses/${responseID}`, resolveResourceRequestOptions$14(options, (options$1) => ({
+		return this._client.delete(path$2`/responses/${responseID}`, resolveResourceRequestOptions$14(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ Accept: "*/*" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -33226,7 +45533,7 @@ var Responses = class extends APIResource$1 {
 	* ```
 	*/
 	cancel(responseID, options) {
-		return this._client.post(path$1`/responses/${responseID}/cancel`, resolveResourceRequestOptions$14(options, (options$1) => ({
+		return this._client.post(path$2`/responses/${responseID}/cancel`, resolveResourceRequestOptions$14(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -33258,7 +45565,7 @@ Responses.InputItems = InputItems;
 Responses.InputTokens = InputTokens;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/safety/alerts.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/safety/alerts.mjs
 function resolveResourceRequestOptions$13(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -33267,7 +45574,7 @@ var Alerts = class extends APIResource$1 {
 	* Get a safety alert belonging to the authenticated API project.
 	*/
 	retrieve(id, options) {
-		return this._client.get(path$1`/safety/alerts/${id}`, resolveResourceRequestOptions$13(options, (options$1) => ({
+		return this._client.get(path$2`/safety/alerts/${id}`, resolveResourceRequestOptions$13(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -33275,7 +45582,7 @@ var Alerts = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/safety/cases.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/safety/cases.mjs
 function resolveResourceRequestOptions$12(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -33284,7 +45591,7 @@ var Cases = class extends APIResource$1 {
 	* Get a safety case by ID.
 	*/
 	retrieve(id, options) {
-		return this._client.get(path$1`/safety/cases/${id}`, resolveResourceRequestOptions$12(options, (options$1) => ({
+		return this._client.get(path$2`/safety/cases/${id}`, resolveResourceRequestOptions$12(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -33292,7 +45599,7 @@ var Cases = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/safety/safety.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/safety/safety.mjs
 var Safety = class extends APIResource$1 {
 	constructor() {
 		super(...arguments);
@@ -33304,7 +45611,7 @@ Safety.Cases = Cases;
 Safety.Alerts = Alerts;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/skills/content.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/skills/content.mjs
 function resolveResourceRequestOptions$11(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -33313,7 +45620,7 @@ var Content$1 = class extends APIResource$1 {
 	* Download a skill zip bundle by its ID.
 	*/
 	retrieve(skillID, options) {
-		return this._client.get(path$1`/skills/${skillID}/content`, resolveResourceRequestOptions$11(options, (options$1) => ({
+		return this._client.get(path$2`/skills/${skillID}/content`, resolveResourceRequestOptions$11(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ Accept: "application/binary" }, options$1?.headers]),
 			__security: { bearerAuth: true },
@@ -33323,7 +45630,7 @@ var Content$1 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/skills/versions/content.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/skills/versions/content.mjs
 function resolveResourceRequestOptions$10(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -33333,7 +45640,7 @@ var Content = class extends APIResource$1 {
 	*/
 	retrieve(version$1, params, options) {
 		const { skill_id } = params;
-		return this._client.get(path$1`/skills/${skill_id}/versions/${version$1}/content`, resolveResourceRequestOptions$10(options, (options$1) => ({
+		return this._client.get(path$2`/skills/${skill_id}/versions/${version$1}/content`, resolveResourceRequestOptions$10(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ Accept: "application/binary" }, options$1?.headers]),
 			__security: { bearerAuth: true },
@@ -33343,7 +45650,7 @@ var Content = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/skills/versions/versions.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/skills/versions/versions.mjs
 function resolveResourceRequestOptions$9(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -33397,7 +45704,7 @@ var Versions$4 = class extends APIResource$1 {
 	* Create a new immutable skill version.
 	*/
 	create(skillID, body = {}, options) {
-		return this._client.post(path$1`/skills/${skillID}/versions`, maybeMultipartFormRequestOptions({
+		return this._client.post(path$2`/skills/${skillID}/versions`, maybeMultipartFormRequestOptions({
 			body,
 			...options,
 			__security: { bearerAuth: true }
@@ -33408,7 +45715,7 @@ var Versions$4 = class extends APIResource$1 {
 	*/
 	retrieve(version$1, params, options) {
 		const { skill_id } = params;
-		return this._client.get(path$1`/skills/${skill_id}/versions/${version$1}`, resolveResourceRequestOptions$9(options, (options$1) => ({
+		return this._client.get(path$2`/skills/${skill_id}/versions/${version$1}`, resolveResourceRequestOptions$9(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -33424,7 +45731,7 @@ var Versions$4 = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/skills/${skillID}/versions`, CursorPage, resolveResourceRequestOptions$9(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/skills/${skillID}/versions`, CursorPage, resolveResourceRequestOptions$9(options, (options$1) => ({
 			query,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -33435,7 +45742,7 @@ var Versions$4 = class extends APIResource$1 {
 	*/
 	delete(version$1, params, options) {
 		const { skill_id } = params;
-		return this._client.delete(path$1`/skills/${skill_id}/versions/${version$1}`, resolveResourceRequestOptions$9(options, (options$1) => ({
+		return this._client.delete(path$2`/skills/${skill_id}/versions/${version$1}`, resolveResourceRequestOptions$9(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -33444,7 +45751,7 @@ var Versions$4 = class extends APIResource$1 {
 Versions$4.Content = Content;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/skills/skills.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/skills/skills.mjs
 function resolveResourceRequestOptions$8(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -33509,7 +45816,7 @@ var Skills$3 = class extends APIResource$1 {
 	* Get a skill by its ID.
 	*/
 	retrieve(skillID, options) {
-		return this._client.get(path$1`/skills/${skillID}`, resolveResourceRequestOptions$8(options, (options$1) => ({
+		return this._client.get(path$2`/skills/${skillID}`, resolveResourceRequestOptions$8(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -33518,7 +45825,7 @@ var Skills$3 = class extends APIResource$1 {
 	* Update the default version pointer for a skill.
 	*/
 	update(skillID, body, options) {
-		return this._client.post(path$1`/skills/${skillID}`, resolveResourceRequestOptions$8(options, (options$1) => ({
+		return this._client.post(path$2`/skills/${skillID}`, resolveResourceRequestOptions$8(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -33545,7 +45852,7 @@ var Skills$3 = class extends APIResource$1 {
 	* Delete a skill by its ID.
 	*/
 	delete(skillID, options) {
-		return this._client.delete(path$1`/skills/${skillID}`, resolveResourceRequestOptions$8(options, (options$1) => ({
+		return this._client.delete(path$2`/skills/${skillID}`, resolveResourceRequestOptions$8(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -33555,7 +45862,7 @@ Skills$3.Content = Content$1;
 Skills$3.Versions = Versions$4;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/uploads/parts.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/uploads/parts.mjs
 function resolveResourceRequestOptions$7(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -33575,7 +45882,7 @@ var Parts = class extends APIResource$1 {
 	* [complete the Upload](https://developers.openai.com/api/reference/resources/uploads/methods/complete).
 	*/
 	create(uploadID, body, options) {
-		return this._client.post(path$1`/uploads/${uploadID}/parts`, resolveResourceRequestOptions$7(options, (options$1) => multipartFormRequestOptions$1({
+		return this._client.post(path$2`/uploads/${uploadID}/parts`, resolveResourceRequestOptions$7(options, (options$1) => multipartFormRequestOptions$1({
 			body,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -33584,7 +45891,7 @@ var Parts = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/uploads/uploads.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/uploads/uploads.mjs
 function resolveResourceRequestOptions$6(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -33629,7 +45936,7 @@ var Uploads = class extends APIResource$1 {
 	* Returns the Upload object with status `cancelled`.
 	*/
 	cancel(uploadID, options) {
-		return this._client.post(path$1`/uploads/${uploadID}/cancel`, resolveResourceRequestOptions$6(options, (options$1) => ({
+		return this._client.post(path$2`/uploads/${uploadID}/cancel`, resolveResourceRequestOptions$6(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -33652,7 +45959,7 @@ var Uploads = class extends APIResource$1 {
 	* object.
 	*/
 	complete(uploadID, body, options) {
-		return this._client.post(path$1`/uploads/${uploadID}/complete`, resolveResourceRequestOptions$6(options, (options$1) => ({
+		return this._client.post(path$2`/uploads/${uploadID}/complete`, resolveResourceRequestOptions$6(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -33662,7 +45969,7 @@ var Uploads = class extends APIResource$1 {
 Uploads.Parts = Parts;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/vector-store-polling.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/vector-store-polling.mjs
 function pollVectorStoreFile(resource, vectorStoreID, fileID, options) {
 	return pollWithResponse((headers) => resource.retrieve(fileID, { vector_store_id: vectorStoreID }, {
 		...options,
@@ -33685,7 +45992,7 @@ function pollVectorStoreFileBatch(resource, vectorStoreID, batchID, options) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/Util.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/Util.mjs
 const allSettledWithThrow = async (promises) => {
 	const results = await Promise.allSettled(promises);
 	const rejected = results.filter((result) => result.status === "rejected");
@@ -33700,7 +46007,7 @@ const allSettledWithThrow = async (promises) => {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/vector-store-upload.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/vector-store-upload.mjs
 async function uploadAndPollVectorStoreFileBatch(resource, client, vectorStoreId, files, fileIds, options) {
 	if (files === null || files === void 0 || files.length === 0) throw new Error("No `files` provided to process. If you've already uploaded files you should use `.createAndPoll()` instead");
 	const configuredConcurrency = options?.maxConcurrency ?? 5;
@@ -33725,7 +46032,7 @@ async function uploadAndPollVectorStoreFileBatch(resource, client, vectorStoreId
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/vector-stores/file-batches.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/vector-stores/file-batches.mjs
 function resolveResourceRequestOptions$5(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -33734,7 +46041,7 @@ var FileBatches = class extends APIResource$1 {
 	* Create a vector store file batch.
 	*/
 	create(vectorStoreID, body, options) {
-		return this._client.post(path$1`/vector_stores/${vectorStoreID}/file_batches`, resolveResourceRequestOptions$5(options, (options$1) => ({
+		return this._client.post(path$2`/vector_stores/${vectorStoreID}/file_batches`, resolveResourceRequestOptions$5(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
@@ -33746,7 +46053,7 @@ var FileBatches = class extends APIResource$1 {
 	*/
 	retrieve(batchID, params, options) {
 		const { vector_store_id } = params;
-		return this._client.get(path$1`/vector_stores/${vector_store_id}/file_batches/${batchID}`, resolveResourceRequestOptions$5(options, (options$1) => ({
+		return this._client.get(path$2`/vector_stores/${vector_store_id}/file_batches/${batchID}`, resolveResourceRequestOptions$5(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -33758,7 +46065,7 @@ var FileBatches = class extends APIResource$1 {
 	*/
 	cancel(batchID, params, options) {
 		const { vector_store_id } = params;
-		return this._client.post(path$1`/vector_stores/${vector_store_id}/file_batches/${batchID}/cancel`, resolveResourceRequestOptions$5(options, (options$1) => ({
+		return this._client.post(path$2`/vector_stores/${vector_store_id}/file_batches/${batchID}/cancel`, resolveResourceRequestOptions$5(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -33776,7 +46083,7 @@ var FileBatches = class extends APIResource$1 {
 	*/
 	listFiles(batchID, params, options) {
 		const { vector_store_id,...query } = params;
-		return this._client.getAPIList(path$1`/vector_stores/${vector_store_id}/file_batches/${batchID}/files`, CursorPage, resolveResourceRequestOptions$5(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/vector_stores/${vector_store_id}/file_batches/${batchID}/files`, CursorPage, resolveResourceRequestOptions$5(options, (options$1) => ({
 			query,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
@@ -33803,7 +46110,7 @@ var FileBatches = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/vector-stores/files.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/vector-stores/files.mjs
 function resolveResourceRequestOptions$4(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -33855,7 +46162,7 @@ var Files$2 = class extends APIResource$1 {
 	* [vector store](https://developers.openai.com/api/reference/resources/vector_stores).
 	*/
 	create(vectorStoreID, body, options) {
-		return this._client.post(path$1`/vector_stores/${vectorStoreID}/files`, resolveResourceRequestOptions$4(options, (options$1) => ({
+		return this._client.post(path$2`/vector_stores/${vectorStoreID}/files`, resolveResourceRequestOptions$4(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
@@ -33867,7 +46174,7 @@ var Files$2 = class extends APIResource$1 {
 	*/
 	retrieve(fileID, params, options) {
 		const { vector_store_id } = params;
-		return this._client.get(path$1`/vector_stores/${vector_store_id}/files/${fileID}`, resolveResourceRequestOptions$4(options, (options$1) => ({
+		return this._client.get(path$2`/vector_stores/${vector_store_id}/files/${fileID}`, resolveResourceRequestOptions$4(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -33878,7 +46185,7 @@ var Files$2 = class extends APIResource$1 {
 	*/
 	update(fileID, params, options) {
 		const { vector_store_id,...body } = params;
-		return this._client.post(path$1`/vector_stores/${vector_store_id}/files/${fileID}`, resolveResourceRequestOptions$4(options, (options$1) => ({
+		return this._client.post(path$2`/vector_stores/${vector_store_id}/files/${fileID}`, resolveResourceRequestOptions$4(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
@@ -33898,7 +46205,7 @@ var Files$2 = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.getAPIList(path$1`/vector_stores/${vectorStoreID}/files`, CursorPage, resolveResourceRequestOptions$4(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/vector_stores/${vectorStoreID}/files`, CursorPage, resolveResourceRequestOptions$4(options, (options$1) => ({
 			query,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
@@ -33913,7 +46220,7 @@ var Files$2 = class extends APIResource$1 {
 	*/
 	delete(fileID, params, options) {
 		const { vector_store_id } = params;
-		return this._client.delete(path$1`/vector_stores/${vector_store_id}/files/${fileID}`, resolveResourceRequestOptions$4(options, (options$1) => ({
+		return this._client.delete(path$2`/vector_stores/${vector_store_id}/files/${fileID}`, resolveResourceRequestOptions$4(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -33960,7 +46267,7 @@ var Files$2 = class extends APIResource$1 {
 	*/
 	content(fileID, params, options) {
 		const { vector_store_id } = params;
-		return this._client.getAPIList(path$1`/vector_stores/${vector_store_id}/files/${fileID}/content`, Page$1, resolveResourceRequestOptions$4(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/vector_stores/${vector_store_id}/files/${fileID}/content`, Page$1, resolveResourceRequestOptions$4(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -33969,7 +46276,7 @@ var Files$2 = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/vector-stores/vector-stores.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/vector-stores/vector-stores.mjs
 function resolveResourceRequestOptions$3(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -34035,7 +46342,7 @@ var VectorStores = class extends APIResource$1 {
 	* Retrieves a vector store.
 	*/
 	retrieve(vectorStoreID, options) {
-		return this._client.get(path$1`/vector_stores/${vectorStoreID}`, resolveResourceRequestOptions$3(options, (options$1) => ({
+		return this._client.get(path$2`/vector_stores/${vectorStoreID}`, resolveResourceRequestOptions$3(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -34045,7 +46352,7 @@ var VectorStores = class extends APIResource$1 {
 	* Modifies a vector store.
 	*/
 	update(vectorStoreID, body, options) {
-		return this._client.post(path$1`/vector_stores/${vectorStoreID}`, resolveResourceRequestOptions$3(options, (options$1) => ({
+		return this._client.post(path$2`/vector_stores/${vectorStoreID}`, resolveResourceRequestOptions$3(options, (options$1) => ({
 			body,
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
@@ -34075,7 +46382,7 @@ var VectorStores = class extends APIResource$1 {
 	* Delete a vector store.
 	*/
 	delete(vectorStoreID, options) {
-		return this._client.delete(path$1`/vector_stores/${vectorStoreID}`, resolveResourceRequestOptions$3(options, (options$1) => ({
+		return this._client.delete(path$2`/vector_stores/${vectorStoreID}`, resolveResourceRequestOptions$3(options, (options$1) => ({
 			...options$1,
 			headers: buildHeaders$1([{ "OpenAI-Beta": "assistants=v2" }, options$1?.headers]),
 			__security: { bearerAuth: true }
@@ -34086,7 +46393,7 @@ var VectorStores = class extends APIResource$1 {
 	* filter.
 	*/
 	search(vectorStoreID, body, options) {
-		return this._client.getAPIList(path$1`/vector_stores/${vectorStoreID}/search`, Page$1, resolveResourceRequestOptions$3(options, (options$1) => ({
+		return this._client.getAPIList(path$2`/vector_stores/${vectorStoreID}/search`, Page$1, resolveResourceRequestOptions$3(options, (options$1) => ({
 			body,
 			method: "post",
 			...options$1,
@@ -34099,7 +46406,7 @@ VectorStores.Files = Files$2;
 VectorStores.FileBatches = FileBatches;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/videos.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/videos.mjs
 function resolveResourceRequestOptions$2(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -34163,7 +46470,7 @@ var Videos = class extends APIResource$1 {
 	* @deprecated The Sora API is scheduled to permanently shut down on September 24, 2026.
 	*/
 	retrieve(videoID, options) {
-		return this._client.get(path$1`/videos/${videoID}`, resolveResourceRequestOptions$2(options, (options$1) => ({
+		return this._client.get(path$2`/videos/${videoID}`, resolveResourceRequestOptions$2(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -34191,7 +46498,7 @@ var Videos = class extends APIResource$1 {
 	* @deprecated The Sora API is scheduled to permanently shut down on September 24, 2026.
 	*/
 	delete(videoID, options) {
-		return this._client.delete(path$1`/videos/${videoID}`, resolveResourceRequestOptions$2(options, (options$1) => ({
+		return this._client.delete(path$2`/videos/${videoID}`, resolveResourceRequestOptions$2(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -34215,7 +46522,7 @@ var Videos = class extends APIResource$1 {
 			query = {};
 		}
 		query = query;
-		return this._client.get(path$1`/videos/${videoID}/content`, resolveResourceRequestOptions$2(options, (options$1) => ({
+		return this._client.get(path$2`/videos/${videoID}/content`, resolveResourceRequestOptions$2(options, (options$1) => ({
 			query,
 			...options$1,
 			headers: buildHeaders$1([{ Accept: "application/binary" }, options$1?.headers]),
@@ -34254,7 +46561,7 @@ var Videos = class extends APIResource$1 {
 	* @deprecated The Sora API is scheduled to permanently shut down on September 24, 2026.
 	*/
 	getCharacter(characterID, options) {
-		return this._client.get(path$1`/videos/characters/${characterID}`, resolveResourceRequestOptions$2(options, (options$1) => ({
+		return this._client.get(path$2`/videos/characters/${characterID}`, resolveResourceRequestOptions$2(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -34265,7 +46572,7 @@ var Videos = class extends APIResource$1 {
 	* @deprecated The Sora API is scheduled to permanently shut down on September 24, 2026.
 	*/
 	remix(videoID, body, options) {
-		return this._client.post(path$1`/videos/${videoID}/remix`, resolveResourceRequestOptions$2(options, (options$1) => maybeMultipartFormRequestOptions({
+		return this._client.post(path$2`/videos/${videoID}/remix`, resolveResourceRequestOptions$2(options, (options$1) => maybeMultipartFormRequestOptions({
 			body,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -34274,7 +46581,7 @@ var Videos = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/lib/webhook-signature.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/lib/webhook-signature.mjs
 const MAX_DIRECT_WEBHOOK_VERIFICATIONS = 32;
 const SHA256_SIGNATURE_LENGTH = 32;
 function webhookSignatureRequiresSigning(signatureHeader) {
@@ -34311,7 +46618,7 @@ function selectMatchingSignature(signatureHeader, expectedSignature, firstSignat
 		const signatureBytes = decodeSignature(signature);
 		if (!signatureBytes) continue;
 		let difference = 0;
-		for (const [index, byte] of signatureBytes.entries()) difference |= byte ^ (expectedSignature[index] ?? 0);
+		for (const [index, byte$1] of signatureBytes.entries()) difference |= byte$1 ^ (expectedSignature[index] ?? 0);
 		if (difference === 0) matchingSignature = signatureBytes;
 	}
 	return matchingSignature;
@@ -34349,7 +46656,7 @@ async function verifyWebhookSignature(payload, signatureHeader, timestamp, webho
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/webhooks/event-types.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/webhooks/event-types.mjs
 function resolveResourceRequestOptions$1(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
 }
@@ -34372,7 +46679,7 @@ var EventTypes = class extends APIResource$1 {
 };
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/resources/webhooks/webhooks.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/resources/webhooks/webhooks.mjs
 var _Webhooks_instances, _Webhooks_validateSecret, _Webhooks_getRequiredHeader;
 function resolveResourceRequestOptions(options, buildOptions) {
 	return Promise.resolve(options).then(buildOptions);
@@ -34455,7 +46762,7 @@ var Webhooks$1 = class extends APIResource$1 {
 	* ```
 	*/
 	retrieve(webhookEndpointID, options) {
-		return this._client.get(path$1`/webhook_endpoints/${webhookEndpointID}`, resolveResourceRequestOptions(options, (options$1) => ({
+		return this._client.get(path$2`/webhook_endpoints/${webhookEndpointID}`, resolveResourceRequestOptions(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -34469,7 +46776,7 @@ var Webhooks$1 = class extends APIResource$1 {
 	* ```
 	*/
 	update(webhookEndpointID, body = {}, options) {
-		return this._client.post(path$1`/webhook_endpoints/${webhookEndpointID}`, resolveResourceRequestOptions(options, (options$1) => ({
+		return this._client.post(path$2`/webhook_endpoints/${webhookEndpointID}`, resolveResourceRequestOptions(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -34499,7 +46806,7 @@ var Webhooks$1 = class extends APIResource$1 {
 	* ```
 	*/
 	delete(webhookEndpointID, options) {
-		return this._client.delete(path$1`/webhook_endpoints/${webhookEndpointID}`, resolveResourceRequestOptions(options, (options$1) => ({
+		return this._client.delete(path$2`/webhook_endpoints/${webhookEndpointID}`, resolveResourceRequestOptions(options, (options$1) => ({
 			...options$1,
 			__security: { bearerAuth: true }
 		})));
@@ -34514,7 +46821,7 @@ var Webhooks$1 = class extends APIResource$1 {
 	* ```
 	*/
 	rotateSecret(webhookEndpointID, body = {}, options) {
-		return this._client.post(path$1`/webhook_endpoints/${webhookEndpointID}/rotate_secret`, resolveResourceRequestOptions(options, (options$1) => ({
+		return this._client.post(path$2`/webhook_endpoints/${webhookEndpointID}/rotate_secret`, resolveResourceRequestOptions(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -34532,7 +46839,7 @@ var Webhooks$1 = class extends APIResource$1 {
 	* ```
 	*/
 	test(webhookEndpointID, body, options) {
-		return this._client.post(path$1`/webhook_endpoints/${webhookEndpointID}/test`, resolveResourceRequestOptions(options, (options$1) => ({
+		return this._client.post(path$2`/webhook_endpoints/${webhookEndpointID}/test`, resolveResourceRequestOptions(options, (options$1) => ({
 			body,
 			...options$1,
 			__security: { bearerAuth: true }
@@ -34577,7 +46884,7 @@ _Webhooks_instances = new WeakSet(), _Webhooks_validateSecret = function _Webhoo
 Webhooks$1.EventTypes = EventTypes;
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/bedrock.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/bedrock.mjs
 const brand_privateBedrockClient = Symbol.for("openai.privateBedrockClient");
 function assertValidBedrockBearerCredential(credential) {
 	if (/^[\t ]|[\t ]$/.test(credential)) throw new TypeError("Bedrock bearer credential contains an invalid HTTP header value.");
@@ -34588,7 +46895,7 @@ function assertValidBedrockBearerCredential(credential) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/realtime-credentials.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/realtime-credentials.mjs
 const realtimeCacheContext = Symbol.for("openai.realtimeAPIKeyCacheContext");
 let cacheContext;
 function getDeferredRealtimeAPIKeyCache(client) {
@@ -34624,7 +46931,7 @@ async function resolveRealtimeAPIKey(client, deferCache = false) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/ws.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/ws.mjs
 function mergeWebSocketAuthHeaders(options, authHeaders, removedHeaders) {
 	const headers = new Map(Object.entries(authHeaders).map(([name, value]) => [name.toLowerCase(), value]));
 	for (const name of removedHeaders) headers.delete(name);
@@ -34637,7 +46944,7 @@ function mergeWebSocketAuthHeaders(options, authHeaders, removedHeaders) {
 const webSocketHeaderRemovals = new WeakMap();
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/internal/provider.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/internal/provider.mjs
 /**
 * A provider factory such as `bedrock(options)` captures configuration in a
 * definition, while every OpenAI client receives a fresh runtime from
@@ -34662,7 +46969,7 @@ function configureProvider(provider) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/client.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/client.mjs
 var _OpenAI_instances, _a$2, _OpenAI_encoder, _OpenAI_x509Authentication, _OpenAI_x509Credential, _OpenAI_x509Fetch, _OpenAI_explicitDataResidency, _OpenAI_responseAttempts, _OpenAI_sanitizedLoggers, _OpenAI_baseURLOverridden, _OpenAI_normalizeRetries, _OpenAI_isSensitiveLogKey, _OpenAI_sanitizeLogValue, _OpenAI_sanitizeLogger;
 function isRunningInBrowserOrBrowserWorker() {
 	if (isRunningInBrowser$1()) return true;
@@ -35026,20 +47333,20 @@ var OpenAI = class {
 		capture?.(cached$1);
 		return true;
 	}
-	buildURL(path$2, query, defaultBaseURL) {
+	buildURL(path$4, query, defaultBaseURL) {
 		const baseURL = !__classPrivateFieldGet$1(this, _OpenAI_instances, "m", _OpenAI_baseURLOverridden).call(this) && defaultBaseURL || this.baseURL;
 		let url;
 		let baseQuery = {};
 		let baseParams;
-		if (isAbsoluteURL$1(path$2)) url = new URL(path$2);
+		if (isAbsoluteURL$1(path$4)) url = new URL(path$4);
 		else if (baseURL.includes("?")) {
 			const base = new URL(baseURL);
 			baseParams = new URLSearchParams(base.search);
 			baseQuery = Object.fromEntries(baseParams);
 			base.search = "";
 			base.hash = "";
-			url = new URL(base.toString() + (base.pathname.endsWith("/") && path$2.startsWith("/") ? path$2.slice(1) : path$2));
-		} else url = new URL(baseURL + (baseURL.endsWith("/") && path$2.startsWith("/") ? path$2.slice(1) : path$2));
+			url = new URL(base.toString() + (base.pathname.endsWith("/") && path$4.startsWith("/") ? path$4.slice(1) : path$4));
+		} else url = new URL(baseURL + (baseURL.endsWith("/") && path$4.startsWith("/") ? path$4.slice(1) : path$4));
 		const defaultQuery = this.defaultQuery();
 		const pathQuery = Object.fromEntries(url.searchParams);
 		let overridingQuery;
@@ -35087,26 +47394,26 @@ var OpenAI = class {
 	* the request properties, e.g. `method` or `url`.
 	*/
 	async prepareRequest(request, { url, options }) {}
-	get(path$2, opts) {
-		return this.methodRequest("get", path$2, opts);
+	get(path$4, opts) {
+		return this.methodRequest("get", path$4, opts);
 	}
-	post(path$2, opts) {
-		return this.methodRequest("post", path$2, opts);
+	post(path$4, opts) {
+		return this.methodRequest("post", path$4, opts);
 	}
-	patch(path$2, opts) {
-		return this.methodRequest("patch", path$2, opts);
+	patch(path$4, opts) {
+		return this.methodRequest("patch", path$4, opts);
 	}
-	put(path$2, opts) {
-		return this.methodRequest("put", path$2, opts);
+	put(path$4, opts) {
+		return this.methodRequest("put", path$4, opts);
 	}
-	delete(path$2, opts) {
-		return this.methodRequest("delete", path$2, opts);
+	delete(path$4, opts) {
+		return this.methodRequest("delete", path$4, opts);
 	}
-	methodRequest(method, path$2, opts) {
+	methodRequest(method, path$4, opts) {
 		return this.request(Promise.resolve(opts).then((opts$1) => {
 			return {
 				method,
-				path: path$2,
+				path: path$4,
 				...opts$1
 			};
 		}));
@@ -35116,10 +47423,10 @@ var OpenAI = class {
 		const request = authentication instanceof X509WorkloadIdentityAuth ? Promise.resolve(options).then((resolved) => authentication.runRequest(() => this.makeRequest(resolved, remainingRetries, void 0), this)) : this.makeRequest(options, remainingRetries, void 0);
 		return this.responsePromise(request);
 	}
-	responsePromise(request, parse$2 = (client, props) => this.parseResponseWithTimeout(client, props)) {
+	responsePromise(request, parse$6 = (client, props) => this.parseResponseWithTimeout(client, props)) {
 		const promise = new APIPromise$1(this, request, (client, props) => {
-			const resume = __classPrivateFieldGet$1(this, _OpenAI_responseAttempts, "f").get(props.controller)?.continueRequest;
-			return resume ? resume(() => parse$2(client, props)) : parse$2(client, props);
+			const resume$1 = __classPrivateFieldGet$1(this, _OpenAI_responseAttempts, "f").get(props.controller)?.continueRequest;
+			return resume$1 ? resume$1(() => parse$6(client, props)) : parse$6(client, props);
 		});
 		promise.withResponse = async () => {
 			const data = await promise;
@@ -35130,7 +47437,7 @@ var OpenAI = class {
 				request_id: response.headers.get("x-request-id")
 			};
 		};
-		promise._thenUnwrap = (transform$1) => this.responsePromise(request, async (client, props) => addRequestID(transform$1(await parse$2(client, props), props), props.response));
+		promise._thenUnwrap = (transform$1) => this.responsePromise(request, async (client, props) => addRequestID(transform$1(await parse$6(client, props), props), props.response));
 		return promise;
 	}
 	async parseResponseWithTimeout(client, props) {
@@ -35140,12 +47447,12 @@ var OpenAI = class {
 			const timeout = attempt?.timeout ?? props.options.timeout ?? this.timeout;
 			const x509Authentication = attempt?.authentication;
 			const callerSignal = x509Authentication ? props.controller.signal : props.options.signal;
-			const abortError = () => x509Authentication && callerSignal ? this._makeUserAbortError(callerSignal) : new APIUserAbortError$1();
+			const abortError$1 = () => x509Authentication && callerSignal ? this._makeUserAbortError(callerSignal) : new APIUserAbortError$1();
 			let remaining;
 			try {
 				remaining = x509Authentication?.remainingTimeout(props.options, timeout) ?? Math.max(0, props.startTime + timeout - Date.now());
 			} catch (error$1) {
-				const cancellation = callerSignal?.aborted ? abortError() : void 0;
+				const cancellation = callerSignal?.aborted ? abortError$1() : void 0;
 				props.controller.abort();
 				CancelReadableStream$1(props.response.body).catch(() => void 0);
 				throw cancellation ?? error$1;
@@ -35154,7 +47461,7 @@ var OpenAI = class {
 			let abortListener;
 			let timedOut = false;
 			try {
-				if (callerSignal?.aborted && attempt?.helperMethod !== "runTools") throw abortError();
+				if (callerSignal?.aborted && attempt?.helperMethod !== "runTools") throw abortError$1();
 				const timeoutPromise = new Promise((_, reject) => {
 					timer = setTimeout(() => {
 						timedOut = true;
@@ -35163,14 +47470,14 @@ var OpenAI = class {
 					}, remaining);
 					if (callerSignal) {
 						abortListener = () => {
-							if (!timedOut) reject(abortError());
+							if (!timedOut) reject(abortError$1());
 						};
 						callerSignal.addEventListener("abort", abortListener, { once: true });
 					}
 				});
 				return await Promise.race([defaultParseResponse$1(client, props), timeoutPromise]);
 			} catch (error$1) {
-				if (callerSignal?.aborted && !timedOut) throw abortError();
+				if (callerSignal?.aborted && !timedOut) throw abortError$1();
 				if (!timedOut) {
 					if (x509Authentication && error$1 instanceof SyntaxError) throw new SyntaxError("X.509 workload identity API response contains invalid JSON.");
 					if (x509Authentication && !(error$1 instanceof OpenAIError)) throw new APIConnectionError$1({ message: "X.509 workload identity API response body could not be read." });
@@ -35435,14 +47742,14 @@ var OpenAI = class {
 			startTime
 		};
 	}
-	getAPIList(path$2, Page$2, opts) {
+	getAPIList(path$4, Page$2, opts) {
 		return this.requestAPIList(Page$2, opts && "then" in opts ? opts.then((opts$1) => ({
 			method: "get",
-			path: path$2,
+			path: path$4,
 			...opts$1
 		})) : {
 			method: "get",
-			path: path$2,
+			path: path$4,
 			...opts
 		});
 	}
@@ -35577,8 +47884,8 @@ var OpenAI = class {
 		if (x509Headers) options.headers = x509Headers.requestHeaders;
 		const x509ClientFetchOptions = x509Authentication ? snapshotX509RequestOptions(this.fetchOptions) : void 0;
 		const x509RequestFetchOptions = x509Authentication ? snapshotX509RequestOptions(options.fetchOptions) : void 0;
-		const { method, path: path$2, query, defaultBaseURL } = options;
-		const url = this.buildURL(path$2, query, defaultBaseURL);
+		const { method, path: path$4, query, defaultBaseURL } = options;
+		const url = this.buildURL(path$4, query, defaultBaseURL);
 		x509Authentication?.snapshotAPIURL(url);
 		const explicitTimeout = "timeout" in options;
 		if (explicitTimeout) validatePositiveInteger$1("timeout", options.timeout);
@@ -36049,7 +48356,7 @@ function isUndiciDispatcherVersionMismatchError(error$1) {
 }
 
 //#endregion
-//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_zod@4.6.7/node_modules/openai/bedrock.mjs
+//#region node_modules/.pnpm/openai@7.39.0_undici@7.30.0_ws@8.22.0_zod@4.6.7/node_modules/openai/bedrock.mjs
 var _a$1;
 _a$1 = brand_privateBedrockClient;
 
@@ -38305,7 +50612,7 @@ function findNewlineIndex(buffer, startIndex) {
 //#region node_modules/.pnpm/@anthropic-ai+sdk@0.135.0_zod@4.6.7/node_modules/@anthropic-ai/sdk/core/streaming.mjs
 var _Stream_client;
 var Stream = /* @__PURE__ */ (() => {
-	class Stream$2 {
+	class Stream$5 {
 		constructor(iterator, controller, client) {
 			this.iterator = iterator;
 			_Stream_client.set(this, void 0);
@@ -38362,7 +50669,7 @@ var Stream = /* @__PURE__ */ (() => {
 					releaseRequestSignal(controller);
 				}
 			}
-			return new Stream$2(iterator, controller, client);
+			return new Stream$5(iterator, controller, client);
 		}
 		/**
 		* Generates a Stream from a newline-separated ReadableStream
@@ -38394,7 +50701,7 @@ var Stream = /* @__PURE__ */ (() => {
 					releaseRequestSignal(controller);
 				}
 			}
-			return new Stream$2(iterator, controller, client);
+			return new Stream$5(iterator, controller, client);
 		}
 		[(_Stream_client = new WeakMap(), Symbol.asyncIterator)]() {
 			return this.iterator();
@@ -38417,7 +50724,7 @@ var Stream = /* @__PURE__ */ (() => {
 					return queue.shift();
 				} };
 			};
-			return [new Stream$2(() => teeIterator(left), this.controller, __classPrivateFieldGet(this, _Stream_client, "f")), new Stream$2(() => teeIterator(right), this.controller, __classPrivateFieldGet(this, _Stream_client, "f"))];
+			return [new Stream$5(() => teeIterator(left), this.controller, __classPrivateFieldGet(this, _Stream_client, "f")), new Stream$5(() => teeIterator(right), this.controller, __classPrivateFieldGet(this, _Stream_client, "f"))];
 		}
 		/**
 		* Converts this stream to a newline-separated ReadableStream of
@@ -38447,7 +50754,7 @@ var Stream = /* @__PURE__ */ (() => {
 			});
 		}
 	}
-	return Stream$2;
+	return Stream$5;
 })();
 async function* _iterSSEMessages(response, controller) {
 	if (!response.body) {
@@ -38886,7 +51193,7 @@ const hex_table = /* @__PURE__ */ (() => {
 	return array$1;
 })();
 const limit = 1024;
-const encode$1 = (str$2, _defaultEncoder, charset, _kind, format) => {
+const encode$1 = (str$2, _defaultEncoder, charset, _kind, format$2) => {
 	if (str$2.length === 0) return str$2;
 	let string$1 = str$2;
 	if (typeof str$2 === "symbol") string$1 = Symbol.prototype.toString.call(str$2);
@@ -38900,7 +51207,7 @@ const encode$1 = (str$2, _defaultEncoder, charset, _kind, format) => {
 		const arr = [];
 		for (let i = 0; i < segment.length; ++i) {
 			let c = segment.charCodeAt(i);
-			if (c === 45 || c === 46 || c === 95 || c === 126 || c >= 48 && c <= 57 || c >= 65 && c <= 90 || c >= 97 && c <= 122 || format === RFC1738 && (c === 40 || c === 41)) {
+			if (c === 45 || c === 46 || c === 95 || c === 126 || c >= 48 && c <= 57 || c >= 65 && c <= 90 || c >= 97 && c <= 122 || format$2 === RFC1738 && (c === 40 || c === 41)) {
 				arr[arr.length] = segment.charAt(i);
 				continue;
 			}
@@ -38980,7 +51287,7 @@ function is_non_nullish_primitive(v) {
 	return typeof v === "string" || typeof v === "number" || typeof v === "boolean" || typeof v === "symbol" || typeof v === "bigint";
 }
 const sentinel = {};
-function inner_stringify(object$1, prefix, generateArrayPrefix, commaRoundTrip, allowEmptyArrays, strictNullHandling, skipNulls, encodeDotInKeys, encoder, filter, sort, allowDots, serializeDate, format, formatter, encodeValuesOnly, charset, sideChannel) {
+function inner_stringify(object$1, prefix, generateArrayPrefix, commaRoundTrip, allowEmptyArrays, strictNullHandling, skipNulls, encodeDotInKeys, encoder, filter$1, sort, allowDots, serializeDate, format$2, formatter, encodeValuesOnly, charset, sideChannel) {
 	let obj$1 = object$1;
 	let tmp_sc = sideChannel;
 	let step = 0;
@@ -38992,20 +51299,20 @@ function inner_stringify(object$1, prefix, generateArrayPrefix, commaRoundTrip, 
 		else find_flag = true;
 		if (typeof tmp_sc.get(sentinel) === "undefined") step = 0;
 	}
-	if (typeof filter === "function") obj$1 = filter(prefix, obj$1);
+	if (typeof filter$1 === "function") obj$1 = filter$1(prefix, obj$1);
 	else if (obj$1 instanceof Date) obj$1 = serializeDate?.(obj$1);
 	else if (generateArrayPrefix === "comma" && isArray(obj$1)) obj$1 = maybe_map(obj$1, function(value) {
 		if (value instanceof Date) return serializeDate?.(value);
 		return value;
 	});
 	if (obj$1 === null) {
-		if (strictNullHandling) return encoder && !encodeValuesOnly ? encoder(prefix, defaults.encoder, charset, "key", format) : prefix;
+		if (strictNullHandling) return encoder && !encodeValuesOnly ? encoder(prefix, defaults.encoder, charset, "key", format$2) : prefix;
 		obj$1 = "";
 	}
 	if (is_non_nullish_primitive(obj$1) || is_buffer(obj$1)) {
 		if (encoder) {
-			const key_value = encodeValuesOnly ? prefix : encoder(prefix, defaults.encoder, charset, "key", format);
-			return [formatter?.(key_value) + "=" + formatter?.(encoder(obj$1, defaults.encoder, charset, "value", format))];
+			const key_value = encodeValuesOnly ? prefix : encoder(prefix, defaults.encoder, charset, "key", format$2);
+			return [formatter?.(key_value) + "=" + formatter?.(encoder(obj$1, defaults.encoder, charset, "value", format$2))];
 		}
 		return [formatter?.(prefix) + "=" + formatter?.(String(obj$1))];
 	}
@@ -39015,7 +51322,7 @@ function inner_stringify(object$1, prefix, generateArrayPrefix, commaRoundTrip, 
 	if (generateArrayPrefix === "comma" && isArray(obj$1)) {
 		if (encodeValuesOnly && encoder) obj$1 = maybe_map(obj$1, encoder);
 		obj_keys = [{ value: obj$1.length > 0 ? obj$1.join(",") || null : void 0 }];
-	} else if (isArray(filter)) obj_keys = filter;
+	} else if (isArray(filter$1)) obj_keys = filter$1;
 	else {
 		const keys = Object.keys(obj$1);
 		obj_keys = sort ? keys.sort(sort) : keys;
@@ -39043,11 +51350,11 @@ function inner_stringify(object$1, prefix, generateArrayPrefix, commaRoundTrip, 
 			encodeDotInKeys,
 			// @ts-ignore
 			generateArrayPrefix === "comma" && encodeValuesOnly && isArray(obj$1) ? null : encoder,
-			filter,
+			filter$1,
 			sort,
 			allowDots,
 			serializeDate,
-			format,
+			format$2,
 			formatter,
 			encodeValuesOnly,
 			charset,
@@ -39062,14 +51369,14 @@ function normalize_stringify_options(opts = defaults) {
 	if (opts.encoder !== null && typeof opts.encoder !== "undefined" && typeof opts.encoder !== "function") throw new TypeError("Encoder has to be a function.");
 	const charset = opts.charset || defaults.charset;
 	if (typeof opts.charset !== "undefined" && opts.charset !== "utf-8" && opts.charset !== "iso-8859-1") throw new TypeError("The charset option must be either utf-8, iso-8859-1, or undefined");
-	let format = default_format;
+	let format$2 = default_format;
 	if (typeof opts.format !== "undefined") {
 		if (!has(formatters, opts.format)) throw new TypeError("Unknown format option provided.");
-		format = opts.format;
+		format$2 = opts.format;
 	}
-	const formatter = formatters[format];
-	let filter = defaults.filter;
-	if (typeof opts.filter === "function" || isArray(opts.filter)) filter = opts.filter;
+	const formatter = formatters[format$2];
+	let filter$1 = defaults.filter;
+	if (typeof opts.filter === "function" || isArray(opts.filter)) filter$1 = opts.filter;
 	let arrayFormat;
 	if (opts.arrayFormat && opts.arrayFormat in array_prefix_generators) arrayFormat = opts.arrayFormat;
 	else if ("indices" in opts) arrayFormat = opts.indices ? "indices" : "repeat";
@@ -39089,8 +51396,8 @@ function normalize_stringify_options(opts = defaults) {
 		encodeDotInKeys: typeof opts.encodeDotInKeys === "boolean" ? opts.encodeDotInKeys : defaults.encodeDotInKeys,
 		encoder: typeof opts.encoder === "function" ? opts.encoder : defaults.encoder,
 		encodeValuesOnly: typeof opts.encodeValuesOnly === "boolean" ? opts.encodeValuesOnly : defaults.encodeValuesOnly,
-		filter,
-		format,
+		filter: filter$1,
+		format: format$2,
 		formatter,
 		serializeDate: typeof opts.serializeDate === "function" ? opts.serializeDate : defaults.serializeDate,
 		skipNulls: typeof opts.skipNulls === "boolean" ? opts.skipNulls : defaults.skipNulls,
@@ -39102,13 +51409,13 @@ function stringify(object$1, opts = {}) {
 	let obj$1 = object$1;
 	const options = normalize_stringify_options(opts);
 	let obj_keys;
-	let filter;
+	let filter$1;
 	if (typeof options.filter === "function") {
-		filter = options.filter;
-		obj$1 = filter("", obj$1);
+		filter$1 = options.filter;
+		obj$1 = filter$1("", obj$1);
 	} else if (isArray(options.filter)) {
-		filter = options.filter;
-		obj_keys = filter;
+		filter$1 = options.filter;
+		obj_keys = filter$1;
 	}
 	const keys = [];
 	if (typeof obj$1 !== "object" || obj$1 === null) return "";
@@ -39216,14 +51523,14 @@ function redactSensitive(body) {
 	}
 	return null;
 }
-async function checkCredentialsFileSafety(path$2, onWarn = (m) => console.warn(`anthropic-sdk: ${m}`)) {
+async function checkCredentialsFileSafety(path$4, onWarn = (m) => console.warn(`anthropic-sdk: ${m}`)) {
 	if (typeof process === "undefined" || process.platform === "win32") return;
-	const { fs } = await import("./node-Chvoc7JQ.js");
-	let resolved = path$2;
+	const { fs: fs$5 } = await import("./node-CNv3GT5Y.js");
+	let resolved = path$4;
 	let st;
 	try {
-		resolved = await fs.promises.realpath(path$2);
-		st = await fs.promises.stat(resolved);
+		resolved = await fs$5.promises.realpath(path$4);
+		st = await fs$5.promises.stat(resolved);
 	} catch {
 		return;
 	}
@@ -39233,28 +51540,28 @@ async function checkCredentialsFileSafety(path$2, onWarn = (m) => console.warn(`
 	if (typeof process.getuid === "function" && st.uid !== process.getuid()) onWarn(`credentials file at ${resolved} is owned by uid ${st.uid} (current process uid ${process.getuid()}); verify this is intentional.`);
 }
 async function writeCredentialsFileAtomic(targetPath, data) {
-	const { fs, path: path$2 } = await import("./node-Chvoc7JQ.js");
-	const dir = path$2.dirname(targetPath);
-	await fs.promises.mkdir(dir, {
+	const { fs: fs$5, path: path$4 } = await import("./node-CNv3GT5Y.js");
+	const dir = path$4.dirname(targetPath);
+	await fs$5.promises.mkdir(dir, {
 		recursive: true,
 		mode: 448
 	});
 	const tmpPath = `${targetPath}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
 	try {
-		const fh = await fs.promises.open(tmpPath, "w", 384);
+		const fh = await fs$5.promises.open(tmpPath, "w", 384);
 		try {
 			await fh.writeFile(JSON.stringify(data, null, 2));
 			await fh.sync();
 		} finally {
 			await fh.close();
 		}
-		await fs.promises.rename(tmpPath, targetPath);
+		await fs$5.promises.rename(tmpPath, targetPath);
 	} catch (err) {
-		await fs.promises.unlink(tmpPath).catch(() => {});
+		await fs$5.promises.unlink(tmpPath).catch(() => {});
 		throw err;
 	}
 	try {
-		const dirFh = await fs.promises.open(dir, "r");
+		const dirFh = await fs$5.promises.open(dir, "r");
 		try {
 			await dirFh.sync();
 		} finally {
@@ -40120,13 +52427,13 @@ const fromBase64 = (str$2) => {
 //#endregion
 //#region node_modules/.pnpm/@anthropic-ai+sdk@0.135.0_zod@4.6.7/node_modules/@anthropic-ai/sdk/internal/utils/uuid.mjs
 let uuid4 = function() {
-	const { crypto: crypto$1 } = globalThis;
-	if (crypto$1?.randomUUID) {
-		uuid4 = crypto$1.randomUUID.bind(crypto$1);
-		return crypto$1.randomUUID();
+	const { crypto: crypto$4 } = globalThis;
+	if (crypto$4?.randomUUID) {
+		uuid4 = crypto$4.randomUUID.bind(crypto$4);
+		return crypto$4.randomUUID();
 	}
 	const u8 = new Uint8Array(1);
-	const randomByte = crypto$1 ? () => crypto$1.getRandomValues(u8)[0] : () => Math.random() * 255 & 255;
+	const randomByte = crypto$4 ? () => crypto$4.getRandomValues(u8)[0] : () => Math.random() * 255 & 255;
 	return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => (+c ^ randomByte() & 15 >> +c / 4).toString(16));
 };
 
@@ -40147,11 +52454,11 @@ const loadConfigWithSource = async (profile) => {
 	const profileName = profile ?? await getActiveProfileName();
 	if (profileName === null) return null;
 	validateProfileName(profileName);
-	const { fs, path: path$2 } = await import("./node-Chvoc7JQ.js");
-	const configPath$1 = path$2.join(rootConfigPath, "configs", `${profileName}.json`);
+	const { fs: fs$5, path: path$4 } = await import("./node-CNv3GT5Y.js");
+	const configPath$1 = path$4.join(rootConfigPath, "configs", `${profileName}.json`);
 	let configRaw;
 	try {
-		configRaw = await fs.promises.readFile(configPath$1, "utf-8");
+		configRaw = await fs$5.promises.readFile(configPath$1, "utf-8");
 	} catch (err) {
 		if (err?.code !== "ENOENT") throw new Error(`failed to read config file ${configPath$1}: ${err}`);
 		configRaw = null;
@@ -40216,26 +52523,26 @@ const getCredentialsPath = async (config$1, profile) => {
 	const profileName = profile ?? await getActiveProfileName();
 	if (!profileName) return null;
 	validateProfileName(profileName);
-	const { path: path$2 } = await import("./node-Chvoc7JQ.js");
-	return path$2.join(rootConfigPath, "credentials", `${profileName}.json`);
+	const { path: path$4 } = await import("./node-CNv3GT5Y.js");
+	return path$4.join(rootConfigPath, "credentials", `${profileName}.json`);
 };
 const getRootConfigPath = async () => {
 	if (!supportsLocalConfigFiles()) return null;
-	const { path: path$2 } = await import("./node-Chvoc7JQ.js");
+	const { path: path$4 } = await import("./node-CNv3GT5Y.js");
 	const configDir = readEnv("ANTHROPIC_CONFIG_DIR");
 	if (configDir) return configDir;
 	const os = getPlatformHeaders()["X-Stainless-OS"];
 	if (os === "Windows") {
 		const appData = readEnv("APPDATA");
-		if (appData) return path$2.join(appData, "Anthropic");
+		if (appData) return path$4.join(appData, "Anthropic");
 		const userProfile = readEnv("USERPROFILE");
-		if (userProfile) return path$2.join(userProfile, "AppData", "Roaming", "Anthropic");
+		if (userProfile) return path$4.join(userProfile, "AppData", "Roaming", "Anthropic");
 		return null;
 	}
 	const xdgConfigHome = readEnv("XDG_CONFIG_HOME");
-	if (xdgConfigHome) return path$2.join(xdgConfigHome, "anthropic");
+	if (xdgConfigHome) return path$4.join(xdgConfigHome, "anthropic");
 	const home = readEnv("HOME");
-	if (home) return path$2.join(home, ".config", "anthropic");
+	if (home) return path$4.join(home, ".config", "anthropic");
 	return null;
 };
 const supportsLocalConfigFiles = () => {
@@ -40247,10 +52554,10 @@ const getActiveProfileName = async () => {
 	if (!rootConfigPath) return null;
 	const profileName = readEnv("ANTHROPIC_PROFILE");
 	if (profileName) return profileName;
-	const { fs, path: path$2 } = await import("./node-Chvoc7JQ.js");
-	const filePath = path$2.join(rootConfigPath, "active_config");
+	const { fs: fs$5, path: path$4 } = await import("./node-CNv3GT5Y.js");
+	const filePath = path$4.join(rootConfigPath, "active_config");
 	try {
-		return (await fs.promises.readFile(filePath, "utf-8")).trim() || "default";
+		return (await fs$5.promises.readFile(filePath, "utf-8")).trim() || "default";
 	} catch (err) {
 		if (err?.code !== "ENOENT") throw new Error(`failed to read ${filePath}: ${err}`);
 		return "default";
@@ -40259,18 +52566,18 @@ const getActiveProfileName = async () => {
 
 //#endregion
 //#region node_modules/.pnpm/@anthropic-ai+sdk@0.135.0_zod@4.6.7/node_modules/@anthropic-ai/sdk/lib/credentials/identity-token.mjs
-function identityTokenFromFile(path$2) {
-	if (!path$2) throw new AnthropicError("Identity token file path is empty");
+function identityTokenFromFile(path$4) {
+	if (!path$4) throw new AnthropicError("Identity token file path is empty");
 	return async () => {
-		const { fs } = await import("./node-Chvoc7JQ.js");
+		const { fs: fs$5 } = await import("./node-CNv3GT5Y.js");
 		let content;
 		try {
-			content = await fs.promises.readFile(path$2, "utf-8");
+			content = await fs$5.promises.readFile(path$4, "utf-8");
 		} catch (err) {
-			throw new AnthropicError(`Failed to read identity token file at ${path$2}: ${err}`);
+			throw new AnthropicError(`Failed to read identity token file at ${path$4}: ${err}`);
 		}
 		const token = content.trim();
-		if (!token) throw new AnthropicError(`Identity token file at ${path$2} is empty`);
+		if (!token) throw new AnthropicError(`Identity token file at ${path$4} is empty`);
 		return token;
 	};
 }
@@ -40335,11 +52642,11 @@ function oidcFederationProvider(config$1) {
 //#region node_modules/.pnpm/@anthropic-ai+sdk@0.135.0_zod@4.6.7/node_modules/@anthropic-ai/sdk/lib/credentials/user-oauth.mjs
 function userOAuthProvider(config$1) {
 	return async (opts) => {
-		const { fs } = await import("./node-Chvoc7JQ.js");
+		const { fs: fs$5 } = await import("./node-CNv3GT5Y.js");
 		await checkCredentialsFileSafety(config$1.credentialsPath, config$1.onSafetyWarning);
 		let raw;
 		try {
-			raw = await fs.promises.readFile(config$1.credentialsPath, "utf-8");
+			raw = await fs$5.promises.readFile(config$1.credentialsPath, "utf-8");
 		} catch (err) {
 			throw new WorkloadIdentityError(`Credentials file not found at ${config$1.credentialsPath}: ${err}`);
 		}
@@ -40503,11 +52810,11 @@ function resolveIdentityTokenProvider(auth) {
 */
 function cachedExchangeProvider(exchange, credentialsPath, onCacheWriteError, onSafetyWarning) {
 	return async (opts) => {
-		const { fs } = await import("./node-Chvoc7JQ.js");
+		const { fs: fs$5 } = await import("./node-CNv3GT5Y.js");
 		await checkCredentialsFileSafety(credentialsPath, onSafetyWarning);
 		let existing;
 		try {
-			const raw = await fs.promises.readFile(credentialsPath, "utf-8");
+			const raw = await fs$5.promises.readFile(credentialsPath, "utf-8");
 			existing = JSON.parse(raw);
 			const token = existing?.["access_token"];
 			if (token && !opts?.forceRefresh) {
@@ -41988,11 +54295,11 @@ function encodeURIPath(str$2) {
 	return str$2.replace(/[^A-Za-z0-9\-._~!$&'()*+,;=:@]+/g, encodeURIComponent);
 }
 const EMPTY = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.create(null));
-const createPathTagFunction = (pathEncoder = encodeURIPath) => function path$2(statics, ...params) {
+const createPathTagFunction = (pathEncoder = encodeURIPath) => function path$4(statics, ...params) {
 	if (statics.length === 1) return statics[0];
 	let postPath = false;
 	const invalidSegments = [];
-	const path$2 = statics.reduce((previousValue, currentValue, index) => {
+	const path$4 = statics.reduce((previousValue, currentValue, index) => {
 		if (/[?#]/.test(currentValue)) postPath = true;
 		const value = params[index];
 		let encoded = (postPath ? encodeURIComponent : pathEncoder)("" + value);
@@ -42011,7 +54318,7 @@ const createPathTagFunction = (pathEncoder = encodeURIPath) => function path$2(s
 		});
 		return previousValue + currentValue + (index === params.length ? "" : encoded);
 	}, "");
-	const pathOnly = path$2.split(/[?#]/, 1)[0];
+	const pathOnly = path$4.split(/[?#]/, 1)[0];
 	const invalidSegmentPattern = /(?<=^|\/)(?:\.|%2e){1,2}(?=\/|$)/gi;
 	let match;
 	while ((match = invalidSegmentPattern.exec(pathOnly)) !== null) invalidSegments.push({
@@ -42024,11 +54331,11 @@ const createPathTagFunction = (pathEncoder = encodeURIPath) => function path$2(s
 		const marks = [];
 		for (const segment of invalidSegments) for (let i = segment.start; i < segment.start + Math.max(1, segment.length); i++) marks[i] = "^";
 		const underline = Array.from(marks, (mark) => mark ?? " ").join("");
-		throw new AnthropicError(`Path parameters result in path with invalid segments:\n${invalidSegments.map((e) => e.error).join("\n")}\n${path$2}\n${underline}`);
+		throw new AnthropicError(`Path parameters result in path with invalid segments:\n${invalidSegments.map((e) => e.error).join("\n")}\n${path$4}\n${underline}`);
 	}
-	return path$2;
+	return path$4;
 };
-const path = /* @__PURE__ */ createPathTagFunction(encodeURIPath);
+const path$1 = /* @__PURE__ */ createPathTagFunction(encodeURIPath);
 
 //#endregion
 //#region node_modules/.pnpm/@anthropic-ai+sdk@0.135.0_zod@4.6.7/node_modules/@anthropic-ai/sdk/resources/messages/batches.mjs
@@ -42094,7 +54401,7 @@ var Batches$1 = class extends APIResource {
 	*/
 	retrieve(messageBatchID, params = {}, options) {
 		const { workspace_id } = params ?? {};
-		return this._client.get(path`/v1/messages/batches/${messageBatchID}`, {
+		return this._client.get(path$1`/v1/messages/batches/${messageBatchID}`, {
 			...options,
 			headers: buildHeaders([{ ...workspace_id != null ? { "anthropic-workspace-id": workspace_id } : void 0 }, options?.headers]),
 			__span: startApiCallSpan(this._client, "anthropic.messages.batches.retrieve", options, {
@@ -42151,7 +54458,7 @@ var Batches$1 = class extends APIResource {
 	*/
 	delete(messageBatchID, params = {}, options) {
 		const { workspace_id } = params ?? {};
-		return this._client.delete(path`/v1/messages/batches/${messageBatchID}`, {
+		return this._client.delete(path$1`/v1/messages/batches/${messageBatchID}`, {
 			...options,
 			headers: buildHeaders([{ ...workspace_id != null ? { "anthropic-workspace-id": workspace_id } : void 0 }, options?.headers]),
 			__span: startApiCallSpan(this._client, "anthropic.messages.batches.delete", options, {
@@ -42183,7 +54490,7 @@ var Batches$1 = class extends APIResource {
 	*/
 	cancel(messageBatchID, params = {}, options) {
 		const { workspace_id } = params ?? {};
-		return this._client.post(path`/v1/messages/batches/${messageBatchID}/cancel`, {
+		return this._client.post(path$1`/v1/messages/batches/${messageBatchID}/cancel`, {
 			...options,
 			headers: buildHeaders([{ ...workspace_id != null ? { "anthropic-workspace-id": workspace_id } : void 0 }, options?.headers]),
 			__span: startApiCallSpan(this._client, "anthropic.messages.batches.cancel", options, {
@@ -42387,7 +54694,7 @@ var DeploymentRuns = class extends APIResource {
 	*/
 	retrieve(deploymentRunID, params = {}, options) {
 		const { betas, workspace_id } = params ?? {};
-		return this._client.get(path`/v1/deployment_runs/${deploymentRunID}?beta=true`, {
+		return this._client.get(path$1`/v1/deployment_runs/${deploymentRunID}?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -42492,7 +54799,7 @@ var Deployments = class extends APIResource {
 	*/
 	retrieve(deploymentID, params = {}, options) {
 		const { betas, workspace_id } = params ?? {};
-		return this._client.get(path`/v1/deployments/${deploymentID}?beta=true`, {
+		return this._client.get(path$1`/v1/deployments/${deploymentID}?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -42517,7 +54824,7 @@ var Deployments = class extends APIResource {
 	*/
 	update(deploymentID, params, options) {
 		const { betas, workspace_id,...body } = params;
-		return this._client.post(path`/v1/deployments/${deploymentID}?beta=true`, {
+		return this._client.post(path$1`/v1/deployments/${deploymentID}?beta=true`, {
 			body,
 			...options,
 			headers: buildHeaders([{
@@ -42577,7 +54884,7 @@ var Deployments = class extends APIResource {
 	*/
 	archive(deploymentID, params = {}, options) {
 		const { betas, workspace_id } = params ?? {};
-		return this._client.post(path`/v1/deployments/${deploymentID}/archive?beta=true`, {
+		return this._client.post(path$1`/v1/deployments/${deploymentID}/archive?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -42602,7 +54909,7 @@ var Deployments = class extends APIResource {
 	*/
 	pause(deploymentID, params = {}, options) {
 		const { betas, workspace_id } = params ?? {};
-		return this._client.post(path`/v1/deployments/${deploymentID}/pause?beta=true`, {
+		return this._client.post(path$1`/v1/deployments/${deploymentID}/pause?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -42627,7 +54934,7 @@ var Deployments = class extends APIResource {
 	*/
 	run(deploymentID, params = {}, options) {
 		const { betas, workspace_id } = params ?? {};
-		return this._client.post(path`/v1/deployments/${deploymentID}/run?beta=true`, {
+		return this._client.post(path$1`/v1/deployments/${deploymentID}/run?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -42652,7 +54959,7 @@ var Deployments = class extends APIResource {
 	*/
 	unpause(deploymentID, params = {}, options) {
 		const { betas, workspace_id } = params ?? {};
-		return this._client.post(path`/v1/deployments/${deploymentID}/unpause?beta=true`, {
+		return this._client.post(path$1`/v1/deployments/${deploymentID}/unpause?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -42723,7 +55030,7 @@ var Dreams = class extends APIResource {
 	*/
 	retrieve(dreamID, params = {}, options) {
 		const { betas, workspace_id } = params ?? {};
-		return this._client.get(path`/v1/dreams/${dreamID}?beta=true`, {
+		return this._client.get(path$1`/v1/dreams/${dreamID}?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "dreaming-2026-04-21"].toString(),
@@ -42795,7 +55102,7 @@ var Dreams = class extends APIResource {
 	*/
 	archive(dreamID, params = {}, options) {
 		const { betas, workspace_id } = params ?? {};
-		return this._client.post(path`/v1/dreams/${dreamID}/archive?beta=true`, {
+		return this._client.post(path$1`/v1/dreams/${dreamID}/archive?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "dreaming-2026-04-21"].toString(),
@@ -42828,7 +55135,7 @@ var Dreams = class extends APIResource {
 	*/
 	cancel(dreamID, params = {}, options) {
 		const { betas, workspace_id } = params ?? {};
-		return this._client.post(path`/v1/dreams/${dreamID}/cancel?beta=true`, {
+		return this._client.post(path$1`/v1/dreams/${dreamID}/cancel?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "dreaming-2026-04-21"].toString(),
@@ -42888,7 +55195,7 @@ var Files$1 = class extends APIResource {
 	*/
 	delete(fileID, params = {}, options) {
 		const { betas, workspace_id } = params ?? {};
-		return this._client.delete(path`/v1/files/${fileID}?beta=true`, {
+		return this._client.delete(path$1`/v1/files/${fileID}?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0,
@@ -42915,7 +55222,7 @@ var Files$1 = class extends APIResource {
 	*/
 	download(fileID, params = {}, options) {
 		const { betas, workspace_id } = params ?? {};
-		return this._client.get(path`/v1/files/${fileID}/content?beta=true`, {
+		return this._client.get(path$1`/v1/files/${fileID}/content?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				Accept: "application/binary",
@@ -42940,7 +55247,7 @@ var Files$1 = class extends APIResource {
 	*/
 	retrieveMetadata(fileID, params = {}, options) {
 		const { betas, workspace_id } = params ?? {};
-		return this._client.get(path`/v1/files/${fileID}?beta=true`, {
+		return this._client.get(path$1`/v1/files/${fileID}?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0,
@@ -43001,7 +55308,7 @@ var Models$1 = class extends APIResource {
 	*/
 	retrieve(modelID, params = {}, options) {
 		const { betas, workspace_id } = params ?? {};
-		return this._client.get(path`/v1/models/${modelID}?beta=true`, {
+		return this._client.get(path$1`/v1/models/${modelID}?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0,
@@ -43089,7 +55396,7 @@ var UserProfiles = class extends APIResource {
 	*/
 	retrieve(userProfileID, params = {}, options) {
 		const { betas, workspace_id } = params ?? {};
-		return this._client.get(path`/v1/user_profiles/${userProfileID}?beta=true`, {
+		return this._client.get(path$1`/v1/user_profiles/${userProfileID}?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "user-profiles-2026-08-18"].toString(),
@@ -43114,7 +55421,7 @@ var UserProfiles = class extends APIResource {
 	*/
 	update(userProfileID, params, options) {
 		const { betas, workspace_id,...body } = params;
-		return this._client.post(path`/v1/user_profiles/${userProfileID}?beta=true`, {
+		return this._client.post(path$1`/v1/user_profiles/${userProfileID}?beta=true`, {
 			body,
 			...options,
 			headers: buildHeaders([{
@@ -43171,7 +55478,7 @@ var UserProfiles = class extends APIResource {
 	*/
 	createEnrollmentURL(userProfileID, params = {}, options) {
 		const { betas, workspace_id } = params ?? {};
-		return this._client.post(path`/v1/user_profiles/${userProfileID}/enrollment_url?beta=true`, {
+		return this._client.post(path$1`/v1/user_profiles/${userProfileID}/enrollment_url?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "user-profiles-2026-08-18"].toString(),
@@ -43901,7 +56208,7 @@ var Versions$3 = class extends APIResource {
 	*/
 	list(agentID, params = {}, options) {
 		const { betas, workspace_id,...query } = params ?? {};
-		return this._client.getAPIList(path`/v1/agents/${agentID}/versions?beta=true`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/agents/${agentID}/versions?beta=true`, PageCursor, {
 			query,
 			...options,
 			headers: buildHeaders([{
@@ -43965,7 +56272,7 @@ var Agents = /* @__PURE__ */ (() => {
 		*/
 		retrieve(agentID, params = {}, options) {
 			const { betas, workspace_id,...query } = params ?? {};
-			return this._client.get(path`/v1/agents/${agentID}?beta=true`, {
+			return this._client.get(path$1`/v1/agents/${agentID}?beta=true`, {
 				query,
 				...options,
 				headers: buildHeaders([{
@@ -43993,7 +56300,7 @@ var Agents = /* @__PURE__ */ (() => {
 		*/
 		update(agentID, params, options) {
 			const { betas, workspace_id,...body } = params;
-			return this._client.post(path`/v1/agents/${agentID}?beta=true`, {
+			return this._client.post(path$1`/v1/agents/${agentID}?beta=true`, {
 				body,
 				...options,
 				headers: buildHeaders([{
@@ -44051,7 +56358,7 @@ var Agents = /* @__PURE__ */ (() => {
 		*/
 		archive(agentID, params = {}, options) {
 			const { betas, workspace_id } = params ?? {};
-			return this._client.post(path`/v1/agents/${agentID}/archive?beta=true`, {
+			return this._client.post(path$1`/v1/agents/${agentID}/archive?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -45234,7 +57541,7 @@ var EnvironmentWorker = /* @__PURE__ */ (() => {
 		const ctrl = new AbortController();
 		const detachExternal = linkAbort(externalSignal, ctrl);
 		const lease = new Lease(ctrl);
-		const agentToolset = await import("./node-DV2ksEzH.js");
+		const agentToolset = await import("./node-CWIM-4Kf.js");
 		let leaseTtlMs;
 		let runner;
 		const heartbeatPromise = heartbeatLoop(sessionClient, work, lease, log$1, this.requestOptions, (ttlMs) => {
@@ -45544,7 +57851,7 @@ var Work = /* @__PURE__ */ (() => {
 		*/
 		retrieve(workID, params, options) {
 			const { environment_id, betas, workspace_id } = params;
-			return this._client.get(path`/v1/environments/${environment_id}/work/${workID}?beta=true`, {
+			return this._client.get(path$1`/v1/environments/${environment_id}/work/${workID}?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -45578,7 +57885,7 @@ var Work = /* @__PURE__ */ (() => {
 		*/
 		update(workID, params, options) {
 			const { environment_id, betas, workspace_id,...body } = params;
-			return this._client.post(path`/v1/environments/${environment_id}/work/${workID}?beta=true`, {
+			return this._client.post(path$1`/v1/environments/${environment_id}/work/${workID}?beta=true`, {
 				body,
 				...options,
 				headers: buildHeaders([{
@@ -45614,7 +57921,7 @@ var Work = /* @__PURE__ */ (() => {
 		*/
 		list(environmentID, params = {}, options) {
 			const { betas,...query } = params ?? {};
-			return this._client.getAPIList(path`/v1/environments/${environmentID}/work?beta=true`, PageCursor, {
+			return this._client.getAPIList(path$1`/v1/environments/${environmentID}/work?beta=true`, PageCursor, {
 				query,
 				...options,
 				headers: buildHeaders([{ "anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString() }, options?.headers]),
@@ -45644,7 +57951,7 @@ var Work = /* @__PURE__ */ (() => {
 		*/
 		ack(workID, params, options) {
 			const { environment_id, betas } = params;
-			return this._client.post(path`/v1/environments/${environment_id}/work/${workID}/ack?beta=true`, {
+			return this._client.post(path$1`/v1/environments/${environment_id}/work/${workID}/ack?beta=true`, {
 				...options,
 				headers: buildHeaders([{ "anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString() }, options?.headers]),
 				__span: startApiCallSpan(this._client, "anthropic.environments.work.ack", options, {
@@ -45674,7 +57981,7 @@ var Work = /* @__PURE__ */ (() => {
 		*/
 		heartbeat(workID, params, options) {
 			const { environment_id, desired_ttl_seconds, expected_last_heartbeat, betas } = params;
-			return this._client.post(path`/v1/environments/${environment_id}/work/${workID}/heartbeat?beta=true`, {
+			return this._client.post(path$1`/v1/environments/${environment_id}/work/${workID}/heartbeat?beta=true`, {
 				query: {
 					desired_ttl_seconds,
 					expected_last_heartbeat
@@ -45709,7 +58016,7 @@ var Work = /* @__PURE__ */ (() => {
 		*/
 		poll(environmentID, params = {}, options) {
 			const { betas, "Anthropic-Worker-ID": anthropicWorkerID,...query } = params ?? {};
-			return this._client.get(path`/v1/environments/${environmentID}/work/poll?beta=true`, {
+			return this._client.get(path$1`/v1/environments/${environmentID}/work/poll?beta=true`, {
 				query,
 				...options,
 				headers: buildHeaders([{
@@ -45736,7 +58043,7 @@ var Work = /* @__PURE__ */ (() => {
 		*/
 		stats(environmentID, params = {}, options) {
 			const { betas, workspace_id } = params ?? {};
-			return this._client.get(path`/v1/environments/${environmentID}/work/stats?beta=true`, {
+			return this._client.get(path$1`/v1/environments/${environmentID}/work/stats?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -45766,7 +58073,7 @@ var Work = /* @__PURE__ */ (() => {
 		*/
 		stop(workID, params, options) {
 			const { environment_id, betas, workspace_id,...body } = params;
-			return this._client.post(path`/v1/environments/${environment_id}/work/${workID}/stop?beta=true`, {
+			return this._client.post(path$1`/v1/environments/${environment_id}/work/${workID}/stop?beta=true`, {
 				body,
 				...options,
 				headers: buildHeaders([{
@@ -45863,7 +58170,7 @@ var Environments = /* @__PURE__ */ (() => {
 		*/
 		retrieve(environmentID, params = {}, options) {
 			const { betas, workspace_id } = params ?? {};
-			return this._client.get(path`/v1/environments/${environmentID}?beta=true`, {
+			return this._client.get(path$1`/v1/environments/${environmentID}?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -45888,7 +58195,7 @@ var Environments = /* @__PURE__ */ (() => {
 		*/
 		update(environmentID, params, options) {
 			const { betas, workspace_id,...body } = params;
-			return this._client.post(path`/v1/environments/${environmentID}?beta=true`, {
+			return this._client.post(path$1`/v1/environments/${environmentID}?beta=true`, {
 				body,
 				...options,
 				headers: buildHeaders([{
@@ -45944,7 +58251,7 @@ var Environments = /* @__PURE__ */ (() => {
 		*/
 		delete(environmentID, params = {}, options) {
 			const { betas, workspace_id } = params ?? {};
-			return this._client.delete(path`/v1/environments/${environmentID}?beta=true`, {
+			return this._client.delete(path$1`/v1/environments/${environmentID}?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -45970,7 +58277,7 @@ var Environments = /* @__PURE__ */ (() => {
 		*/
 		archive(environmentID, params = {}, options) {
 			const { betas, workspace_id } = params ?? {};
-			return this._client.post(path`/v1/environments/${environmentID}/archive?beta=true`, {
+			return this._client.post(path$1`/v1/environments/${environmentID}/archive?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -46004,7 +58311,7 @@ var Memories = class extends APIResource {
 	*/
 	create(memoryStoreID, params, options) {
 		const { view, betas, workspace_id,...body } = params;
-		return this._client.post(path`/v1/memory_stores/${memoryStoreID}/memories?beta=true`, {
+		return this._client.post(path$1`/v1/memory_stores/${memoryStoreID}/memories?beta=true`, {
 			query: { view },
 			body,
 			...options,
@@ -46034,7 +58341,7 @@ var Memories = class extends APIResource {
 	*/
 	retrieve(memoryID, params, options) {
 		const { memory_store_id, betas, workspace_id,...query } = params;
-		return this._client.get(path`/v1/memory_stores/${memory_store_id}/memories/${memoryID}?beta=true`, {
+		return this._client.get(path$1`/v1/memory_stores/${memory_store_id}/memories/${memoryID}?beta=true`, {
 			query,
 			...options,
 			headers: buildHeaders([{
@@ -46065,7 +58372,7 @@ var Memories = class extends APIResource {
 	*/
 	update(memoryID, params, options) {
 		const { memory_store_id, view, betas, workspace_id,...body } = params;
-		return this._client.post(path`/v1/memory_stores/${memory_store_id}/memories/${memoryID}?beta=true`, {
+		return this._client.post(path$1`/v1/memory_stores/${memory_store_id}/memories/${memoryID}?beta=true`, {
 			query: { view },
 			body,
 			...options,
@@ -46098,7 +58405,7 @@ var Memories = class extends APIResource {
 	*/
 	list(memoryStoreID, params = {}, options) {
 		const { betas, workspace_id,...query } = params ?? {};
-		return this._client.getAPIList(path`/v1/memory_stores/${memoryStoreID}/memories?beta=true`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/memory_stores/${memoryStoreID}/memories?beta=true`, PageCursor, {
 			query,
 			...options,
 			headers: buildHeaders([{
@@ -46133,7 +58440,7 @@ var Memories = class extends APIResource {
 	*/
 	delete(memoryID, params, options) {
 		const { memory_store_id, expected_content_sha256, betas, workspace_id } = params;
-		return this._client.delete(path`/v1/memory_stores/${memory_store_id}/memories/${memoryID}?beta=true`, {
+		return this._client.delete(path$1`/v1/memory_stores/${memory_store_id}/memories/${memoryID}?beta=true`, {
 			query: { expected_content_sha256 },
 			...options,
 			headers: buildHeaders([{
@@ -46169,7 +58476,7 @@ var MemoryVersions = class extends APIResource {
 	*/
 	retrieve(memoryVersionID, params, options) {
 		const { memory_store_id, betas, workspace_id,...query } = params;
-		return this._client.get(path`/v1/memory_stores/${memory_store_id}/memory_versions/${memoryVersionID}?beta=true`, {
+		return this._client.get(path$1`/v1/memory_stores/${memory_store_id}/memory_versions/${memoryVersionID}?beta=true`, {
 			query,
 			...options,
 			headers: buildHeaders([{
@@ -46201,7 +58508,7 @@ var MemoryVersions = class extends APIResource {
 	*/
 	list(memoryStoreID, params = {}, options) {
 		const { betas, workspace_id,...query } = params ?? {};
-		return this._client.getAPIList(path`/v1/memory_stores/${memoryStoreID}/memory_versions?beta=true`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/memory_stores/${memoryStoreID}/memory_versions?beta=true`, PageCursor, {
 			query,
 			...options,
 			headers: buildHeaders([{
@@ -46240,7 +58547,7 @@ var MemoryVersions = class extends APIResource {
 	*/
 	redact(memoryVersionID, params, options) {
 		const { memory_store_id, betas, workspace_id } = params;
-		return this._client.post(path`/v1/memory_stores/${memory_store_id}/memory_versions/${memoryVersionID}/redact?beta=true`, {
+		return this._client.post(path$1`/v1/memory_stores/${memory_store_id}/memory_versions/${memoryVersionID}/redact?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "agent-memory-2026-07-22"].toString(),
@@ -46303,7 +58610,7 @@ var MemoryStores = /* @__PURE__ */ (() => {
 		*/
 		retrieve(memoryStoreID, params = {}, options) {
 			const { betas, workspace_id } = params ?? {};
-			return this._client.get(path`/v1/memory_stores/${memoryStoreID}?beta=true`, {
+			return this._client.get(path$1`/v1/memory_stores/${memoryStoreID}?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					"anthropic-beta": [...betas ?? [], "agent-memory-2026-07-22"].toString(),
@@ -46326,7 +58633,7 @@ var MemoryStores = /* @__PURE__ */ (() => {
 		*/
 		update(memoryStoreID, params, options) {
 			const { betas, workspace_id,...body } = params;
-			return this._client.post(path`/v1/memory_stores/${memoryStoreID}?beta=true`, {
+			return this._client.post(path$1`/v1/memory_stores/${memoryStoreID}?beta=true`, {
 				body,
 				...options,
 				headers: buildHeaders([{
@@ -46382,7 +58689,7 @@ var MemoryStores = /* @__PURE__ */ (() => {
 		*/
 		delete(memoryStoreID, params = {}, options) {
 			const { betas, workspace_id } = params ?? {};
-			return this._client.delete(path`/v1/memory_stores/${memoryStoreID}?beta=true`, {
+			return this._client.delete(path$1`/v1/memory_stores/${memoryStoreID}?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					"anthropic-beta": [...betas ?? [], "agent-memory-2026-07-22"].toString(),
@@ -46405,7 +58712,7 @@ var MemoryStores = /* @__PURE__ */ (() => {
 		*/
 		archive(memoryStoreID, params = {}, options) {
 			const { betas, workspace_id } = params ?? {};
-			return this._client.post(path`/v1/memory_stores/${memoryStoreID}/archive?beta=true`, {
+			return this._client.post(path$1`/v1/memory_stores/${memoryStoreID}/archive?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					"anthropic-beta": [...betas ?? [], "agent-memory-2026-07-22"].toString(),
@@ -46490,7 +58797,7 @@ var Batches = class extends APIResource {
 	*/
 	retrieve(messageBatchID, params = {}, options) {
 		const { betas, workspace_id } = params ?? {};
-		return this._client.get(path`/v1/messages/batches/${messageBatchID}?beta=true`, {
+		return this._client.get(path$1`/v1/messages/batches/${messageBatchID}?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "message-batches-2024-09-24"].toString(),
@@ -46555,7 +58862,7 @@ var Batches = class extends APIResource {
 	*/
 	delete(messageBatchID, params = {}, options) {
 		const { betas, workspace_id } = params ?? {};
-		return this._client.delete(path`/v1/messages/batches/${messageBatchID}?beta=true`, {
+		return this._client.delete(path$1`/v1/messages/batches/${messageBatchID}?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "message-batches-2024-09-24"].toString(),
@@ -46591,7 +58898,7 @@ var Batches = class extends APIResource {
 	*/
 	cancel(messageBatchID, params = {}, options) {
 		const { betas, workspace_id } = params ?? {};
-		return this._client.post(path`/v1/messages/batches/${messageBatchID}/cancel?beta=true`, {
+		return this._client.post(path$1`/v1/messages/batches/${messageBatchID}/cancel?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "message-batches-2024-09-24"].toString(),
@@ -47421,7 +59728,7 @@ var APIKeys$1 = class extends APIResource {
 	* ```
 	*/
 	retrieve(apiKeyID, options) {
-		return this._client.get(path`/v1/organizations/api_keys/${apiKeyID}?beta=true`, {
+		return this._client.get(path$1`/v1/organizations/api_keys/${apiKeyID}?beta=true`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.api_keys.retrieve", options, {
 				route: "/v1/organizations/api_keys/{api_key_id}",
@@ -47441,7 +59748,7 @@ var APIKeys$1 = class extends APIResource {
 	* ```
 	*/
 	update(apiKeyID, body, options) {
-		return this._client.post(path`/v1/organizations/api_keys/${apiKeyID}?beta=true`, {
+		return this._client.post(path$1`/v1/organizations/api_keys/${apiKeyID}?beta=true`, {
 			body,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.api_keys.update", options, {
@@ -48148,7 +60455,7 @@ var ExternalKeys$1 = class extends APIResource {
 	* ```
 	*/
 	retrieve(externalKeyID, options) {
-		return this._client.get(path`/v1/organizations/external_keys/${externalKeyID}?beta=true`, {
+		return this._client.get(path$1`/v1/organizations/external_keys/${externalKeyID}?beta=true`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.external_keys.retrieve", options, {
 				route: "/v1/organizations/external_keys/{external_key_id}",
@@ -48172,7 +60479,7 @@ var ExternalKeys$1 = class extends APIResource {
 	* ```
 	*/
 	update(externalKeyID, body, options) {
-		return this._client.post(path`/v1/organizations/external_keys/${externalKeyID}?beta=true`, {
+		return this._client.post(path$1`/v1/organizations/external_keys/${externalKeyID}?beta=true`, {
 			body,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.external_keys.update", options, {
@@ -48219,7 +60526,7 @@ var ExternalKeys$1 = class extends APIResource {
 	* ```
 	*/
 	delete(externalKeyID, options) {
-		return this._client.delete(path`/v1/organizations/external_keys/${externalKeyID}?beta=true`, {
+		return this._client.delete(path$1`/v1/organizations/external_keys/${externalKeyID}?beta=true`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.external_keys.delete", options, {
 				route: "/v1/organizations/external_keys/{external_key_id}",
@@ -48244,7 +60551,7 @@ var ExternalKeys$1 = class extends APIResource {
 	* ```
 	*/
 	validate(externalKeyID, options) {
-		return this._client.post(path`/v1/organizations/external_keys/${externalKeyID}/validate?beta=true`, {
+		return this._client.post(path$1`/v1/organizations/external_keys/${externalKeyID}/validate?beta=true`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.external_keys.validate", options, {
 				route: "/v1/organizations/external_keys/{external_key_id}/validate",
@@ -48314,7 +60621,7 @@ var Issuers$1 = class extends APIResource {
 	*/
 	retrieve(federationIssuerID, params = {}, options) {
 		const { betas } = params ?? {};
-		return this._client.get(path`/v1/organizations/federation_issuers/${federationIssuerID}?beta=true`, {
+		return this._client.get(path$1`/v1/organizations/federation_issuers/${federationIssuerID}?beta=true`, {
 			...options,
 			headers: buildHeaders([{ ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 }, options?.headers]),
 			__span: startApiCallSpan(this._client, "anthropic.organization.federation.issuers.retrieve", options, {
@@ -48347,7 +60654,7 @@ var Issuers$1 = class extends APIResource {
 	*/
 	update(federationIssuerID, params, options) {
 		const { betas,...body } = params;
-		return this._client.post(path`/v1/organizations/federation_issuers/${federationIssuerID}?beta=true`, {
+		return this._client.post(path$1`/v1/organizations/federation_issuers/${federationIssuerID}?beta=true`, {
 			body,
 			...options,
 			headers: buildHeaders([{ ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 }, options?.headers]),
@@ -48414,7 +60721,7 @@ var Issuers$1 = class extends APIResource {
 	*/
 	archive(federationIssuerID, params = {}, options) {
 		const { betas } = params ?? {};
-		return this._client.post(path`/v1/organizations/federation_issuers/${federationIssuerID}/archive?beta=true`, {
+		return this._client.post(path$1`/v1/organizations/federation_issuers/${federationIssuerID}/archive?beta=true`, {
 			...options,
 			headers: buildHeaders([{ ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 }, options?.headers]),
 			__span: startApiCallSpan(this._client, "anthropic.organization.federation.issuers.archive", options, {
@@ -48454,7 +60761,7 @@ var Workspaces$6 = class extends APIResource {
 	*/
 	list(federationRuleID, params = {}, options) {
 		const { betas,...query } = params ?? {};
-		return this._client.getAPIList(path`/v1/organizations/federation_rules/${federationRuleID}/workspaces?beta=true`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/organizations/federation_rules/${federationRuleID}/workspaces?beta=true`, PageCursor, {
 			query,
 			...options,
 			headers: buildHeaders([{ ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 }, options?.headers]),
@@ -48492,7 +60799,7 @@ var Workspaces$6 = class extends APIResource {
 	*/
 	add(federationRuleID, params, options) {
 		const { betas,...body } = params;
-		return this._client.post(path`/v1/organizations/federation_rules/${federationRuleID}/workspaces?beta=true`, {
+		return this._client.post(path$1`/v1/organizations/federation_rules/${federationRuleID}/workspaces?beta=true`, {
 			body,
 			...options,
 			headers: buildHeaders([{ ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 }, options?.headers]),
@@ -48527,7 +60834,7 @@ var Workspaces$6 = class extends APIResource {
 	*/
 	remove(workspaceID, params, options) {
 		const { federation_rule_id, betas } = params;
-		return this._client.delete(path`/v1/organizations/federation_rules/${federation_rule_id}/workspaces/${workspaceID}?beta=true`, {
+		return this._client.delete(path$1`/v1/organizations/federation_rules/${federation_rule_id}/workspaces/${workspaceID}?beta=true`, {
 			...options,
 			headers: buildHeaders([{ ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 }, options?.headers]),
 			__span: startApiCallSpan(this._client, "anthropic.organization.federation.rules.workspaces.remove", options, {
@@ -48615,7 +60922,7 @@ var Rules$1 = /* @__PURE__ */ (() => {
 		*/
 		retrieve(federationRuleID, params = {}, options) {
 			const { betas } = params ?? {};
-			return this._client.get(path`/v1/organizations/federation_rules/${federationRuleID}?beta=true`, {
+			return this._client.get(path$1`/v1/organizations/federation_rules/${federationRuleID}?beta=true`, {
 				...options,
 				headers: buildHeaders([{ ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 }, options?.headers]),
 				__span: startApiCallSpan(this._client, "anthropic.organization.federation.rules.retrieve", options, {
@@ -48657,7 +60964,7 @@ var Rules$1 = /* @__PURE__ */ (() => {
 		*/
 		update(federationRuleID, params, options) {
 			const { betas,...body } = params;
-			return this._client.post(path`/v1/organizations/federation_rules/${federationRuleID}?beta=true`, {
+			return this._client.post(path$1`/v1/organizations/federation_rules/${federationRuleID}?beta=true`, {
 				body,
 				...options,
 				headers: buildHeaders([{ ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 }, options?.headers]),
@@ -48728,7 +61035,7 @@ var Rules$1 = /* @__PURE__ */ (() => {
 		*/
 		archive(federationRuleID, params = {}, options) {
 			const { betas } = params ?? {};
-			return this._client.post(path`/v1/organizations/federation_rules/${federationRuleID}/archive?beta=true`, {
+			return this._client.post(path$1`/v1/organizations/federation_rules/${federationRuleID}/archive?beta=true`, {
 				...options,
 				headers: buildHeaders([{ ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 }, options?.headers]),
 				__span: startApiCallSpan(this._client, "anthropic.organization.federation.rules.archive", options, {
@@ -48799,7 +61106,7 @@ var Invites$1 = class extends APIResource {
 	* ```
 	*/
 	retrieve(inviteID, options) {
-		return this._client.get(path`/v1/organizations/invites/${inviteID}?beta=true`, {
+		return this._client.get(path$1`/v1/organizations/invites/${inviteID}?beta=true`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.invites.retrieve", options, {
 				route: "/v1/organizations/invites/{invite_id}",
@@ -48847,7 +61154,7 @@ var Invites$1 = class extends APIResource {
 	* ```
 	*/
 	delete(inviteID, options) {
-		return this._client.delete(path`/v1/organizations/invites/${inviteID}?beta=true`, {
+		return this._client.delete(path$1`/v1/organizations/invites/${inviteID}?beta=true`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.invites.delete", options, {
 				route: "/v1/organizations/invites/{invite_id}",
@@ -48884,7 +61191,7 @@ var PluginMarketplaces = class extends APIResource {
 	*/
 	retrieve(marketplaceID, params = {}, options) {
 		const { betas,...query } = params ?? {};
-		return this._client.get(path`/v1/organizations/plugin_marketplaces/${marketplaceID}?beta=true`, {
+		return this._client.get(path$1`/v1/organizations/plugin_marketplaces/${marketplaceID}?beta=true`, {
 			query,
 			...options,
 			headers: buildHeaders([{ "anthropic-beta": [...betas ?? [], "ce-plugins-2026-09-01"].toString() }, options?.headers]),
@@ -48923,7 +61230,7 @@ var PluginMarketplaces = class extends APIResource {
 	*/
 	update(marketplaceID, params, options) {
 		const { betas,...body } = params;
-		return this._client.post(path`/v1/organizations/plugin_marketplaces/${marketplaceID}?beta=true`, {
+		return this._client.post(path$1`/v1/organizations/plugin_marketplaces/${marketplaceID}?beta=true`, {
 			body,
 			...options,
 			headers: buildHeaders([{ "anthropic-beta": [...betas ?? [], "ce-plugins-2026-09-01"].toString() }, options?.headers]),
@@ -49136,7 +61443,7 @@ var Users$1 = class extends APIResource {
 	* ```
 	*/
 	retrieve(userID, options) {
-		return this._client.get(path`/v1/organizations/users/${userID}?beta=true`, {
+		return this._client.get(path$1`/v1/organizations/users/${userID}?beta=true`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.users.retrieve", options, {
 				route: "/v1/organizations/users/{user_id}",
@@ -49156,7 +61463,7 @@ var Users$1 = class extends APIResource {
 	* ```
 	*/
 	update(userID, body, options) {
-		return this._client.post(path`/v1/organizations/users/${userID}?beta=true`, {
+		return this._client.post(path$1`/v1/organizations/users/${userID}?beta=true`, {
 			body,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.users.update", options, {
@@ -49203,7 +61510,7 @@ var Users$1 = class extends APIResource {
 	* ```
 	*/
 	remove(userID, options) {
-		return this._client.delete(path`/v1/organizations/users/${userID}?beta=true`, {
+		return this._client.delete(path$1`/v1/organizations/users/${userID}?beta=true`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.users.remove", options, {
 				route: "/v1/organizations/users/{user_id}",
@@ -49247,7 +61554,7 @@ var InstallationSettings = class extends APIResource {
 	*/
 	list(pluginID, params = {}, options) {
 		const { betas,...query } = params ?? {};
-		return this._client.getAPIList(path`/v1/organizations/plugins/${pluginID}/installation_settings?beta=true`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/organizations/plugins/${pluginID}/installation_settings?beta=true`, PageCursor, {
 			query,
 			...options,
 			headers: buildHeaders([{ "anthropic-beta": [...betas ?? [], "ce-plugins-2026-09-01"].toString() }, options?.headers]),
@@ -49303,7 +61610,7 @@ var InstallationSettings = class extends APIResource {
 	*/
 	remove(target, params, options) {
 		const { plugin_id, betas } = params;
-		return this._client.delete(path`/v1/organizations/plugins/${plugin_id}/installation_settings/${target}?beta=true`, {
+		return this._client.delete(path$1`/v1/organizations/plugins/${plugin_id}/installation_settings/${target}?beta=true`, {
 			...options,
 			headers: buildHeaders([{ "anthropic-beta": [...betas ?? [], "ce-plugins-2026-09-01"].toString() }, options?.headers]),
 			__span: startApiCallSpan(this._client, "anthropic.organization.plugins.installation_settings.remove", options, {
@@ -49353,7 +61660,7 @@ var InstallationSettings = class extends APIResource {
 	*/
 	set(target, params, options) {
 		const { plugin_id, betas,...body } = params;
-		return this._client.post(path`/v1/organizations/plugins/${plugin_id}/installation_settings/${target}?beta=true`, {
+		return this._client.post(path$1`/v1/organizations/plugins/${plugin_id}/installation_settings/${target}?beta=true`, {
 			body,
 			...options,
 			headers: buildHeaders([{ "anthropic-beta": [...betas ?? [], "ce-plugins-2026-09-01"].toString() }, options?.headers]),
@@ -49404,7 +61711,7 @@ var Shares = class extends APIResource {
 	*/
 	list(pluginID, params = {}, options) {
 		const { betas,...query } = params ?? {};
-		return this._client.getAPIList(path`/v1/organizations/plugins/${pluginID}/shares?beta=true`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/organizations/plugins/${pluginID}/shares?beta=true`, PageCursor, {
 			query,
 			...options,
 			headers: buildHeaders([{ "anthropic-beta": [...betas ?? [], "ce-plugins-2026-09-01"].toString() }, options?.headers]),
@@ -49468,7 +61775,7 @@ var Versions$2 = class extends APIResource {
 	*/
 	create(pluginID, params, options) {
 		const { betas,...body } = params;
-		return this._client.post(path`/v1/organizations/plugins/${pluginID}/versions?beta=true`, multipartFormRequestOptions({
+		return this._client.post(path$1`/v1/organizations/plugins/${pluginID}/versions?beta=true`, multipartFormRequestOptions({
 			body,
 			...options,
 			headers: buildHeaders([{ "anthropic-beta": [...betas ?? [], "ce-plugins-2026-09-01"].toString() }, options?.headers]),
@@ -49504,7 +61811,7 @@ var Versions$2 = class extends APIResource {
 	*/
 	retrieve(version$1, params, options) {
 		const { plugin_id, betas,...query } = params;
-		return this._client.get(path`/v1/organizations/plugins/${plugin_id}/versions/${version$1}?beta=true`, {
+		return this._client.get(path$1`/v1/organizations/plugins/${plugin_id}/versions/${version$1}?beta=true`, {
 			query,
 			...options,
 			headers: buildHeaders([{ "anthropic-beta": [...betas ?? [], "ce-plugins-2026-09-01"].toString() }, options?.headers]),
@@ -49547,7 +61854,7 @@ var Versions$2 = class extends APIResource {
 	*/
 	list(pluginID, params = {}, options) {
 		const { betas,...query } = params ?? {};
-		return this._client.getAPIList(path`/v1/organizations/plugins/${pluginID}/versions?beta=true`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/organizations/plugins/${pluginID}/versions?beta=true`, PageCursor, {
 			query,
 			...options,
 			headers: buildHeaders([{ "anthropic-beta": [...betas ?? [], "ce-plugins-2026-09-01"].toString() }, options?.headers]),
@@ -49606,7 +61913,7 @@ var Versions$2 = class extends APIResource {
 	*/
 	download(version$1, params, options) {
 		const { plugin_id, betas,...query } = params;
-		return this._client.get(path`/v1/organizations/plugins/${plugin_id}/versions/${version$1}/content?beta=true`, {
+		return this._client.get(path$1`/v1/organizations/plugins/${plugin_id}/versions/${version$1}/content?beta=true`, {
 			query,
 			...options,
 			headers: buildHeaders([{
@@ -49718,7 +62025,7 @@ var Plugins = /* @__PURE__ */ (() => {
 		*/
 		retrieve(pluginID, params = {}, options) {
 			const { betas,...query } = params ?? {};
-			return this._client.get(path`/v1/organizations/plugins/${pluginID}?beta=true`, {
+			return this._client.get(path$1`/v1/organizations/plugins/${pluginID}?beta=true`, {
 				query,
 				...options,
 				headers: buildHeaders([{ "anthropic-beta": [...betas ?? [], "ce-plugins-2026-09-01"].toString() }, options?.headers]),
@@ -49776,7 +62083,7 @@ var Plugins = /* @__PURE__ */ (() => {
 		*/
 		update(pluginID, params, options) {
 			const { betas,...body } = params;
-			return this._client.post(path`/v1/organizations/plugins/${pluginID}?beta=true`, {
+			return this._client.post(path$1`/v1/organizations/plugins/${pluginID}?beta=true`, {
 				body,
 				...options,
 				headers: buildHeaders([{ "anthropic-beta": [...betas ?? [], "ce-plugins-2026-09-01"].toString() }, options?.headers]),
@@ -49871,7 +62178,7 @@ var Plugins = /* @__PURE__ */ (() => {
 		*/
 		delete(pluginID, params = {}, options) {
 			const { betas } = params ?? {};
-			return this._client.delete(path`/v1/organizations/plugins/${pluginID}?beta=true`, {
+			return this._client.delete(path$1`/v1/organizations/plugins/${pluginID}?beta=true`, {
 				...options,
 				headers: buildHeaders([{ "anthropic-beta": [...betas ?? [], "ce-plugins-2026-09-01"].toString() }, options?.headers]),
 				__span: startApiCallSpan(this._client, "anthropic.organization.plugins.delete", options, {
@@ -49906,7 +62213,7 @@ var Members$2 = class extends APIResource {
 	* ```
 	*/
 	list(rbacGroupID, query = {}, options) {
-		return this._client.getAPIList(path`/v1/organizations/rbac_groups/${rbacGroupID}/members?beta=true`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/organizations/rbac_groups/${rbacGroupID}/members?beta=true`, PageCursor, {
 			query,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.rbac_groups.members.list", options, {
@@ -49933,7 +62240,7 @@ var Members$2 = class extends APIResource {
 	* ```
 	*/
 	add(rbacGroupID, body, options) {
-		return this._client.post(path`/v1/organizations/rbac_groups/${rbacGroupID}/members?beta=true`, {
+		return this._client.post(path$1`/v1/organizations/rbac_groups/${rbacGroupID}/members?beta=true`, {
 			body,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.rbac_groups.members.add", options, {
@@ -49962,7 +62269,7 @@ var Members$2 = class extends APIResource {
 	*/
 	remove(userID, params, options) {
 		const { rbac_group_id } = params;
-		return this._client.delete(path`/v1/organizations/rbac_groups/${rbac_group_id}/members/${userID}?beta=true`, {
+		return this._client.delete(path$1`/v1/organizations/rbac_groups/${rbac_group_id}/members/${userID}?beta=true`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.rbac_groups.members.remove", options, {
 				route: "/v1/organizations/rbac_groups/{rbac_group_id}/members/{user_id}",
@@ -50021,7 +62328,7 @@ var RBACGroups = /* @__PURE__ */ (() => {
 		* ```
 		*/
 		retrieve(rbacGroupID, options) {
-			return this._client.get(path`/v1/organizations/rbac_groups/${rbacGroupID}?beta=true`, {
+			return this._client.get(path$1`/v1/organizations/rbac_groups/${rbacGroupID}?beta=true`, {
 				...options,
 				__span: startApiCallSpan(this._client, "anthropic.organization.rbac_groups.retrieve", options, {
 					route: "/v1/organizations/rbac_groups/{rbac_group_id}",
@@ -50045,7 +62352,7 @@ var RBACGroups = /* @__PURE__ */ (() => {
 		* ```
 		*/
 		update(rbacGroupID, body, options) {
-			return this._client.post(path`/v1/organizations/rbac_groups/${rbacGroupID}?beta=true`, {
+			return this._client.post(path$1`/v1/organizations/rbac_groups/${rbacGroupID}?beta=true`, {
 				body,
 				...options,
 				__span: startApiCallSpan(this._client, "anthropic.organization.rbac_groups.update", options, {
@@ -50093,7 +62400,7 @@ var RBACGroups = /* @__PURE__ */ (() => {
 		* ```
 		*/
 		delete(rbacGroupID, options) {
-			return this._client.delete(path`/v1/organizations/rbac_groups/${rbacGroupID}?beta=true`, {
+			return this._client.delete(path$1`/v1/organizations/rbac_groups/${rbacGroupID}?beta=true`, {
 				...options,
 				__span: startApiCallSpan(this._client, "anthropic.organization.rbac_groups.delete", options, {
 					route: "/v1/organizations/rbac_groups/{rbac_group_id}",
@@ -50125,7 +62432,7 @@ var Permissions = class extends APIResource {
 	* ```
 	*/
 	list(rbacRoleID, query = {}, options) {
-		return this._client.getAPIList(path`/v1/organizations/rbac_roles/${rbacRoleID}/permissions?beta=true`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/organizations/rbac_roles/${rbacRoleID}/permissions?beta=true`, PageCursor, {
 			query,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.rbac_roles.permissions.list", options, {
@@ -50159,7 +62466,7 @@ var RBACRoles = /* @__PURE__ */ (() => {
 		* ```
 		*/
 		retrieve(rbacRoleID, options) {
-			return this._client.get(path`/v1/organizations/rbac_roles/${rbacRoleID}?beta=true`, {
+			return this._client.get(path$1`/v1/organizations/rbac_roles/${rbacRoleID}?beta=true`, {
 				...options,
 				__span: startApiCallSpan(this._client, "anthropic.organization.rbac_roles.retrieve", options, {
 					route: "/v1/organizations/rbac_roles/{rbac_role_id}",
@@ -50230,7 +62537,7 @@ var Workspaces$5 = class extends APIResource {
 	*/
 	list(serviceAccountID, params = {}, options) {
 		const { betas,...query } = params ?? {};
-		return this._client.getAPIList(path`/v1/organizations/service_accounts/${serviceAccountID}/workspaces?beta=true`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/organizations/service_accounts/${serviceAccountID}/workspaces?beta=true`, PageCursor, {
 			query,
 			...options,
 			headers: buildHeaders([{ ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 }, options?.headers]),
@@ -50269,7 +62576,7 @@ var Workspaces$5 = class extends APIResource {
 	*/
 	add(serviceAccountID, params, options) {
 		const { betas,...body } = params;
-		return this._client.post(path`/v1/organizations/service_accounts/${serviceAccountID}/workspaces?beta=true`, {
+		return this._client.post(path$1`/v1/organizations/service_accounts/${serviceAccountID}/workspaces?beta=true`, {
 			body,
 			...options,
 			headers: buildHeaders([{ ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 }, options?.headers]),
@@ -50308,7 +62615,7 @@ var Workspaces$5 = class extends APIResource {
 	*/
 	remove(workspaceID, params, options) {
 		const { service_account_id, betas } = params;
-		return this._client.delete(path`/v1/organizations/service_accounts/${service_account_id}/workspaces/${workspaceID}?beta=true`, {
+		return this._client.delete(path$1`/v1/organizations/service_accounts/${service_account_id}/workspaces/${workspaceID}?beta=true`, {
 			...options,
 			headers: buildHeaders([{ ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 }, options?.headers]),
 			__span: startApiCallSpan(this._client, "anthropic.organization.service_accounts.workspaces.remove", options, {
@@ -50383,7 +62690,7 @@ var ServiceAccounts$3 = /* @__PURE__ */ (() => {
 		*/
 		retrieve(serviceAccountID, params = {}, options) {
 			const { betas } = params ?? {};
-			return this._client.get(path`/v1/organizations/service_accounts/${serviceAccountID}?beta=true`, {
+			return this._client.get(path$1`/v1/organizations/service_accounts/${serviceAccountID}?beta=true`, {
 				...options,
 				headers: buildHeaders([{ ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 }, options?.headers]),
 				__span: startApiCallSpan(this._client, "anthropic.organization.service_accounts.retrieve", options, {
@@ -50415,7 +62722,7 @@ var ServiceAccounts$3 = /* @__PURE__ */ (() => {
 		*/
 		update(serviceAccountID, params, options) {
 			const { betas,...body } = params;
-			return this._client.post(path`/v1/organizations/service_accounts/${serviceAccountID}?beta=true`, {
+			return this._client.post(path$1`/v1/organizations/service_accounts/${serviceAccountID}?beta=true`, {
 				body,
 				...options,
 				headers: buildHeaders([{ ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 }, options?.headers]),
@@ -50484,7 +62791,7 @@ var ServiceAccounts$3 = /* @__PURE__ */ (() => {
 		*/
 		archive(serviceAccountID, params = {}, options) {
 			const { betas } = params ?? {};
-			return this._client.post(path`/v1/organizations/service_accounts/${serviceAccountID}/archive?beta=true`, {
+			return this._client.post(path$1`/v1/organizations/service_accounts/${serviceAccountID}/archive?beta=true`, {
 				...options,
 				headers: buildHeaders([{ ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 }, options?.headers]),
 				__span: startApiCallSpan(this._client, "anthropic.organization.service_accounts.archive", options, {
@@ -50552,7 +62859,7 @@ var IncreaseRequests = class extends APIResource {
 	* ```
 	*/
 	retrieve(spendLimitIncreaseRequestID, options) {
-		return this._client.get(path`/v1/organizations/spend_limit_increase_requests/${spendLimitIncreaseRequestID}?beta=true`, {
+		return this._client.get(path$1`/v1/organizations/spend_limit_increase_requests/${spendLimitIncreaseRequestID}?beta=true`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.spend_limits.increase_requests.retrieve", options, {
 				route: "/v1/organizations/spend_limit_increase_requests/{spend_limit_increase_request_id}",
@@ -50606,7 +62913,7 @@ var IncreaseRequests = class extends APIResource {
 	* ```
 	*/
 	approve(spendLimitIncreaseRequestID, body, options) {
-		return this._client.post(path`/v1/organizations/spend_limit_increase_requests/${spendLimitIncreaseRequestID}/approve?beta=true`, {
+		return this._client.post(path$1`/v1/organizations/spend_limit_increase_requests/${spendLimitIncreaseRequestID}/approve?beta=true`, {
 			body,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.spend_limits.increase_requests.approve", options, {
@@ -50630,7 +62937,7 @@ var IncreaseRequests = class extends APIResource {
 	* ```
 	*/
 	deny(spendLimitIncreaseRequestID, body, options) {
-		return this._client.post(path`/v1/organizations/spend_limit_increase_requests/${spendLimitIncreaseRequestID}/deny?beta=true`, {
+		return this._client.post(path$1`/v1/organizations/spend_limit_increase_requests/${spendLimitIncreaseRequestID}/deny?beta=true`, {
 			body,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.spend_limits.increase_requests.deny", options, {
@@ -50662,7 +62969,7 @@ var SpendLimits = /* @__PURE__ */ (() => {
 		* ```
 		*/
 		retrieve(spendLimitID, options) {
-			return this._client.get(path`/v1/organizations/spend_limits/${spendLimitID}?beta=true`, {
+			return this._client.get(path$1`/v1/organizations/spend_limits/${spendLimitID}?beta=true`, {
 				...options,
 				__span: startApiCallSpan(this._client, "anthropic.organization.spend_limits.retrieve", options, {
 					route: "/v1/organizations/spend_limits/{spend_limit_id}",
@@ -50721,7 +63028,7 @@ var SpendLimits = /* @__PURE__ */ (() => {
 		* ```
 		*/
 		delete(spendLimitID, options) {
-			return this._client.delete(path`/v1/organizations/spend_limits/${spendLimitID}?beta=true`, {
+			return this._client.delete(path$1`/v1/organizations/spend_limits/${spendLimitID}?beta=true`, {
 				...options,
 				__span: startApiCallSpan(this._client, "anthropic.organization.spend_limits.delete", options, {
 					route: "/v1/organizations/spend_limits/{spend_limit_id}",
@@ -50794,7 +63101,7 @@ var Workspaces$4 = class extends APIResource {
 	*/
 	list(destinationID, params = {}, options) {
 		const { betas,...query } = params ?? {};
-		return this._client.getAPIList(path`/v1/organizations/telemetry_destinations/${destinationID}/workspaces?beta=true`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/organizations/telemetry_destinations/${destinationID}/workspaces?beta=true`, PageCursor, {
 			query,
 			...options,
 			headers: buildHeaders([{ "anthropic-beta": [...betas ?? [], "telemetry-destinations-2026-08-11"].toString() }, options?.headers]),
@@ -50832,7 +63139,7 @@ var Workspaces$4 = class extends APIResource {
 	*/
 	add(workspaceID, params, options) {
 		const { destination_id, betas } = params;
-		return this._client.post(path`/v1/organizations/telemetry_destinations/${destination_id}/workspaces/${workspaceID}?beta=true`, {
+		return this._client.post(path$1`/v1/organizations/telemetry_destinations/${destination_id}/workspaces/${workspaceID}?beta=true`, {
 			...options,
 			headers: buildHeaders([{ "anthropic-beta": [...betas ?? [], "telemetry-destinations-2026-08-11"].toString() }, options?.headers]),
 			__span: startApiCallSpan(this._client, "anthropic.organization.telemetry_destinations.workspaces.add", options, {
@@ -50868,7 +63175,7 @@ var Workspaces$4 = class extends APIResource {
 	*/
 	remove(workspaceID, params, options) {
 		const { destination_id, betas } = params;
-		return this._client.delete(path`/v1/organizations/telemetry_destinations/${destination_id}/workspaces/${workspaceID}?beta=true`, {
+		return this._client.delete(path$1`/v1/organizations/telemetry_destinations/${destination_id}/workspaces/${workspaceID}?beta=true`, {
 			...options,
 			headers: buildHeaders([{ "anthropic-beta": [...betas ?? [], "telemetry-destinations-2026-08-11"].toString() }, options?.headers]),
 			__span: startApiCallSpan(this._client, "anthropic.organization.telemetry_destinations.workspaces.remove", options, {
@@ -50940,7 +63247,7 @@ var TelemetryDestinations = /* @__PURE__ */ (() => {
 		*/
 		retrieve(destinationID, params = {}, options) {
 			const { betas } = params ?? {};
-			return this._client.get(path`/v1/organizations/telemetry_destinations/${destinationID}?beta=true`, {
+			return this._client.get(path$1`/v1/organizations/telemetry_destinations/${destinationID}?beta=true`, {
 				...options,
 				headers: buildHeaders([{ "anthropic-beta": [...betas ?? [], "telemetry-destinations-2026-08-11"].toString() }, options?.headers]),
 				__span: startApiCallSpan(this._client, "anthropic.organization.telemetry_destinations.retrieve", options, {
@@ -50976,7 +63283,7 @@ var TelemetryDestinations = /* @__PURE__ */ (() => {
 		*/
 		update(destinationID, params, options) {
 			const { betas,...body } = params;
-			return this._client.post(path`/v1/organizations/telemetry_destinations/${destinationID}?beta=true`, {
+			return this._client.post(path$1`/v1/organizations/telemetry_destinations/${destinationID}?beta=true`, {
 				body,
 				...options,
 				headers: buildHeaders([{ "anthropic-beta": [...betas ?? [], "telemetry-destinations-2026-08-11"].toString() }, options?.headers]),
@@ -51039,7 +63346,7 @@ var TelemetryDestinations = /* @__PURE__ */ (() => {
 		*/
 		delete(destinationID, params = {}, options) {
 			const { betas } = params ?? {};
-			return this._client.delete(path`/v1/organizations/telemetry_destinations/${destinationID}?beta=true`, {
+			return this._client.delete(path$1`/v1/organizations/telemetry_destinations/${destinationID}?beta=true`, {
 				...options,
 				headers: buildHeaders([{ "anthropic-beta": [...betas ?? [], "telemetry-destinations-2026-08-11"].toString() }, options?.headers]),
 				__span: startApiCallSpan(this._client, "anthropic.organization.telemetry_destinations.delete", options, {
@@ -51068,7 +63375,7 @@ var TelemetryDestinations = /* @__PURE__ */ (() => {
 		*/
 		test(destinationID, params = {}, options) {
 			const { betas } = params ?? {};
-			return this._client.post(path`/v1/organizations/telemetry_destinations/${destinationID}/test?beta=true`, {
+			return this._client.post(path$1`/v1/organizations/telemetry_destinations/${destinationID}/test?beta=true`, {
 				...options,
 				headers: buildHeaders([{ "anthropic-beta": [...betas ?? [], "telemetry-destinations-2026-08-11"].toString() }, options?.headers]),
 				__span: startApiCallSpan(this._client, "anthropic.organization.telemetry_destinations.test", options, {
@@ -51099,7 +63406,7 @@ var Members$1 = class extends APIResource {
 	*/
 	retrieve(userID, params, options) {
 		const { workspace_id } = params;
-		return this._client.get(path`/v1/organizations/workspaces/${workspace_id}/members/${userID}?beta=true`, {
+		return this._client.get(path$1`/v1/organizations/workspaces/${workspace_id}/members/${userID}?beta=true`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.members.retrieve", options, {
 				route: "/v1/organizations/workspaces/{workspace_id}/members/{user_id}",
@@ -51127,7 +63434,7 @@ var Members$1 = class extends APIResource {
 	*/
 	update(userID, params, options) {
 		const { workspace_id,...body } = params;
-		return this._client.post(path`/v1/organizations/workspaces/${workspace_id}/members/${userID}?beta=true`, {
+		return this._client.post(path$1`/v1/organizations/workspaces/${workspace_id}/members/${userID}?beta=true`, {
 			body,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.members.update", options, {
@@ -51153,7 +63460,7 @@ var Members$1 = class extends APIResource {
 	* ```
 	*/
 	list(workspaceID, query = {}, options) {
-		return this._client.getAPIList(path`/v1/organizations/workspaces/${workspaceID}/members?beta=true`, Page, {
+		return this._client.getAPIList(path$1`/v1/organizations/workspaces/${workspaceID}/members?beta=true`, Page, {
 			query,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.members.list", options, {
@@ -51183,7 +63490,7 @@ var Members$1 = class extends APIResource {
 	* ```
 	*/
 	add(workspaceID, body, options) {
-		return this._client.post(path`/v1/organizations/workspaces/${workspaceID}/members?beta=true`, {
+		return this._client.post(path$1`/v1/organizations/workspaces/${workspaceID}/members?beta=true`, {
 			body,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.members.add", options, {
@@ -51208,7 +63515,7 @@ var Members$1 = class extends APIResource {
 	*/
 	remove(userID, params, options) {
 		const { workspace_id } = params;
-		return this._client.delete(path`/v1/organizations/workspaces/${workspace_id}/members/${userID}?beta=true`, {
+		return this._client.delete(path$1`/v1/organizations/workspaces/${workspace_id}/members/${userID}?beta=true`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.members.remove", options, {
 				route: "/v1/organizations/workspaces/{workspace_id}/members/{user_id}",
@@ -51247,7 +63554,7 @@ var RateLimits$2 = class extends APIResource {
 	* ```
 	*/
 	list(workspaceID, query = {}, options) {
-		return this._client.getAPIList(path`/v1/organizations/workspaces/${workspaceID}/rate_limits?beta=true`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/organizations/workspaces/${workspaceID}/rate_limits?beta=true`, PageCursor, {
 			query,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.rate_limits.list", options, {
@@ -51292,7 +63599,7 @@ var ServiceAccounts$2 = class extends APIResource {
 	*/
 	retrieve(serviceAccountID, params, options) {
 		const { workspace_id, betas } = params;
-		return this._client.get(path`/v1/organizations/workspaces/${workspace_id}/service_accounts/${serviceAccountID}?beta=true`, {
+		return this._client.get(path$1`/v1/organizations/workspaces/${workspace_id}/service_accounts/${serviceAccountID}?beta=true`, {
 			...options,
 			headers: buildHeaders([{ ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 }, options?.headers]),
 			__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.service_accounts.retrieve", options, {
@@ -51332,7 +63639,7 @@ var ServiceAccounts$2 = class extends APIResource {
 	*/
 	update(serviceAccountID, params, options) {
 		const { workspace_id, betas,...body } = params;
-		return this._client.post(path`/v1/organizations/workspaces/${workspace_id}/service_accounts/${serviceAccountID}?beta=true`, {
+		return this._client.post(path$1`/v1/organizations/workspaces/${workspace_id}/service_accounts/${serviceAccountID}?beta=true`, {
 			body,
 			...options,
 			headers: buildHeaders([{ ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 }, options?.headers]),
@@ -51371,7 +63678,7 @@ var ServiceAccounts$2 = class extends APIResource {
 	*/
 	list(workspaceID, params = {}, options) {
 		const { betas,...query } = params ?? {};
-		return this._client.getAPIList(path`/v1/organizations/workspaces/${workspaceID}/service_accounts?beta=true`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/organizations/workspaces/${workspaceID}/service_accounts?beta=true`, PageCursor, {
 			query,
 			...options,
 			headers: buildHeaders([{ ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 }, options?.headers]),
@@ -51412,7 +63719,7 @@ var ServiceAccounts$2 = class extends APIResource {
 	*/
 	add(workspaceID, params, options) {
 		const { betas,...body } = params;
-		return this._client.post(path`/v1/organizations/workspaces/${workspaceID}/service_accounts?beta=true`, {
+		return this._client.post(path$1`/v1/organizations/workspaces/${workspaceID}/service_accounts?beta=true`, {
 			body,
 			...options,
 			headers: buildHeaders([{ ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 }, options?.headers]),
@@ -51449,7 +63756,7 @@ var ServiceAccounts$2 = class extends APIResource {
 	*/
 	remove(serviceAccountID, params, options) {
 		const { workspace_id, betas } = params;
-		return this._client.delete(path`/v1/organizations/workspaces/${workspace_id}/service_accounts/${serviceAccountID}?beta=true`, {
+		return this._client.delete(path$1`/v1/organizations/workspaces/${workspace_id}/service_accounts/${serviceAccountID}?beta=true`, {
 			...options,
 			headers: buildHeaders([{ ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 }, options?.headers]),
 			__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.service_accounts.remove", options, {
@@ -51508,7 +63815,7 @@ var Workspaces$3 = /* @__PURE__ */ (() => {
 		* ```
 		*/
 		retrieve(workspaceID, options) {
-			return this._client.get(path`/v1/organizations/workspaces/${workspaceID}?beta=true`, {
+			return this._client.get(path$1`/v1/organizations/workspaces/${workspaceID}?beta=true`, {
 				...options,
 				__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.retrieve", options, {
 					route: "/v1/organizations/workspaces/{workspace_id}",
@@ -51528,7 +63835,7 @@ var Workspaces$3 = /* @__PURE__ */ (() => {
 		* ```
 		*/
 		update(workspaceID, body, options) {
-			return this._client.post(path`/v1/organizations/workspaces/${workspaceID}?beta=true`, {
+			return this._client.post(path$1`/v1/organizations/workspaces/${workspaceID}?beta=true`, {
 				body,
 				...options,
 				__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.update", options, {
@@ -51576,7 +63883,7 @@ var Workspaces$3 = /* @__PURE__ */ (() => {
 		* ```
 		*/
 		archive(workspaceID, options) {
-			return this._client.post(path`/v1/organizations/workspaces/${workspaceID}/archive?beta=true`, {
+			return this._client.post(path$1`/v1/organizations/workspaces/${workspaceID}/archive?beta=true`, {
 				...options,
 				__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.archive", options, {
 					route: "/v1/organizations/workspaces/{workspace_id}/archive",
@@ -51669,7 +63976,7 @@ var Events$1 = /* @__PURE__ */ (() => {
 		*/
 		list(sessionID, params = {}, options) {
 			const { betas, workspace_id,...query } = params ?? {};
-			return this._client.getAPIList(path`/v1/sessions/${sessionID}/events?beta=true`, PageCursor, {
+			return this._client.getAPIList(path$1`/v1/sessions/${sessionID}/events?beta=true`, PageCursor, {
 				query,
 				...options,
 				headers: buildHeaders([{
@@ -51718,7 +64025,7 @@ var Events$1 = /* @__PURE__ */ (() => {
 		*/
 		send(sessionID, params, options) {
 			const { betas, workspace_id,...body } = params;
-			return this._client.post(path`/v1/sessions/${sessionID}/events?beta=true`, {
+			return this._client.post(path$1`/v1/sessions/${sessionID}/events?beta=true`, {
 				body,
 				...options,
 				headers: buildHeaders([{
@@ -51746,7 +64053,7 @@ var Events$1 = /* @__PURE__ */ (() => {
 		*/
 		stream(sessionID, params = {}, options) {
 			const { betas, workspace_id,...query } = params ?? {};
-			return this._client.get(path`/v1/sessions/${sessionID}/events/stream?beta=true`, {
+			return this._client.get(path$1`/v1/sessions/${sessionID}/events/stream?beta=true`, {
 				query,
 				...options,
 				headers: buildHeaders([{
@@ -51808,7 +64115,7 @@ var Resources = class extends APIResource {
 	*/
 	retrieve(resourceID, params, options) {
 		const { session_id, betas, workspace_id } = params;
-		return this._client.get(path`/v1/sessions/${session_id}/resources/${resourceID}?beta=true`, {
+		return this._client.get(path$1`/v1/sessions/${session_id}/resources/${resourceID}?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -51840,7 +64147,7 @@ var Resources = class extends APIResource {
 	*/
 	update(resourceID, params, options) {
 		const { session_id, betas, workspace_id,...body } = params;
-		return this._client.post(path`/v1/sessions/${session_id}/resources/${resourceID}?beta=true`, {
+		return this._client.post(path$1`/v1/sessions/${session_id}/resources/${resourceID}?beta=true`, {
 			body,
 			...options,
 			headers: buildHeaders([{
@@ -51871,7 +64178,7 @@ var Resources = class extends APIResource {
 	*/
 	list(sessionID, params = {}, options) {
 		const { betas, workspace_id,...query } = params ?? {};
-		return this._client.getAPIList(path`/v1/sessions/${sessionID}/resources?beta=true`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/sessions/${sessionID}/resources?beta=true`, PageCursor, {
 			query,
 			...options,
 			headers: buildHeaders([{
@@ -51899,7 +64206,7 @@ var Resources = class extends APIResource {
 	*/
 	delete(resourceID, params, options) {
 		const { session_id, betas, workspace_id } = params;
-		return this._client.delete(path`/v1/sessions/${session_id}/resources/${resourceID}?beta=true`, {
+		return this._client.delete(path$1`/v1/sessions/${session_id}/resources/${resourceID}?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -51931,7 +64238,7 @@ var Resources = class extends APIResource {
 	*/
 	add(sessionID, params, options) {
 		const { betas, workspace_id,...body } = params;
-		return this._client.post(path`/v1/sessions/${sessionID}/resources?beta=true`, {
+		return this._client.post(path$1`/v1/sessions/${sessionID}/resources?beta=true`, {
 			body,
 			...options,
 			headers: buildHeaders([{
@@ -51966,7 +64273,7 @@ var Events = class extends APIResource {
 	*/
 	list(threadID, params, options) {
 		const { session_id, betas, workspace_id,...query } = params;
-		return this._client.getAPIList(path`/v1/sessions/${session_id}/threads/${threadID}/events?beta=true`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/sessions/${session_id}/threads/${threadID}/events?beta=true`, PageCursor, {
 			query,
 			...options,
 			headers: buildHeaders([{
@@ -52000,7 +64307,7 @@ var Events = class extends APIResource {
 	*/
 	stream(threadID, params, options) {
 		const { session_id, betas, workspace_id,...query } = params;
-		return this._client.get(path`/v1/sessions/${session_id}/threads/${threadID}/stream?beta=true`, {
+		return this._client.get(path$1`/v1/sessions/${session_id}/threads/${threadID}/stream?beta=true`, {
 			query,
 			...options,
 			headers: buildHeaders([{
@@ -52042,7 +64349,7 @@ var Threads = /* @__PURE__ */ (() => {
 		*/
 		retrieve(threadID, params, options) {
 			const { session_id, betas, workspace_id } = params;
-			return this._client.get(path`/v1/sessions/${session_id}/threads/${threadID}?beta=true`, {
+			return this._client.get(path$1`/v1/sessions/${session_id}/threads/${threadID}?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -52072,7 +64379,7 @@ var Threads = /* @__PURE__ */ (() => {
 		*/
 		list(sessionID, params = {}, options) {
 			const { betas, workspace_id,...query } = params ?? {};
-			return this._client.getAPIList(path`/v1/sessions/${sessionID}/threads?beta=true`, PageCursor, {
+			return this._client.getAPIList(path$1`/v1/sessions/${sessionID}/threads?beta=true`, PageCursor, {
 				query,
 				...options,
 				headers: buildHeaders([{
@@ -52104,7 +64411,7 @@ var Threads = /* @__PURE__ */ (() => {
 		*/
 		archive(threadID, params, options) {
 			const { session_id, betas, workspace_id } = params;
-			return this._client.post(path`/v1/sessions/${session_id}/threads/${threadID}/archive?beta=true`, {
+			return this._client.post(path$1`/v1/sessions/${session_id}/threads/${threadID}/archive?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -52195,7 +64502,7 @@ var Sessions = /* @__PURE__ */ (() => {
 		*/
 		retrieve(sessionID, params = {}, options) {
 			const { betas, workspace_id } = params ?? {};
-			return this._client.get(path`/v1/sessions/${sessionID}?beta=true`, {
+			return this._client.get(path$1`/v1/sessions/${sessionID}?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -52220,7 +64527,7 @@ var Sessions = /* @__PURE__ */ (() => {
 		*/
 		update(sessionID, params, options) {
 			const { betas, workspace_id,...body } = params;
-			return this._client.post(path`/v1/sessions/${sessionID}?beta=true`, {
+			return this._client.post(path$1`/v1/sessions/${sessionID}?beta=true`, {
 				body,
 				...options,
 				headers: buildHeaders([{
@@ -52286,7 +64593,7 @@ var Sessions = /* @__PURE__ */ (() => {
 		*/
 		delete(sessionID, params = {}, options) {
 			const { betas, workspace_id } = params ?? {};
-			return this._client.delete(path`/v1/sessions/${sessionID}?beta=true`, {
+			return this._client.delete(path$1`/v1/sessions/${sessionID}?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -52311,7 +64618,7 @@ var Sessions = /* @__PURE__ */ (() => {
 		*/
 		archive(sessionID, params = {}, options) {
 			const { betas, workspace_id } = params ?? {};
-			return this._client.post(path`/v1/sessions/${sessionID}/archive?beta=true`, {
+			return this._client.post(path$1`/v1/sessions/${sessionID}/archive?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -52346,7 +64653,7 @@ var Versions$1 = class extends APIResource {
 	*/
 	create(skillID, params, options) {
 		const { betas, workspace_id,...body } = params;
-		return this._client.post(path`/v1/skills/${skillID}/versions?beta=true`, multipartFormRequestOptions({
+		return this._client.post(path$1`/v1/skills/${skillID}/versions?beta=true`, multipartFormRequestOptions({
 			body,
 			...options,
 			headers: buildHeaders([{
@@ -52373,7 +64680,7 @@ var Versions$1 = class extends APIResource {
 	*/
 	retrieve(version$1, params, options) {
 		const { skill_id, betas, workspace_id } = params;
-		return this._client.get(path`/v1/skills/${skill_id}/versions/${version$1}?beta=true`, {
+		return this._client.get(path$1`/v1/skills/${skill_id}/versions/${version$1}?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0,
@@ -52403,7 +64710,7 @@ var Versions$1 = class extends APIResource {
 	*/
 	list(skillID, params = {}, options) {
 		const { betas, workspace_id,...query } = params ?? {};
-		return this._client.getAPIList(path`/v1/skills/${skillID}/versions?beta=true`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/skills/${skillID}/versions?beta=true`, PageCursor, {
 			query,
 			...options,
 			headers: buildHeaders([{
@@ -52430,7 +64737,7 @@ var Versions$1 = class extends APIResource {
 	*/
 	delete(version$1, params, options) {
 		const { skill_id, betas, workspace_id } = params;
-		return this._client.delete(path`/v1/skills/${skill_id}/versions/${version$1}?beta=true`, {
+		return this._client.delete(path$1`/v1/skills/${skill_id}/versions/${version$1}?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0,
@@ -52461,7 +64768,7 @@ var Versions$1 = class extends APIResource {
 	*/
 	download(version$1, params, options) {
 		const { skill_id, betas, workspace_id } = params;
-		return this._client.get(path`/v1/skills/${skill_id}/versions/${version$1}/content?beta=true`, {
+		return this._client.get(path$1`/v1/skills/${skill_id}/versions/${version$1}/content?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				Accept: "application/binary",
@@ -52525,7 +64832,7 @@ var Skills$1 = /* @__PURE__ */ (() => {
 		*/
 		retrieve(skillID, params = {}, options) {
 			const { betas, workspace_id } = params ?? {};
-			return this._client.get(path`/v1/skills/${skillID}?beta=true`, {
+			return this._client.get(path$1`/v1/skills/${skillID}?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0,
@@ -52579,7 +64886,7 @@ var Skills$1 = /* @__PURE__ */ (() => {
 		*/
 		delete(skillID, params = {}, options) {
 			const { betas, workspace_id } = params ?? {};
-			return this._client.delete(path`/v1/skills/${skillID}?beta=true`, {
+			return this._client.delete(path$1`/v1/skills/${skillID}?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0,
@@ -52620,7 +64927,7 @@ var Certificates = class extends APIResource {
 	*/
 	create(tunnelID, params, options) {
 		const { betas, workspace_id,...body } = params;
-		return this._client.post(path`/v1/tunnels/${tunnelID}/certificates?beta=true`, {
+		return this._client.post(path$1`/v1/tunnels/${tunnelID}/certificates?beta=true`, {
 			body,
 			...options,
 			headers: buildHeaders([{
@@ -52653,7 +64960,7 @@ var Certificates = class extends APIResource {
 	*/
 	retrieve(certificateID, params, options) {
 		const { tunnel_id, betas, workspace_id } = params;
-		return this._client.get(path`/v1/tunnels/${tunnel_id}/certificates/${certificateID}?beta=true`, {
+		return this._client.get(path$1`/v1/tunnels/${tunnel_id}/certificates/${certificateID}?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "mcp-tunnels-2026-06-22"].toString(),
@@ -52689,7 +64996,7 @@ var Certificates = class extends APIResource {
 	*/
 	list(tunnelID, params = {}, options) {
 		const { betas, workspace_id,...query } = params ?? {};
-		return this._client.getAPIList(path`/v1/tunnels/${tunnelID}/certificates?beta=true`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/tunnels/${tunnelID}/certificates?beta=true`, PageCursor, {
 			query,
 			...options,
 			headers: buildHeaders([{
@@ -52729,7 +65036,7 @@ var Certificates = class extends APIResource {
 	*/
 	archive(certificateID, params, options) {
 		const { tunnel_id, betas, workspace_id } = params;
-		return this._client.post(path`/v1/tunnels/${tunnel_id}/certificates/${certificateID}/archive?beta=true`, {
+		return this._client.post(path$1`/v1/tunnels/${tunnel_id}/certificates/${certificateID}/archive?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "mcp-tunnels-2026-06-22"].toString(),
@@ -52801,7 +65108,7 @@ var Tunnels = /* @__PURE__ */ (() => {
 		*/
 		retrieve(tunnelID, params = {}, options) {
 			const { betas, workspace_id } = params ?? {};
-			return this._client.get(path`/v1/tunnels/${tunnelID}?beta=true`, {
+			return this._client.get(path$1`/v1/tunnels/${tunnelID}?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					"anthropic-beta": [...betas ?? [], "mcp-tunnels-2026-06-22"].toString(),
@@ -52869,7 +65176,7 @@ var Tunnels = /* @__PURE__ */ (() => {
 		*/
 		archive(tunnelID, params = {}, options) {
 			const { betas, workspace_id } = params ?? {};
-			return this._client.post(path`/v1/tunnels/${tunnelID}/archive?beta=true`, {
+			return this._client.post(path$1`/v1/tunnels/${tunnelID}/archive?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					"anthropic-beta": [...betas ?? [], "mcp-tunnels-2026-06-22"].toString(),
@@ -52900,7 +65207,7 @@ var Tunnels = /* @__PURE__ */ (() => {
 		*/
 		revealToken(tunnelID, params = {}, options) {
 			const { betas, workspace_id } = params ?? {};
-			return this._client.post(path`/v1/tunnels/${tunnelID}/reveal_token?beta=true`, {
+			return this._client.post(path$1`/v1/tunnels/${tunnelID}/reveal_token?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					"anthropic-beta": [...betas ?? [], "mcp-tunnels-2026-06-22"].toString(),
@@ -52930,7 +65237,7 @@ var Tunnels = /* @__PURE__ */ (() => {
 		*/
 		rotateToken(tunnelID, params, options) {
 			const { betas, workspace_id,...body } = params;
-			return this._client.post(path`/v1/tunnels/${tunnelID}/rotate_token?beta=true`, {
+			return this._client.post(path$1`/v1/tunnels/${tunnelID}/rotate_token?beta=true`, {
 				body,
 				...options,
 				headers: buildHeaders([{
@@ -52972,7 +65279,7 @@ var Credentials = class extends APIResource {
 	*/
 	create(vaultID, params, options) {
 		const { betas, workspace_id,...body } = params;
-		return this._client.post(path`/v1/vaults/${vaultID}/credentials?beta=true`, {
+		return this._client.post(path$1`/v1/vaults/${vaultID}/credentials?beta=true`, {
 			body,
 			...options,
 			headers: buildHeaders([{
@@ -53000,7 +65307,7 @@ var Credentials = class extends APIResource {
 	*/
 	retrieve(credentialID, params, options) {
 		const { vault_id, betas, workspace_id } = params;
-		return this._client.get(path`/v1/vaults/${vault_id}/credentials/${credentialID}?beta=true`, {
+		return this._client.get(path$1`/v1/vaults/${vault_id}/credentials/${credentialID}?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -53029,7 +65336,7 @@ var Credentials = class extends APIResource {
 	*/
 	update(credentialID, params, options) {
 		const { vault_id, betas, workspace_id,...body } = params;
-		return this._client.post(path`/v1/vaults/${vault_id}/credentials/${credentialID}?beta=true`, {
+		return this._client.post(path$1`/v1/vaults/${vault_id}/credentials/${credentialID}?beta=true`, {
 			body,
 			...options,
 			headers: buildHeaders([{
@@ -53060,7 +65367,7 @@ var Credentials = class extends APIResource {
 	*/
 	list(vaultID, params = {}, options) {
 		const { betas, workspace_id,...query } = params ?? {};
-		return this._client.getAPIList(path`/v1/vaults/${vaultID}/credentials?beta=true`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/vaults/${vaultID}/credentials?beta=true`, PageCursor, {
 			query,
 			...options,
 			headers: buildHeaders([{
@@ -53092,7 +65399,7 @@ var Credentials = class extends APIResource {
 	*/
 	delete(credentialID, params, options) {
 		const { vault_id, betas, workspace_id } = params;
-		return this._client.delete(path`/v1/vaults/${vault_id}/credentials/${credentialID}?beta=true`, {
+		return this._client.delete(path$1`/v1/vaults/${vault_id}/credentials/${credentialID}?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -53121,7 +65428,7 @@ var Credentials = class extends APIResource {
 	*/
 	archive(credentialID, params, options) {
 		const { vault_id, betas, workspace_id } = params;
-		return this._client.post(path`/v1/vaults/${vault_id}/credentials/${credentialID}/archive?beta=true`, {
+		return this._client.post(path$1`/v1/vaults/${vault_id}/credentials/${credentialID}/archive?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -53150,7 +65457,7 @@ var Credentials = class extends APIResource {
 	*/
 	mcpOAuthValidate(credentialID, params, options) {
 		const { vault_id, betas, workspace_id } = params;
-		return this._client.post(path`/v1/vaults/${vault_id}/credentials/${credentialID}/mcp_oauth_validate?beta=true`, {
+		return this._client.post(path$1`/v1/vaults/${vault_id}/credentials/${credentialID}/mcp_oauth_validate?beta=true`, {
 			...options,
 			headers: buildHeaders([{
 				"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -53214,7 +65521,7 @@ var Vaults = /* @__PURE__ */ (() => {
 		*/
 		retrieve(vaultID, params = {}, options) {
 			const { betas, workspace_id } = params ?? {};
-			return this._client.get(path`/v1/vaults/${vaultID}?beta=true`, {
+			return this._client.get(path$1`/v1/vaults/${vaultID}?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -53239,7 +65546,7 @@ var Vaults = /* @__PURE__ */ (() => {
 		*/
 		update(vaultID, params, options) {
 			const { betas, workspace_id,...body } = params;
-			return this._client.post(path`/v1/vaults/${vaultID}?beta=true`, {
+			return this._client.post(path$1`/v1/vaults/${vaultID}?beta=true`, {
 				body,
 				...options,
 				headers: buildHeaders([{
@@ -53295,7 +65602,7 @@ var Vaults = /* @__PURE__ */ (() => {
 		*/
 		delete(vaultID, params = {}, options) {
 			const { betas, workspace_id } = params ?? {};
-			return this._client.delete(path`/v1/vaults/${vaultID}?beta=true`, {
+			return this._client.delete(path$1`/v1/vaults/${vaultID}?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -53320,7 +65627,7 @@ var Vaults = /* @__PURE__ */ (() => {
 		*/
 		archive(vaultID, params = {}, options) {
 			const { betas, workspace_id } = params ?? {};
-			return this._client.post(path`/v1/vaults/${vaultID}/archive?beta=true`, {
+			return this._client.post(path$1`/v1/vaults/${vaultID}/archive?beta=true`, {
 				...options,
 				headers: buildHeaders([{
 					"anthropic-beta": [...betas ?? [], "managed-agents-2026-04-01"].toString(),
@@ -54030,7 +66337,7 @@ function rejectCompactionEdit(params) {
 */
 function withoutCompactionIncompatibleParams(params) {
 	const { context_management, stop_sequences, output_format,...kept } = params;
-	const withoutFormat = ({ format,...outputConfig }) => outputConfig;
+	const withoutFormat = ({ format: format$2,...outputConfig }) => outputConfig;
 	if (kept.tool_choice?.type === "any" || kept.tool_choice?.type === "tool") delete kept.tool_choice;
 	if (kept.output_config) kept.output_config = withoutFormat(kept.output_config);
 	if (Array.isArray(kept.fallbacks)) kept.fallbacks = kept.fallbacks.map((fallback) => fallback.output_config ? {
@@ -54490,7 +66797,7 @@ var Files = class extends APIResource {
 	*/
 	delete(fileID, params = {}, options) {
 		const { workspace_id } = params ?? {};
-		return this._client.delete(path`/v1/files/${fileID}`, {
+		return this._client.delete(path$1`/v1/files/${fileID}`, {
 			...options,
 			headers: buildHeaders([{ ...workspace_id != null ? { "anthropic-workspace-id": workspace_id } : void 0 }, options?.headers]),
 			__span: startApiCallSpan(this._client, "anthropic.files.delete", options, {
@@ -54512,7 +66819,7 @@ var Files = class extends APIResource {
 	*/
 	download(fileID, params = {}, options) {
 		const { workspace_id } = params ?? {};
-		return this._client.get(path`/v1/files/${fileID}/content`, {
+		return this._client.get(path$1`/v1/files/${fileID}/content`, {
 			...options,
 			headers: buildHeaders([{
 				Accept: "application/binary",
@@ -54537,7 +66844,7 @@ var Files = class extends APIResource {
 	*/
 	retrieveMetadata(fileID, params = {}, options) {
 		const { workspace_id } = params ?? {};
-		return this._client.get(path`/v1/files/${fileID}`, {
+		return this._client.get(path$1`/v1/files/${fileID}`, {
 			...options,
 			headers: buildHeaders([{ ...workspace_id != null ? { "anthropic-workspace-id": workspace_id } : void 0 }, options?.headers]),
 			__span: startApiCallSpan(this._client, "anthropic.files.retrieve_metadata", options, {
@@ -54590,7 +66897,7 @@ var Models = class extends APIResource {
 	*/
 	retrieve(modelID, params = {}, options) {
 		const { betas, workspace_id } = params ?? {};
-		return this._client.get(path`/v1/models/${modelID}`, {
+		return this._client.get(path$1`/v1/models/${modelID}`, {
 			...options,
 			headers: buildHeaders([{
 				...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0,
@@ -54652,7 +66959,7 @@ var APIKeys = class extends APIResource {
 	* ```
 	*/
 	retrieve(apiKeyID, options) {
-		return this._client.get(path`/v1/organizations/api_keys/${apiKeyID}`, {
+		return this._client.get(path$1`/v1/organizations/api_keys/${apiKeyID}`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.api_keys.retrieve", options, {
 				route: "/v1/organizations/api_keys/{api_key_id}",
@@ -54671,7 +66978,7 @@ var APIKeys = class extends APIResource {
 	* ```
 	*/
 	update(apiKeyID, body, options) {
-		return this._client.post(path`/v1/organizations/api_keys/${apiKeyID}`, {
+		return this._client.post(path$1`/v1/organizations/api_keys/${apiKeyID}`, {
 			body,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.api_keys.update", options, {
@@ -54805,7 +67112,7 @@ var ExternalKeys = class extends APIResource {
 	* ```
 	*/
 	retrieve(externalKeyID, options) {
-		return this._client.get(path`/v1/organizations/external_keys/${externalKeyID}`, {
+		return this._client.get(path$1`/v1/organizations/external_keys/${externalKeyID}`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.external_keys.retrieve", options, {
 				route: "/v1/organizations/external_keys/{external_key_id}",
@@ -54829,7 +67136,7 @@ var ExternalKeys = class extends APIResource {
 	* ```
 	*/
 	update(externalKeyID, body, options) {
-		return this._client.post(path`/v1/organizations/external_keys/${externalKeyID}`, {
+		return this._client.post(path$1`/v1/organizations/external_keys/${externalKeyID}`, {
 			body,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.external_keys.update", options, {
@@ -54876,7 +67183,7 @@ var ExternalKeys = class extends APIResource {
 	* ```
 	*/
 	delete(externalKeyID, options) {
-		return this._client.delete(path`/v1/organizations/external_keys/${externalKeyID}`, {
+		return this._client.delete(path$1`/v1/organizations/external_keys/${externalKeyID}`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.external_keys.delete", options, {
 				route: "/v1/organizations/external_keys/{external_key_id}",
@@ -54901,7 +67208,7 @@ var ExternalKeys = class extends APIResource {
 	* ```
 	*/
 	validate(externalKeyID, options) {
-		return this._client.post(path`/v1/organizations/external_keys/${externalKeyID}/validate`, {
+		return this._client.post(path$1`/v1/organizations/external_keys/${externalKeyID}/validate`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.external_keys.validate", options, {
 				route: "/v1/organizations/external_keys/{external_key_id}/validate",
@@ -54951,7 +67258,7 @@ var Invites = class extends APIResource {
 	* ```
 	*/
 	retrieve(inviteID, options) {
-		return this._client.get(path`/v1/organizations/invites/${inviteID}`, {
+		return this._client.get(path$1`/v1/organizations/invites/${inviteID}`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.invites.retrieve", options, {
 				route: "/v1/organizations/invites/{invite_id}",
@@ -54998,7 +67305,7 @@ var Invites = class extends APIResource {
 	* ```
 	*/
 	delete(inviteID, options) {
-		return this._client.delete(path`/v1/organizations/invites/${inviteID}`, {
+		return this._client.delete(path$1`/v1/organizations/invites/${inviteID}`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.invites.delete", options, {
 				route: "/v1/organizations/invites/{invite_id}",
@@ -55059,7 +67366,7 @@ var Users = class extends APIResource {
 	* ```
 	*/
 	retrieve(userID, options) {
-		return this._client.get(path`/v1/organizations/users/${userID}`, {
+		return this._client.get(path$1`/v1/organizations/users/${userID}`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.users.retrieve", options, {
 				route: "/v1/organizations/users/{user_id}",
@@ -55079,7 +67386,7 @@ var Users = class extends APIResource {
 	* ```
 	*/
 	update(userID, body, options) {
-		return this._client.post(path`/v1/organizations/users/${userID}`, {
+		return this._client.post(path$1`/v1/organizations/users/${userID}`, {
 			body,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.users.update", options, {
@@ -55126,7 +67433,7 @@ var Users = class extends APIResource {
 	* ```
 	*/
 	remove(userID, options) {
-		return this._client.delete(path`/v1/organizations/users/${userID}`, {
+		return this._client.delete(path$1`/v1/organizations/users/${userID}`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.users.remove", options, {
 				route: "/v1/organizations/users/{user_id}",
@@ -55193,7 +67500,7 @@ var Issuers = class extends APIResource {
 	* ```
 	*/
 	retrieve(federationIssuerID, options) {
-		return this._client.get(path`/v1/organizations/federation_issuers/${federationIssuerID}`, {
+		return this._client.get(path$1`/v1/organizations/federation_issuers/${federationIssuerID}`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.federation.issuers.retrieve", options, {
 				route: "/v1/organizations/federation_issuers/{federation_issuer_id}",
@@ -55224,7 +67531,7 @@ var Issuers = class extends APIResource {
 	* ```
 	*/
 	update(federationIssuerID, body, options) {
-		return this._client.post(path`/v1/organizations/federation_issuers/${federationIssuerID}`, {
+		return this._client.post(path$1`/v1/organizations/federation_issuers/${federationIssuerID}`, {
 			body,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.federation.issuers.update", options, {
@@ -55287,7 +67594,7 @@ var Issuers = class extends APIResource {
 	* ```
 	*/
 	archive(federationIssuerID, options) {
-		return this._client.post(path`/v1/organizations/federation_issuers/${federationIssuerID}/archive`, {
+		return this._client.post(path$1`/v1/organizations/federation_issuers/${federationIssuerID}/archive`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.federation.issuers.archive", options, {
 				route: "/v1/organizations/federation_issuers/{federation_issuer_id}/archive",
@@ -55325,7 +67632,7 @@ var Workspaces$2 = class extends APIResource {
 	* ```
 	*/
 	list(federationRuleID, query = {}, options) {
-		return this._client.getAPIList(path`/v1/organizations/federation_rules/${federationRuleID}/workspaces`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/organizations/federation_rules/${federationRuleID}/workspaces`, PageCursor, {
 			query,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.federation.rules.workspaces.list", options, {
@@ -55361,7 +67668,7 @@ var Workspaces$2 = class extends APIResource {
 	* ```
 	*/
 	add(federationRuleID, body, options) {
-		return this._client.post(path`/v1/organizations/federation_rules/${federationRuleID}/workspaces`, {
+		return this._client.post(path$1`/v1/organizations/federation_rules/${federationRuleID}/workspaces`, {
 			body,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.federation.rules.workspaces.add", options, {
@@ -55395,7 +67702,7 @@ var Workspaces$2 = class extends APIResource {
 	*/
 	remove(workspaceID, params, options) {
 		const { federation_rule_id } = params;
-		return this._client.delete(path`/v1/organizations/federation_rules/${federation_rule_id}/workspaces/${workspaceID}`, {
+		return this._client.delete(path$1`/v1/organizations/federation_rules/${federation_rule_id}/workspaces/${workspaceID}`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.federation.rules.workspaces.remove", options, {
 				route: "/v1/organizations/federation_rules/{federation_rule_id}/workspaces/{workspace_id}",
@@ -55479,7 +67786,7 @@ var Rules = /* @__PURE__ */ (() => {
 		* ```
 		*/
 		retrieve(federationRuleID, options) {
-			return this._client.get(path`/v1/organizations/federation_rules/${federationRuleID}`, {
+			return this._client.get(path$1`/v1/organizations/federation_rules/${federationRuleID}`, {
 				...options,
 				__span: startApiCallSpan(this._client, "anthropic.organization.federation.rules.retrieve", options, {
 					route: "/v1/organizations/federation_rules/{federation_rule_id}",
@@ -55519,7 +67826,7 @@ var Rules = /* @__PURE__ */ (() => {
 		* ```
 		*/
 		update(federationRuleID, body, options) {
-			return this._client.post(path`/v1/organizations/federation_rules/${federationRuleID}`, {
+			return this._client.post(path$1`/v1/organizations/federation_rules/${federationRuleID}`, {
 				body,
 				...options,
 				__span: startApiCallSpan(this._client, "anthropic.organization.federation.rules.update", options, {
@@ -55586,7 +67893,7 @@ var Rules = /* @__PURE__ */ (() => {
 		* ```
 		*/
 		archive(federationRuleID, options) {
-			return this._client.post(path`/v1/organizations/federation_rules/${federationRuleID}/archive`, {
+			return this._client.post(path$1`/v1/organizations/federation_rules/${federationRuleID}/archive`, {
 				...options,
 				__span: startApiCallSpan(this._client, "anthropic.organization.federation.rules.archive", options, {
 					route: "/v1/organizations/federation_rules/{federation_rule_id}/archive",
@@ -55648,7 +67955,7 @@ var Workspaces$1 = class extends APIResource {
 	* ```
 	*/
 	list(serviceAccountID, query = {}, options) {
-		return this._client.getAPIList(path`/v1/organizations/service_accounts/${serviceAccountID}/workspaces`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/organizations/service_accounts/${serviceAccountID}/workspaces`, PageCursor, {
 			query,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.service_accounts.workspaces.list", options, {
@@ -55685,7 +67992,7 @@ var Workspaces$1 = class extends APIResource {
 	* ```
 	*/
 	add(serviceAccountID, body, options) {
-		return this._client.post(path`/v1/organizations/service_accounts/${serviceAccountID}/workspaces`, {
+		return this._client.post(path$1`/v1/organizations/service_accounts/${serviceAccountID}/workspaces`, {
 			body,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.service_accounts.workspaces.add", options, {
@@ -55723,7 +68030,7 @@ var Workspaces$1 = class extends APIResource {
 	*/
 	remove(workspaceID, params, options) {
 		const { service_account_id } = params;
-		return this._client.delete(path`/v1/organizations/service_accounts/${service_account_id}/workspaces/${workspaceID}`, {
+		return this._client.delete(path$1`/v1/organizations/service_accounts/${service_account_id}/workspaces/${workspaceID}`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.service_accounts.workspaces.remove", options, {
 				route: "/v1/organizations/service_accounts/{service_account_id}/workspaces/{workspace_id}",
@@ -55794,7 +68101,7 @@ var ServiceAccounts$1 = /* @__PURE__ */ (() => {
 		* ```
 		*/
 		retrieve(serviceAccountID, options) {
-			return this._client.get(path`/v1/organizations/service_accounts/${serviceAccountID}`, {
+			return this._client.get(path$1`/v1/organizations/service_accounts/${serviceAccountID}`, {
 				...options,
 				__span: startApiCallSpan(this._client, "anthropic.organization.service_accounts.retrieve", options, {
 					route: "/v1/organizations/service_accounts/{service_account_id}",
@@ -55824,7 +68131,7 @@ var ServiceAccounts$1 = /* @__PURE__ */ (() => {
 		* ```
 		*/
 		update(serviceAccountID, body, options) {
-			return this._client.post(path`/v1/organizations/service_accounts/${serviceAccountID}`, {
+			return this._client.post(path$1`/v1/organizations/service_accounts/${serviceAccountID}`, {
 				body,
 				...options,
 				__span: startApiCallSpan(this._client, "anthropic.organization.service_accounts.update", options, {
@@ -55889,7 +68196,7 @@ var ServiceAccounts$1 = /* @__PURE__ */ (() => {
 		* ```
 		*/
 		archive(serviceAccountID, options) {
-			return this._client.post(path`/v1/organizations/service_accounts/${serviceAccountID}/archive`, {
+			return this._client.post(path$1`/v1/organizations/service_accounts/${serviceAccountID}/archive`, {
 				...options,
 				__span: startApiCallSpan(this._client, "anthropic.organization.service_accounts.archive", options, {
 					route: "/v1/organizations/service_accounts/{service_account_id}/archive",
@@ -55919,7 +68226,7 @@ var Members = class extends APIResource {
 	*/
 	retrieve(userID, params, options) {
 		const { workspace_id } = params;
-		return this._client.get(path`/v1/organizations/workspaces/${workspace_id}/members/${userID}`, {
+		return this._client.get(path$1`/v1/organizations/workspaces/${workspace_id}/members/${userID}`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.members.retrieve", options, {
 				route: "/v1/organizations/workspaces/{workspace_id}/members/{user_id}",
@@ -55947,7 +68254,7 @@ var Members = class extends APIResource {
 	*/
 	update(userID, params, options) {
 		const { workspace_id,...body } = params;
-		return this._client.post(path`/v1/organizations/workspaces/${workspace_id}/members/${userID}`, {
+		return this._client.post(path$1`/v1/organizations/workspaces/${workspace_id}/members/${userID}`, {
 			body,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.members.update", options, {
@@ -55973,7 +68280,7 @@ var Members = class extends APIResource {
 	* ```
 	*/
 	list(workspaceID, query = {}, options) {
-		return this._client.getAPIList(path`/v1/organizations/workspaces/${workspaceID}/members`, Page, {
+		return this._client.getAPIList(path$1`/v1/organizations/workspaces/${workspaceID}/members`, Page, {
 			query,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.members.list", options, {
@@ -56003,7 +68310,7 @@ var Members = class extends APIResource {
 	* ```
 	*/
 	add(workspaceID, body, options) {
-		return this._client.post(path`/v1/organizations/workspaces/${workspaceID}/members`, {
+		return this._client.post(path$1`/v1/organizations/workspaces/${workspaceID}/members`, {
 			body,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.members.add", options, {
@@ -56028,7 +68335,7 @@ var Members = class extends APIResource {
 	*/
 	remove(userID, params, options) {
 		const { workspace_id } = params;
-		return this._client.delete(path`/v1/organizations/workspaces/${workspace_id}/members/${userID}`, {
+		return this._client.delete(path$1`/v1/organizations/workspaces/${workspace_id}/members/${userID}`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.members.remove", options, {
 				route: "/v1/organizations/workspaces/{workspace_id}/members/{user_id}",
@@ -56067,7 +68374,7 @@ var RateLimits = class extends APIResource {
 	* ```
 	*/
 	list(workspaceID, query = {}, options) {
-		return this._client.getAPIList(path`/v1/organizations/workspaces/${workspaceID}/rate_limits`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/organizations/workspaces/${workspaceID}/rate_limits`, PageCursor, {
 			query,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.rate_limits.list", options, {
@@ -56112,7 +68419,7 @@ var ServiceAccounts = class extends APIResource {
 	*/
 	retrieve(serviceAccountID, params, options) {
 		const { workspace_id } = params;
-		return this._client.get(path`/v1/organizations/workspaces/${workspace_id}/service_accounts/${serviceAccountID}`, {
+		return this._client.get(path$1`/v1/organizations/workspaces/${workspace_id}/service_accounts/${serviceAccountID}`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.service_accounts.retrieve", options, {
 				route: "/v1/organizations/workspaces/{workspace_id}/service_accounts/{service_account_id}",
@@ -56151,7 +68458,7 @@ var ServiceAccounts = class extends APIResource {
 	*/
 	update(serviceAccountID, params, options) {
 		const { workspace_id,...body } = params;
-		return this._client.post(path`/v1/organizations/workspaces/${workspace_id}/service_accounts/${serviceAccountID}`, {
+		return this._client.post(path$1`/v1/organizations/workspaces/${workspace_id}/service_accounts/${serviceAccountID}`, {
 			body,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.service_accounts.update", options, {
@@ -56188,7 +68495,7 @@ var ServiceAccounts = class extends APIResource {
 	* ```
 	*/
 	list(workspaceID, query = {}, options) {
-		return this._client.getAPIList(path`/v1/organizations/workspaces/${workspaceID}/service_accounts`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/organizations/workspaces/${workspaceID}/service_accounts`, PageCursor, {
 			query,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.service_accounts.list", options, {
@@ -56227,7 +68534,7 @@ var ServiceAccounts = class extends APIResource {
 	* ```
 	*/
 	add(workspaceID, body, options) {
-		return this._client.post(path`/v1/organizations/workspaces/${workspaceID}/service_accounts`, {
+		return this._client.post(path$1`/v1/organizations/workspaces/${workspaceID}/service_accounts`, {
 			body,
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.service_accounts.add", options, {
@@ -56263,7 +68570,7 @@ var ServiceAccounts = class extends APIResource {
 	*/
 	remove(serviceAccountID, params, options) {
 		const { workspace_id } = params;
-		return this._client.delete(path`/v1/organizations/workspaces/${workspace_id}/service_accounts/${serviceAccountID}`, {
+		return this._client.delete(path$1`/v1/organizations/workspaces/${workspace_id}/service_accounts/${serviceAccountID}`, {
 			...options,
 			__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.service_accounts.remove", options, {
 				route: "/v1/organizations/workspaces/{workspace_id}/service_accounts/{service_account_id}",
@@ -56319,7 +68626,7 @@ var Workspaces = /* @__PURE__ */ (() => {
 		* ```
 		*/
 		retrieve(workspaceID, options) {
-			return this._client.get(path`/v1/organizations/workspaces/${workspaceID}`, {
+			return this._client.get(path$1`/v1/organizations/workspaces/${workspaceID}`, {
 				...options,
 				__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.retrieve", options, {
 					route: "/v1/organizations/workspaces/{workspace_id}",
@@ -56339,7 +68646,7 @@ var Workspaces = /* @__PURE__ */ (() => {
 		* ```
 		*/
 		update(workspaceID, body, options) {
-			return this._client.post(path`/v1/organizations/workspaces/${workspaceID}`, {
+			return this._client.post(path$1`/v1/organizations/workspaces/${workspaceID}`, {
 				body,
 				...options,
 				__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.update", options, {
@@ -56387,7 +68694,7 @@ var Workspaces = /* @__PURE__ */ (() => {
 		* ```
 		*/
 		archive(workspaceID, options) {
-			return this._client.post(path`/v1/organizations/workspaces/${workspaceID}/archive`, {
+			return this._client.post(path$1`/v1/organizations/workspaces/${workspaceID}/archive`, {
 				...options,
 				__span: startApiCallSpan(this._client, "anthropic.organization.workspaces.archive", options, {
 					route: "/v1/organizations/workspaces/{workspace_id}/archive",
@@ -56463,7 +68770,7 @@ var Versions = class extends APIResource {
 	*/
 	create(skillID, params, options) {
 		const { workspace_id,...body } = params;
-		return this._client.post(path`/v1/skills/${skillID}/versions`, multipartFormRequestOptions({
+		return this._client.post(path$1`/v1/skills/${skillID}/versions`, multipartFormRequestOptions({
 			body,
 			...options,
 			headers: buildHeaders([{ ...workspace_id != null ? { "anthropic-workspace-id": workspace_id } : void 0 }, options?.headers]),
@@ -56487,7 +68794,7 @@ var Versions = class extends APIResource {
 	*/
 	retrieve(version$1, params, options) {
 		const { skill_id, workspace_id } = params;
-		return this._client.get(path`/v1/skills/${skill_id}/versions/${version$1}`, {
+		return this._client.get(path$1`/v1/skills/${skill_id}/versions/${version$1}`, {
 			...options,
 			headers: buildHeaders([{ ...workspace_id != null ? { "anthropic-workspace-id": workspace_id } : void 0 }, options?.headers]),
 			__span: startApiCallSpan(this._client, "anthropic.skills.versions.retrieve", options, {
@@ -56514,7 +68821,7 @@ var Versions = class extends APIResource {
 	*/
 	list(skillID, params = {}, options) {
 		const { workspace_id,...query } = params ?? {};
-		return this._client.getAPIList(path`/v1/skills/${skillID}/versions`, PageCursor, {
+		return this._client.getAPIList(path$1`/v1/skills/${skillID}/versions`, PageCursor, {
 			query,
 			...options,
 			headers: buildHeaders([{ ...workspace_id != null ? { "anthropic-workspace-id": workspace_id } : void 0 }, options?.headers]),
@@ -56538,7 +68845,7 @@ var Versions = class extends APIResource {
 	*/
 	delete(version$1, params, options) {
 		const { skill_id, workspace_id } = params;
-		return this._client.delete(path`/v1/skills/${skill_id}/versions/${version$1}`, {
+		return this._client.delete(path$1`/v1/skills/${skill_id}/versions/${version$1}`, {
 			...options,
 			headers: buildHeaders([{ ...workspace_id != null ? { "anthropic-workspace-id": workspace_id } : void 0 }, options?.headers]),
 			__span: startApiCallSpan(this._client, "anthropic.skills.versions.delete", options, {
@@ -56592,7 +68899,7 @@ var Skills = /* @__PURE__ */ (() => {
 		*/
 		retrieve(skillID, params = {}, options) {
 			const { workspace_id } = params ?? {};
-			return this._client.get(path`/v1/skills/${skillID}`, {
+			return this._client.get(path$1`/v1/skills/${skillID}`, {
 				...options,
 				headers: buildHeaders([{ ...workspace_id != null ? { "anthropic-workspace-id": workspace_id } : void 0 }, options?.headers]),
 				__span: startApiCallSpan(this._client, "anthropic.skills.retrieve", options, {
@@ -56638,7 +68945,7 @@ var Skills = /* @__PURE__ */ (() => {
 		*/
 		delete(skillID, params = {}, options) {
 			const { workspace_id } = params ?? {};
-			return this._client.delete(path`/v1/skills/${skillID}`, {
+			return this._client.delete(path$1`/v1/skills/${skillID}`, {
 				...options,
 				headers: buildHeaders([{ ...workspace_id != null ? { "anthropic-workspace-id": workspace_id } : void 0 }, options?.headers]),
 				__span: startApiCallSpan(this._client, "anthropic.skills.delete", options, {
@@ -56967,9 +69274,9 @@ var BaseAnthropic = /* @__PURE__ */ (() => {
 		makeStatusError(status$1, error$1, message, headers) {
 			return APIError.generate(status$1, error$1, message, headers);
 		}
-		buildURL(path$2, query, defaultBaseURL) {
+		buildURL(path$4, query, defaultBaseURL) {
 			const baseURL = !__classPrivateFieldGet(this, _BaseAnthropic_instances, "m", _BaseAnthropic_baseURLOverridden).call(this) && defaultBaseURL || this.baseURL;
-			const url = isAbsoluteURL(path$2) ? new URL(path$2) : new URL(baseURL + (baseURL.endsWith("/") && path$2.startsWith("/") ? path$2.slice(1) : path$2));
+			const url = isAbsoluteURL(path$4) ? new URL(path$4) : new URL(baseURL + (baseURL.endsWith("/") && path$4.startsWith("/") ? path$4.slice(1) : path$4));
 			const defaultQuery = this.defaultQuery();
 			const pathQuery = Object.fromEntries(url.searchParams);
 			if (!isEmptyObj(defaultQuery) || !isEmptyObj(pathQuery)) query = {
@@ -57037,26 +69344,26 @@ var BaseAnthropic = /* @__PURE__ */ (() => {
 		backendMiddleware() {
 			return [];
 		}
-		get(path$2, opts) {
-			return this.methodRequest("get", path$2, opts);
+		get(path$4, opts) {
+			return this.methodRequest("get", path$4, opts);
 		}
-		post(path$2, opts) {
-			return this.methodRequest("post", path$2, opts);
+		post(path$4, opts) {
+			return this.methodRequest("post", path$4, opts);
 		}
-		patch(path$2, opts) {
-			return this.methodRequest("patch", path$2, opts);
+		patch(path$4, opts) {
+			return this.methodRequest("patch", path$4, opts);
 		}
-		put(path$2, opts) {
-			return this.methodRequest("put", path$2, opts);
+		put(path$4, opts) {
+			return this.methodRequest("put", path$4, opts);
 		}
-		delete(path$2, opts) {
-			return this.methodRequest("delete", path$2, opts);
+		delete(path$4, opts) {
+			return this.methodRequest("delete", path$4, opts);
 		}
-		methodRequest(method, path$2, opts) {
+		methodRequest(method, path$4, opts) {
 			return this.request(Promise.resolve(opts).then((opts$1) => {
 				return {
 					method,
-					path: path$2,
+					path: path$4,
 					...opts$1
 				};
 			}));
@@ -57199,14 +69506,14 @@ var BaseAnthropic = /* @__PURE__ */ (() => {
 				startTime
 			};
 		}
-		getAPIList(path$2, Page$2, opts) {
+		getAPIList(path$4, Page$2, opts) {
 			return this.requestAPIList(Page$2, opts && "then" in opts ? opts.then((opts$1) => ({
 				method: "get",
-				path: path$2,
+				path: path$4,
 				...opts$1
 			})) : {
 				method: "get",
-				path: path$2,
+				path: path$4,
 				...opts
 			});
 		}
@@ -57328,10 +69635,10 @@ var BaseAnthropic = /* @__PURE__ */ (() => {
 		}
 		async buildRequest(inputOptions, { retryCount = 0 } = {}) {
 			const options = { ...inputOptions };
-			const { method, path: path$2, query, defaultBaseURL } = options;
+			const { method, path: path$4, query, defaultBaseURL } = options;
 			if (this._authState.resolution) await this._authState.resolution;
 			if (!this._baseURLIsExplicit && this._authState.baseURL && this.baseURL !== this._authState.baseURL) this.baseURL = this._authState.baseURL;
-			const url = this.buildURL(path$2, query, defaultBaseURL);
+			const url = this.buildURL(path$4, query, defaultBaseURL);
 			if ("timeout" in options) validatePositiveInteger("timeout", options.timeout);
 			options.timeout = options.timeout ?? this.timeout;
 			const { bodyHeaders, body } = this.buildBody({ options });
@@ -57865,17 +70172,17 @@ function rejectRequest(res, status$1, error$1) {
 }
 /** 无需令牌的只读路径；写操作与敏感路径必须带令牌。 */
 function publicRead(req) {
-	const path$2 = decodeURIComponent(new URL(req.url ?? "/", "http://127.0.0.1").pathname);
+	const path$4 = decodeURIComponent(new URL(req.url ?? "/", "http://127.0.0.1").pathname);
 	if (req.method !== "GET" && req.method !== "HEAD") return false;
-	if (["/standalone-ai/settings", "/shutdown"].includes(path$2)) return false;
-	if (/^\/dsh-pet-\d+\/(?:whisper|chat)(?:\/|$)/.test(path$2)) return false;
+	if (["/standalone-ai/settings", "/shutdown"].includes(path$4)) return false;
+	if (/^\/dsh-pet-\d+\/(?:whisper|chat)(?:\/|$)/.test(path$4)) return false;
 	return [
 		"/",
 		"/health",
 		"/standalone-ai/",
 		"/standalone-ai/settings.js",
 		"/standalone-ai/settings.css"
-	].includes(path$2) || /^\/dsh-pet-\d+\//.test(path$2);
+	].includes(path$4) || /^\/dsh-pet-\d+\//.test(path$4);
 }
 function createRequestSecurity() {
 	const token = randomBytes(32).toString("base64url");
@@ -57922,8 +70229,8 @@ async function boundedRequest(req, res, limit$2, timeoutMs = BODY_TIMEOUT_MS) {
 			clearTimeout(timer);
 			req.off("data", onData);
 			req.off("end", onEnd);
-			req.off("error", onError);
-			req.off("aborted", onError);
+			req.off("error", onError$1);
+			req.off("aborted", onError$1);
 			if (status$1 !== void 0) {
 				req.pause();
 				if (!res.writableEnded && !res.destroyed) rejectRequest(res, status$1, status$1 === 408 ? "读取请求超时" : "请求正文无效或过大");
@@ -57936,13 +70243,13 @@ async function boundedRequest(req, res, limit$2, timeoutMs = BODY_TIMEOUT_MS) {
 			else chunks.push(Buffer.from(chunk));
 		};
 		const onEnd = () => finish();
-		const onError = () => finish(400);
+		const onError$1 = () => finish(400);
 		const timer = setTimeout(() => finish(408), timeoutMs);
 		timer.unref();
 		req.on("data", onData);
 		req.once("end", onEnd);
-		req.once("error", onError);
-		req.once("aborted", onError);
+		req.once("error", onError$1);
+		req.once("aborted", onError$1);
 	});
 	if (body === void 0) return void 0;
 	return Object.assign(Readable.from([body]), {

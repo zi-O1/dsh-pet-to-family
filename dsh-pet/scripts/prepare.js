@@ -63,6 +63,7 @@ const keep = [
   'assets/logo.png',
   'scripts/ensure-electron.mjs',
   'cordis.patch.yml',
+  'THIRD_PARTY_NOTICES.md',
 ];
 writeFileSync(PKG, JSON.stringify({ ...pkg, files: keep }, null, 2) + '\n', 'utf8');
 console.log(`[prepare] ✓ package.json files=[${keep.join(', ')}]`);

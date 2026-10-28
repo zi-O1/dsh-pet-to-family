@@ -1325,3 +1325,47 @@ describe('saveUserConfig —— 消息接入 bridge（白名单 + 归一化 + �
     }
   });
 });
+
+describe('saveUserConfig —— 原生微信 / QQ 配置 im', () => {
+  test('合法 im 落盘时归一化两个平台与白名单', () => {
+    const out = saveOnce({
+      pets: PETS,
+      im: {
+        wechat: { enabled: true, petId: ' main ', whitelist: ['wechat:wxid_1'] },
+        qq: { enabled: false, petId: '', whitelist: [{ platform: 'qq', id: '123', name: '李四' }] },
+      },
+    });
+    assert.ok(out);
+    assert.deepEqual((out.im as Record<string, unknown>).wechat, {
+      enabled: true,
+      petId: 'main',
+      whitelist: [{ platform: 'wechat', id: 'wxid_1' }],
+      allowOwner: true,
+      allowGroups: false,
+      writeSay: false,
+    });
+    assert.deepEqual((out.im as Record<string, unknown>).qq, {
+      enabled: false,
+      petId: '',
+      whitelist: [{ platform: 'qq', id: '123', name: '李四' }],
+      allowOwner: true,
+      allowGroups: false,
+      writeSay: false,
+    });
+  });
+
+  test('im 启用但宠物为空 / 白名单非法 → 整包拒绝', () => {
+    assert.equal(saveOnce({ pets: PETS, im: { wechat: { enabled: true, petId: '' } } }), null);
+    assert.equal(saveOnce({ pets: PETS, im: { qq: { enabled: true, petId: 'main', whitelist: ['bad'] } } }), null);
+    assert.equal(saveOnce({ pets: PETS, im: { wechat: 'on' } }), null);
+  });
+
+  test('请求体没带 im → 透传磁盘旧值', () => {
+    const existing = {
+      im: { wechat: { enabled: true, petId: 'main', whitelist: ['wechat:wxid_1'] } },
+    };
+    const out = saveOnce({ pets: PETS }, existing);
+    assert.ok(out);
+    assert.deepEqual(out.im, existing.im);
+  });
+});

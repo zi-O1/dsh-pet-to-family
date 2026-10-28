@@ -130,6 +130,23 @@ X-DSH-Pet-Bridge-Token: <bridge.token>
 
 回调失败只记日志，不影响入站响应。字段与安全说明见 [`CONFIG.md`](CONFIG.md#消息接入bridge) 与根目录 [`README.md`](README.md#-消息接入通用-webhook)。
 
+### 原生微信 / QQ（im）
+
+这些端点由设置页使用；登录凭据只留在 host，响应只返回二维码/脱敏状态。
+
+| 接口 | 功能 |
+| --- | --- |
+| `GET /dsh-pet-7340/im/status` | 微信 / QQ 连接状态、登录尝试、收发条数、脱敏账号 |
+| `POST /dsh-pet-7340/im/wechat/login` | 生成微信二维码，返回 `qrCodeDataUrl` / `verificationUrl` |
+| `GET /dsh-pet-7340/im/wechat/login` | 读取当前二维码/登录状态 |
+| `DELETE /dsh-pet-7340/im/wechat/login` | 取消当前扫码 |
+| `POST /dsh-pet-7340/im/wechat/verify` | 提交微信配对码（body `{code}`） |
+| `POST /dsh-pet-7340/im/wechat/logout` | 断开微信并删除本机凭据 |
+| `POST /dsh-pet-7340/im/qq/bind` | 绑定 QQ 机器人（body `{appId, appSecret}`） |
+| `POST /dsh-pet-7340/im/qq/logout` | 断开 QQ 并删除本机凭据 |
+
+微信 token / QQ AppSecret 不会出现在响应中；它们只写入 `$DSH_HOME/dsh-pet/im-auth.json`（0600）。连接收发文本消息，不经过外部桥接器。
+
 ## 四、让它做动作
 
 | 接口 | 功能 |

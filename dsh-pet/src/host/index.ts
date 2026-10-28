@@ -24,6 +24,9 @@ import { generateWhisper } from './whisper';
 import { automaticWhisperSchedule, type StandaloneWhisperPolicy } from './whisper-policy';
 import { generateChat, type ChatMemoryMessage } from './chat';
 import { BridgeRuntime, normalizeBridgeConfig, postBridgeReply, processBridgeInbound } from './bridge';
+import { NativeImManager } from './im';
+import { ImStore } from './im/store';
+import { normalizeImConfig } from '../shared/im';
 import {
   applySoulReflection,
   buildSoulReflectionPrompt,
@@ -1053,6 +1056,32 @@ export function apply(ctx: any): void {
     return result;
   };
 
+  // 原生微信 / QQ：插件自己连平台，不依赖 dsh-im。凭据在 im-auth.json（0600），
+  // 配置在 main.im；这里只把已启用的连接拉起来，收发消息走 chatWithPet。
+  const imStore = new ImStore(userRoot);
+  const nativeIm = new NativeImManager({
+    store: imStore,
+    getConfig: () => {
+      try {
+        return normalizeImConfig(readAllConfig(configPaths).main?.im);
+      } catch {
+        return normalizeImConfig(undefined);
+      }
+    },
+    chat: chatWithPet,
+    log: {
+      info: (message: string) => log.info(message),
+      warn: (message: string) => log.warn(message),
+      error: (message: string) => log.error(message),
+    },
+  });
+  ctx.effect(() => () => {
+    void nativeIm.stop();
+  });
+  void nativeIm.start().catch((e: unknown) => {
+    log.warn(`[dsh-pet] 原生微信 / QQ 初始化失败：${e instanceof Error ? e.message : String(e)}`);
+  });
+
   /** 当前生效宠物列表：成品配置拍平（合并器已保证 id 唯一、字段填满），命令与桌面模式共用。 */
   const effectivePetList = (): Record<string, unknown>[] => flattenPetList(readAllConfig(configPaths));
 
@@ -1517,6 +1546,7 @@ export function apply(ctx: any): void {
           await mkdir(userRoot, { recursive: true });
           await writeFile(userConfigPath, JSON.stringify(clean, null, 2), 'utf8');
           void syncDesktop(); // display/size 等可能变化：重解析桌面宠物并重启 Helper（异步，不阻塞保存响应）
+          nativeIm.reload();
           // 响应体 = 保存后的成品聚合（与 GET /config 同一份，字段已填满）：设置页直接交给
           // flattenConfigPets 拍平渲染，客户端的条目级字段只有这一处填充。
           return { kind: 'json', status: 200, obj: readAllConfig(configPaths) };
@@ -1536,6 +1566,7 @@ export function apply(ctx: any): void {
           return { kind: 'json', status: 500, obj: { error: e instanceof Error ? e.message : String(e) } };
         }
         void syncDesktop(); // 配置变了：重解析桌面宠物并重启 Helper（异步，不阻塞响应）
+        nativeIm.reload();
         return { kind: 'json', status: 200, obj: readAllConfig(configPaths) };
       }
       return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
@@ -2517,6 +2548,76 @@ export function apply(ctx: any): void {
         }
         signal?.addEventListener('abort', onAbort, { once: true });
       });
+    }
+
+    // 原生微信 / QQ：登录、状态、登出。凭据只在 host 进程与 im-auth.json 之间流转，
+    // 浏览器只拿二维码/状态，永远拿不到 bot_token 或 appSecret。
+    if (rest === 'im/status') {
+      if (method !== 'GET') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+      return { kind: 'json', status: 200, obj: nativeIm.status(), headers: { 'cache-control': 'no-cache, no-store' } };
+    }
+    if (rest === 'im/wechat/login') {
+      if (method === 'POST') {
+        try {
+          return { kind: 'json', status: 200, obj: await nativeIm.startWechatLogin() };
+        } catch (e) {
+          return {
+            kind: 'json',
+            status: 200,
+            obj: {
+              status: 'failed',
+              error: { code: 'qr-start-failed', message: e instanceof Error ? e.message : String(e) },
+            },
+          };
+        }
+      }
+      if (method === 'GET')
+        return {
+          kind: 'json',
+          status: 200,
+          obj: { login: nativeIm.wechatLoginStatus() },
+          headers: { 'cache-control': 'no-cache, no-store' },
+        };
+      if (method === 'DELETE') {
+        nativeIm.cancelWechatLogin();
+        return { kind: 'json', status: 200, obj: { ok: true } };
+      }
+      return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+    }
+    if (rest === 'im/wechat/verify') {
+      if (method !== 'POST') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+      let payload: { code?: unknown };
+      try {
+        payload = JSON.parse(body ?? '') as { code?: unknown };
+      } catch {
+        return { kind: 'json', status: 400, obj: { error: 'invalid JSON body' } };
+      }
+      return { kind: 'json', status: 200, obj: { login: nativeIm.submitWechatVerifyCode(String(payload.code ?? '')) } };
+    }
+    if (rest === 'im/wechat/logout') {
+      if (method !== 'POST') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+      await nativeIm.logoutWechat();
+      return { kind: 'json', status: 200, obj: { ok: true } };
+    }
+    if (rest === 'im/qq/bind') {
+      if (method !== 'POST') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+      let payload: { appId?: unknown; appSecret?: unknown };
+      try {
+        payload = JSON.parse(body ?? '') as { appId?: unknown; appSecret?: unknown };
+      } catch {
+        return { kind: 'json', status: 400, obj: { error: 'invalid JSON body' } };
+      }
+      try {
+        await nativeIm.bindQq(String(payload.appId ?? ''), String(payload.appSecret ?? ''));
+        return { kind: 'json', status: 200, obj: { ok: true, status: nativeIm.status() } };
+      } catch (e) {
+        return { kind: 'json', status: 200, obj: { ok: false, message: e instanceof Error ? e.message : String(e) } };
+      }
+    }
+    if (rest === 'im/qq/logout') {
+      if (method !== 'POST') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+      await nativeIm.logoutQq();
+      return { kind: 'json', status: 200, obj: { ok: true } };
     }
 
     // 通用消息接入（Webhook bridge）：外部桥接器把白名单联系人的消息 POST 进来，

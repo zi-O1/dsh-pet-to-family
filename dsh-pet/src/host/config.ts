@@ -12,6 +12,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFile
 import { dirname, join } from 'node:path';
 
 import { bridgeValid, normalizeBridgeConfig } from './bridge';
+import { isValidImConfig, normalizeImConfig } from '../shared/im';
 import { defaultLog } from './log-file';
 
 /** 位置角落白名单 */
@@ -348,6 +349,9 @@ function topFieldValid(key: string, value: unknown): boolean {
     case 'bridge':
       // 通用消息接入（全局，仅 main 条目消费）：形状/范围校验；enabled=true 时强制要求宠物与 token
       return bridgeValid(value);
+    case 'im':
+      // 原生微信 / QQ 接入（全局，仅 main 条目消费）：只校验非敏感配置；凭据在 im-auth.json
+      return isValidImConfig(value);
     case 'soul':
       // 条目级灵魂卡：只认对象；{} = 显式关闭该条目的灵魂卡（覆盖内置默认），数组/标量/null 非法。
       return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -427,7 +431,8 @@ function mergeEntry(
     // 结构性常态：覆盖层（尤其是设置页写的用户层）本来就不写顶层字段 → 缺失静默取默认，不告警；
     // 只有「显式写了但非法」才告警（真异常，默认值兜底）
     if (own === undefined) {
-      out[key] = key === 'bridge' ? normalizeBridgeConfig(base[key]) : base[key];
+      out[key] =
+        key === 'bridge' ? normalizeBridgeConfig(base[key]) : key === 'im' ? normalizeImConfig(base[key]) : base[key];
       continue;
     }
     if (!topFieldValid(key, own)) {
@@ -435,7 +440,7 @@ function mergeEntry(
       out[key] = key === 'bridge' ? normalizeBridgeConfig(base[key]) : base[key];
       continue;
     }
-    out[key] = key === 'bridge' ? normalizeBridgeConfig(own) : own;
+    out[key] = key === 'bridge' ? normalizeBridgeConfig(own) : key === 'im' ? normalizeImConfig(own) : own;
   }
   return out;
 }
@@ -760,6 +765,9 @@ export function saveUserConfig(
   // enabled=true 时 bridgeValid 会强制要求 petId 与非空 token（≥16 字符），避免“开了但没锁”的配置。
   const br = o.bridge;
   if (br !== undefined && !bridgeValid(br)) return null;
+  // 原生微信 / QQ：只存 petId / 白名单 / 行为开关；登录凭据另存 im-auth.json
+  const im = o.im;
+  if (im !== undefined && !isValidImConfig(im)) return null;
   const cleanModel = (v: Record<string, unknown>): { provider: string; model: string } => ({
     provider: String(v.provider).trim(),
     model: String(v.model).trim(),
@@ -782,6 +790,7 @@ export function saveUserConfig(
   if (cmr !== undefined) outConfig.chatMemoryRounds = Number(cmr);
   if (cil !== undefined) outConfig.chatImageLimit = Number(cil);
   if (br !== undefined) outConfig.bridge = normalizeBridgeConfig(br);
+  if (im !== undefined) outConfig.im = normalizeImConfig(im);
   // 透传保留：请求体未携带的顶层字段，从 existing（磁盘现有用户文件）原样带回——
   // 设置页只提交 pets(+全局开关+physics+模型+对话历史条数)，手改的 whisperPrompt/memes/... 借此保住。
   // 白名单字段只在「请求体传了」时才算白名单（已由上方写入）；未传时走这里透传磁盘旧值——
@@ -801,6 +810,7 @@ export function saveUserConfig(
   if (cmr !== undefined) bodyOwned.add('chatMemoryRounds');
   if (cil !== undefined) bodyOwned.add('chatImageLimit');
   if (br !== undefined) bodyOwned.add('bridge');
+  if (im !== undefined) bodyOwned.add('im');
   if (existing && typeof existing === 'object') {
     for (const key of Object.keys(existing)) {
       if (bodyOwned.has(key)) continue; // 白名单字段由请求体决定

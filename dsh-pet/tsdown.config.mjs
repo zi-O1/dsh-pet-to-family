@@ -55,6 +55,10 @@ export default defineConfig([
   {
     ...shared,
     // 宿主半侧保持 ESM（由 DSH 的 Loader import），绝不能包 IIFE。
+    // 宿主只跑在 Node >= 22.12（package.json engines），可以用 es2022：
+    // es2020 会把 class private fields / private methods 降级成 @oxc-project/runtime helper，
+    // 装好的用户会 ERR_MODULE_NOT_FOUND。浏览器半侧仍是独立入口、继续按 es2020 发布。
+    target: 'es2022',
     entry: {
       index: 'src/host/index.ts',
     },
@@ -119,6 +123,9 @@ export default defineConfig([
       /^zod$/,
       /^openai$/,
       /^@anthropic-ai\/sdk$/,
+      // 原生 IM：app 包不带 node_modules，二维码与 QQ SDK 必须打进 lib/app.js。
+      /^qrcode$/,
+      /^@tencent-connect\/qqbot-nodejs$/,
     ],
     external: ['electron', /^@electron\//, /^node:/, /^@deepseek-ai\/(?!dsh-home-paths$|dsh-credentials$|dsh-llm$)/],
     alias: {

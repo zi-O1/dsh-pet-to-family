@@ -156,6 +156,28 @@
     // 是否允许群聊消息触发回复；默认 false（群聊最容易刷屏/误触）。
     "allowGroups": false
   },
+  // ===================== 原生微信 / QQ 接入（不依赖 dsh-im） =====================
+  // 登录凭据单独保存在 <DSH_HOME>/dsh-pet/im-auth.json（0600），不会写进本配置。
+  // 微信：iLink 扫码登录，只处理私聊文本；QQ：官方机器人 AppID + AppSecret，支持私聊与 @群聊。
+  // 白名单格式与 bridge 相同：platform | 稳定 id | 名字（可选）；空白名单只放行登录账号本人。
+  "im": {
+    "wechat": {
+      "enabled": false,
+      "petId": "",
+      "whitelist": [],
+      "allowOwner": true,
+      "allowGroups": false,
+      "writeSay": false
+    },
+    "qq": {
+      "enabled": false,
+      "petId": "",
+      "whitelist": [],
+      "allowOwner": true,
+      "allowGroups": false,
+      "writeSay": false
+    }
+  },
   // ===================== 表情包：图片映射（名称 → 描述，模型据此选图） =====================
   // 键 = assets/memes/<键>.png 的文件名（不含扩展名）；值 = 该图内容的简要描述。
   // 用途：碎碎念随机抽到某张图后，把该图描述注入提示词让模型配合画面说话；

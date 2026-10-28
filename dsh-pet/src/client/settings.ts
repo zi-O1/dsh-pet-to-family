@@ -14,6 +14,18 @@ import {
   parseBridgeWhitelistText,
   type BridgeConfig,
 } from '../shared/bridge';
+import {
+  DEFAULT_IM,
+  formatImWhitelist,
+  normalizeImConfig,
+  parseImWhitelistText,
+  type ImChannelConfig,
+  type ImConfig,
+  type ImLoginAttemptView,
+  type ImQqStatusView,
+  type ImStatusView,
+  type ImWechatStatusView,
+} from '../shared/im';
 import { DEFAULT_FONT, FONT_PRESETS, FONT_SIZE_MAX, FONT_SIZE_MIN } from '../shared/fonts';
 import { DEFAULT_PHYSICS } from '../shared/physics';
 import { soulAccentColor, type SoulCard } from '../shared/soul';
@@ -415,6 +427,47 @@ export const zh = {
   bridgeInvalidToken: 'token 需要 16–256 个字符（启用消息接入时不能为空）。',
   bridgeInvalidReplyUrl: '回复回调地址必须是合法的 http/https URL（不能带用户名密码）。',
   bridgeInvalidNumbers: '请检查去重窗口（0~86400 秒）和每人每分钟上限（0~120）。',
+  imTitle: '微信 / QQ 原生连接',
+  imHint:
+    '插件自己连接微信（iLink 扫码）和 QQ 官方机器人（AppID + AppSecret），不依赖 dsh-im。消息按平台 + 发送者隔离记忆，由桌宠直接回复。',
+  imWechatTitle: '微信',
+  imQqTitle: 'QQ',
+  imConnected: '已连接',
+  imDisconnected: '未连接',
+  imConnecting: '连接中…',
+  imError: '连接异常',
+  imGenerateQr: '生成微信二维码',
+  imCancelQr: '取消扫码',
+  imScanHint: '用手机微信扫描二维码并确认。二维码只用于本机登录，token 不会返回浏览器。',
+  imQrExpired: '二维码已过期，请重新生成。',
+  imDisconnect: '断开连接',
+  imQqAppId: 'QQ AppID',
+  imQqAppSecret: 'QQ AppSecret',
+  imQqBind: '绑定 QQ 机器人',
+  imQqHint:
+    '在 QQ 开放平台创建机器人后填写 AppID 与 AppSecret。只保存在本机 im-auth.json（0600），设置页不会回显 Secret。',
+  imEnableToggle: '启用此平台',
+  imPetLabel: '用哪只桌宠回复',
+  imPetHint: '启用时必须选择一只真实存在的宠物。',
+  imWhitelistLabel: '权限白名单',
+  imWhitelistHint:
+    '每行「平台 | 稳定 id | 名字」。私聊填对方稳定 id，QQ 群聊填群 openid。空白名单只放行登录账号本人（微信）。',
+  imWhitelistPlaceholder: 'wechat | wxid_abc | 张三\nqq | 123456789 | 李四',
+  imAllowOwnerToggle: '自动放行登录账号本人',
+  imAllowOwnerToggleHint: '微信登录后会记住 owner id；QQ 手动绑定没有 owner id 时请使用白名单。',
+  imAllowGroupsToggle: '允许 QQ 群聊',
+  imAllowGroupsToggleHint: '只处理 @ 机器人的群消息；还需要把群 openid 写进白名单。',
+  imWriteSayToggle: '回复同时显示在桌面气泡',
+  imWriteSayToggleHint: '默认关闭，避免微信 / QQ 多人聊天时桌面频繁弹话。',
+  imMessages: '收到 {n} 条，回复 {m} 条',
+  imInvalidWhitelist: '白名单第 {line} 行格式不对，请用「平台 | id | 名字」。',
+  imInvalidPet: '启用 {platform} 时必须选择一只真实存在的桌宠。',
+  imQqBindFailed: 'QQ 绑定失败：{msg}',
+  imQrFailed: '二维码生成失败：{msg}',
+  imStatusFailed: '读取连接状态失败。',
+  imNeedVerify: '微信要求输入配对码，请在手机微信查看后输入。',
+  imVerifyCode: '配对码',
+  imSubmitVerify: '提交配对码',
   soulTitle: '人格灵魂色彩',
   soulHint:
     '灵魂卡是比人设更稳定的「内在设定」：身份、在意的东西、说话方式、渴望、害怕、边界、关系起点与灵魂色彩。配置后，宿主会在碎碎念与对话的 system 里追加「稳定灵魂卡 + 此刻的灵魂状态」；状态（情绪 / 关系 / 上次聊天 / 长期记忆 / 关系事件）由 soul-state.json 跨会话延续；成功对话后还会定期反思，整理偏好、约定、事件与自我叙事。没有卡 / 空卡 = 完全走旧人设。',
@@ -752,6 +805,49 @@ export const en = {
   bridgeInvalidToken: 'The token must be 16–256 characters when the message bridge is enabled.',
   bridgeInvalidReplyUrl: 'The reply callback must be a valid http/https URL without credentials.',
   bridgeInvalidNumbers: 'Check the dedupe window (0–86400 sec) and per-sender limit (0–120).',
+  imTitle: 'Native WeChat / QQ',
+  imHint:
+    'The plugin connects to WeChat (iLink QR) and the official QQ bot (AppID + AppSecret) itself, without dsh-im. Messages are isolated per platform + sender and answered by the pet.',
+  imWechatTitle: 'WeChat',
+  imQqTitle: 'QQ',
+  imConnected: 'Connected',
+  imDisconnected: 'Disconnected',
+  imConnecting: 'Connecting…',
+  imError: 'Connection error',
+  imGenerateQr: 'Generate WeChat QR',
+  imCancelQr: 'Cancel',
+  imScanHint:
+    'Scan the QR with mobile WeChat and confirm. The token stays in the host and is never returned to the browser.',
+  imQrExpired: 'QR expired; generate a new one.',
+  imDisconnect: 'Disconnect',
+  imQqAppId: 'QQ AppID',
+  imQqAppSecret: 'QQ AppSecret',
+  imQqBind: 'Bind QQ bot',
+  imQqHint:
+    'Create a bot on the QQ Open Platform and enter its AppID / AppSecret. They are stored only in local im-auth.json (0600) and the Secret is never echoed back.',
+  imEnableToggle: 'Enable this platform',
+  imPetLabel: 'Pet that replies',
+  imPetHint: 'Must be an existing pet when enabled.',
+  imWhitelistLabel: 'Permission whitelist',
+  imWhitelistHint:
+    'One entry per line: platform | stable id | name. Use the peer id for direct chats and the group openid for QQ groups. Empty list allows only the logged-in account (WeChat).',
+  imWhitelistPlaceholder: 'wechat | wxid_abc | Alice\nqq | 123456789 | Bob',
+  imAllowOwnerToggle: 'Allow the logged-in account',
+  imAllowOwnerToggleHint:
+    'WeChat remembers the owner id after login; manual QQ binding has no owner id, so use the whitelist.',
+  imAllowGroupsToggle: 'Allow QQ groups',
+  imAllowGroupsToggleHint: 'Only @-mention messages are processed; the group openid must also be whitelisted.',
+  imWriteSayToggle: 'Also show replies in the desktop bubble',
+  imWriteSayToggleHint: 'Off by default to avoid desktop spam in busy chats.',
+  imMessages: 'received {n}, replied {m}',
+  imInvalidWhitelist: 'Whitelist line {line} is malformed; use “platform | id | name”.',
+  imInvalidPet: 'Select an existing pet before enabling {platform}.',
+  imQqBindFailed: 'QQ bind failed: {msg}',
+  imQrFailed: 'QR generation failed: {msg}',
+  imStatusFailed: 'Failed to read connection status.',
+  imNeedVerify: 'WeChat requires a pairing code; enter it below.',
+  imVerifyCode: 'Pairing code',
+  imSubmitVerify: 'Submit code',
   soulTitle: 'Soul & personality color',
   soulHint:
     'A soul card is a more stable inner layer than the persona: identity, what it cares about, voice, desires, fears, boundaries, relationship seed and soul color. When configured, the host appends a stable soul card plus the current soul state to every whisper / chat system prompt; the state (mood / relationship / last exchange / long-term memories / relationship events) persists across sessions in soul-state.json; after successful chats it also reflects periodically to distill preferences, promises, events and a self-narrative. No card / empty card = the legacy persona only.',
@@ -1300,6 +1396,21 @@ export function makePetConfigSection(rt: {
     const [bridgeWhitelistText, setBridgeWhitelistText] = useState('');
     // token 生成/复制等就地反馈，不污染页面级保存提示。
     const [bridgeMsg, setBridgeMsg] = useState<{ kind: 'ok' | 'err' | ''; text: string }>({ kind: '', text: '' });
+    // 原生微信 / QQ：配置随「保存」写入 main.im；登录凭据只在 host 的 im-auth.json。
+    const [im, setIm] = useState<ImConfig>({
+      ...DEFAULT_IM,
+      wechat: { ...DEFAULT_IM.wechat, whitelist: [] },
+      qq: { ...DEFAULT_IM.qq, whitelist: [] },
+    });
+    const [imWechatWhitelist, setImWechatWhitelist] = useState('');
+    const [imQqWhitelist, setImQqWhitelist] = useState('');
+    const [imStatus, setImStatus] = useState<ImStatusView | null>(null);
+    const [imQqAppId, setImQqAppId] = useState('');
+    const [imQqSecret, setImQqSecret] = useState('');
+    const [imVerifyCode, setImVerifyCode] = useState('');
+    const [imMsg, setImMsg] = useState<{ kind: 'ok' | 'err' | ''; text: string }>({ kind: '', text: '' });
+    const [imBusy, setImBusy] = useState('');
+
     // 条目级人设：设置页只编辑实例级覆盖（pets[].whisperPrompt）；这个值只用于「留空时跟随什么」的预览，不参与提交。
     const [entryPrompt, setEntryPrompt] = useState('');
     // 条目级灵魂卡：同 entryPrompt，只用于「留空时跟随什么」的预览与占位；不参与提交。
@@ -1395,6 +1506,11 @@ export function makePetConfigSection(rt: {
       setBridge(loadedBridge);
       setBridgeWhitelistText(formatBridgeWhitelist(loadedBridge.whitelist));
       setBridgeMsg({ kind: '', text: '' });
+      const loadedIm = normalizeImConfig(m.im);
+      setIm(loadedIm);
+      setImWechatWhitelist(formatImWhitelist(loadedIm.wechat.whitelist));
+      setImQqWhitelist(formatImWhitelist(loadedIm.qq.whitelist));
+      setImMsg({ kind: '', text: '' });
     }, []);
 
     useEffect(() => {
@@ -1418,6 +1534,28 @@ export function makePetConfigSection(rt: {
         controller.abort();
       };
     }, [applyConfig, loadAttempt]);
+
+    // 原生微信 / QQ 状态：设置页打开期间轻量轮询（登录二维码与连接状态都在这里更新）。
+    useEffect(() => {
+      if (loadState !== 'ready') return;
+      let alive = true;
+      const load = async (): Promise<void> => {
+        try {
+          const res = await fetch('/dsh-pet-7340/im/status', { cache: 'no-store' });
+          if (!res.ok) return;
+          const data = (await res.json()) as ImStatusView;
+          if (alive) setImStatus(data);
+        } catch {
+          // 状态读取失败不覆盖已有状态；下一次轮询重试。
+        }
+      };
+      void load();
+      const timer = setInterval(() => void load(), 1500);
+      return () => {
+        alive = false;
+        clearInterval(timer);
+      };
+    }, [loadState]);
 
     // 候选模型清单：一次性拉取（下拉框数据源）。失败只提示、不阻塞——已有配置值照常显示与保存。
     useEffect(() => {
@@ -1860,6 +1998,26 @@ export function makePetConfigSection(rt: {
         setMsg({ kind: 'err', text: t('bridgeInvalidNumbers') });
         return false;
       }
+      for (const [platform, channel, text] of [
+        ['wechat', im.wechat, imWechatWhitelist],
+        ['qq', im.qq, imQqWhitelist],
+      ] as const) {
+        const parsed = parseImWhitelistText(text);
+        if (!parsed.ok) {
+          setMsg({
+            kind: 'err',
+            text: t('imInvalidWhitelist').replace('{line}', String(parsed.line)),
+          });
+          return false;
+        }
+        if (channel.enabled && !pets.some((p) => p.id === channel.petId.trim())) {
+          setMsg({
+            kind: 'err',
+            text: t('imInvalidPet').replace('{platform}', platform === 'wechat' ? t('imWechatTitle') : t('imQqTitle')),
+          });
+          return false;
+        }
+      }
       // 灵魂卡：草稿必须是合法 JSON 对象（留空 / {} = 删除实例覆盖，跟随条目）；
       // 宿主也会校验，但这里先就地给红字，避免整包请求被 400 后用户还要自己找是哪只宠物。
       for (const p of pets) {
@@ -1915,6 +2073,22 @@ export function makePetConfigSection(rt: {
           });
           return false;
         }
+        const imWechat = parseImWhitelistText(imWechatWhitelist);
+        const imQq = parseImWhitelistText(imQqWhitelist);
+        if (!imWechat.ok || !imQq.ok) {
+          setMsg({
+            kind: 'err',
+            text: t('imInvalidWhitelist').replace(
+              '{line}',
+              String(!imWechat.ok ? imWechat.line : !imQq.ok ? imQq.line : 0),
+            ),
+          });
+          return false;
+        }
+        const imPayload: ImConfig = {
+          wechat: { ...im.wechat, petId: im.wechat.petId.trim(), whitelist: imWechat.list },
+          qq: { ...im.qq, petId: im.qq.petId.trim(), whitelist: imQq.list },
+        };
         const bridgePayload: BridgeConfig = {
           ...bridge,
           petId: bridge.petId.trim(),
@@ -1941,6 +2115,7 @@ export function makePetConfigSection(rt: {
           chatImageLimit: chatImageLimit,
           font: font,
           bridge: bridgePayload,
+          im: imPayload,
         };
         // 用户在损坏弹窗里点了确认：带 ?force=1 才允许按白名单重建损坏文件。
         const res = await fetch('/dsh-pet-7340/config' + (force === true ? '?force=1' : ''), {
@@ -1968,6 +2143,9 @@ export function makePetConfigSection(rt: {
         // 保存后的归一化结果回填：用户手写的空白/重复白名单在界面上也变成实际落盘值。
         setBridge(normalizeBridgeConfig(bridgePayload));
         setBridgeWhitelistText(formatBridgeWhitelist(bridgePayload.whitelist));
+        setIm(normalizeImConfig(imPayload));
+        setImWechatWhitelist(formatImWhitelist(imPayload.wechat.whitelist));
+        setImQqWhitelist(formatImWhitelist(imPayload.qq.whitelist));
         void reloadNotifications(); // 保存后即时生效，无需刷新。
         setSoulPreview(null); // 旧预览可能对应保存前的卡，清掉避免误读。
         setMsg({ kind: 'ok', text: t('saved') });
@@ -2214,6 +2392,377 @@ export function makePetConfigSection(rt: {
       } catch {
         setBridgeMsg({ kind: 'err', text: t('bridgeTokenCopyFailed') });
       }
+    };
+
+    /** 原生微信 / QQ 的状态与登录动作共用的小工具。 */
+    const setImChannel = (platform: 'wechat' | 'qq', patch: Partial<ImChannelConfig>): void => {
+      setIm((value) => ({ ...value, [platform]: { ...value[platform], ...patch } }));
+    };
+
+    const refreshImStatus = async (): Promise<void> => {
+      try {
+        const res = await fetch('/dsh-pet-7340/im/status', { cache: 'no-store' });
+        if (!res.ok) return;
+        setImStatus((await res.json()) as ImStatusView);
+      } catch {
+        // 轮询失败保留旧状态，下一拍再试
+      }
+    };
+
+    const startWechatLogin = async (): Promise<void> => {
+      setImBusy('wechat');
+      setImMsg({ kind: '', text: '' });
+      try {
+        const res = await fetch('/dsh-pet-7340/im/wechat/login', { method: 'POST' });
+        const data = (await res.json().catch(() => null)) as ImLoginAttemptView | null;
+        if (!res.ok || !data) throw new Error('HTTP ' + res.status);
+        if (data.status === 'failed') throw new Error(data.error?.message ?? 'login failed');
+        await refreshImStatus();
+      } catch (e) {
+        setImMsg({ kind: 'err', text: t('imQrFailed').replace('{msg}', e instanceof Error ? e.message : String(e)) });
+      } finally {
+        setImBusy('');
+      }
+    };
+
+    const cancelWechatLogin = async (): Promise<void> => {
+      setImBusy('wechat');
+      try {
+        await fetch('/dsh-pet-7340/im/wechat/login', { method: 'DELETE' });
+        await refreshImStatus();
+      } finally {
+        setImBusy('');
+      }
+    };
+
+    const submitWechatVerify = async (): Promise<void> => {
+      if (!imVerifyCode.trim()) return;
+      setImBusy('wechat');
+      try {
+        await fetch('/dsh-pet-7340/im/wechat/verify', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ code: imVerifyCode.trim() }),
+        });
+        setImVerifyCode('');
+        await refreshImStatus();
+      } finally {
+        setImBusy('');
+      }
+    };
+
+    const logoutWechat = async (): Promise<void> => {
+      setImBusy('wechat');
+      try {
+        await fetch('/dsh-pet-7340/im/wechat/logout', { method: 'POST' });
+        await refreshImStatus();
+      } finally {
+        setImBusy('');
+      }
+    };
+
+    const bindQq = async (): Promise<void> => {
+      setImBusy('qq');
+      setImMsg({ kind: '', text: '' });
+      try {
+        const res = await fetch('/dsh-pet-7340/im/qq/bind', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ appId: imQqAppId, appSecret: imQqSecret }),
+        });
+        const data = (await res.json().catch(() => null)) as { ok?: boolean; message?: string } | null;
+        if (!res.ok || !data?.ok) throw new Error(data?.message || 'HTTP ' + res.status);
+        setImQqSecret('');
+        await refreshImStatus();
+        setImMsg({ kind: 'ok', text: t('imConnected') });
+      } catch (e) {
+        setImMsg({
+          kind: 'err',
+          text: t('imQqBindFailed').replace('{msg}', e instanceof Error ? e.message : String(e)),
+        });
+      } finally {
+        setImBusy('');
+      }
+    };
+
+    const logoutQq = async (): Promise<void> => {
+      setImBusy('qq');
+      try {
+        await fetch('/dsh-pet-7340/im/qq/logout', { method: 'POST' });
+        await refreshImStatus();
+      } finally {
+        setImBusy('');
+      }
+    };
+
+    /** 原生微信 / QQ 的一个平台卡片：状态、登录动作与配置共用同一套渲染。 */
+    const imChannelBlock = (
+      platform: 'wechat' | 'qq',
+      channel: ImChannelConfig,
+      whitelist: string,
+      setWhitelist: (value: string) => void,
+    ): ReturnType<typeof h> => {
+      const status = platform === 'wechat' ? imStatus?.wechat : imStatus?.qq;
+      const login = platform === 'wechat' ? imStatus?.wechat.login : undefined;
+      const isBusy = Boolean(imBusy === platform || busy);
+      const connected = status?.connected === true;
+      const stateText = !status
+        ? t('imDisconnected')
+        : connected
+          ? t('imConnected')
+          : status.state === 'connecting'
+            ? t('imConnecting')
+            : status.state === 'error'
+              ? t('imError')
+              : t('imDisconnected');
+      const account =
+        platform === 'wechat'
+          ? (status as ImWechatStatusView | undefined)?.account
+          : (status as ImQqStatusView | undefined)?.appId;
+      const count = t('imMessages')
+        .replace('{n}', String(status?.messagesReceived ?? 0))
+        .replace('{m}', String(status?.messagesReplied ?? 0));
+      const loginHint =
+        login?.status === 'scanned'
+          ? '已扫码，等待手机确认…'
+          : login?.status === 'needs_verification'
+            ? t('imNeedVerify')
+            : login?.status === 'expired'
+              ? t('imQrExpired')
+              : login?.status === 'failed'
+                ? (login.error?.message ?? t('imError'))
+                : t('imScanHint');
+      return h('div', {
+        className: 'dsh-pet-cfg__field',
+        style: { border: '1px solid var(--dsw-alias-border-l2)', borderRadius: '12px', padding: '12px' },
+        children: [
+          h('div', {
+            className: 'dsh-pet-cfg__cardTitle',
+            children: platform === 'wechat' ? t('imWechatTitle') : t('imQqTitle'),
+          }),
+          h('div', {
+            className: 'dsh-pet-cfg__note',
+            children:
+              stateText +
+              ' · ' +
+              count +
+              (account ? ' · ' + account : '') +
+              (status?.lastError ? ' · ' + status.lastError : ''),
+          }),
+          platform === 'wechat'
+            ? h('div', {
+                className: 'dsh-pet-cfg__soulRow',
+                children: connected
+                  ? [
+                      h('button', {
+                        type: 'button',
+                        className: 'dsh-pet-cfg__btn is-sm',
+                        disabled: isBusy,
+                        onClick: () => void logoutWechat(),
+                        children: t('imDisconnect'),
+                      }),
+                    ]
+                  : login &&
+                      ['starting', 'pending', 'scanned', 'needs_verification', 'connecting'].includes(login.status)
+                    ? [
+                        h('button', {
+                          type: 'button',
+                          className: 'dsh-pet-cfg__btn is-sm',
+                          disabled: isBusy,
+                          onClick: () => void cancelWechatLogin(),
+                          children: t('imCancelQr'),
+                        }),
+                      ]
+                    : [
+                        h('button', {
+                          type: 'button',
+                          className: 'dsh-pet-cfg__btn is-sm',
+                          disabled: isBusy,
+                          onClick: () => void startWechatLogin(),
+                          children: t('imGenerateQr'),
+                        }),
+                      ],
+              })
+            : null,
+          platform === 'wechat' &&
+          !connected &&
+          login?.qrCodeDataUrl &&
+          ['starting', 'pending', 'scanned', 'needs_verification', 'connecting'].includes(login.status)
+            ? h('div', {
+                style: { display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' },
+                children: [
+                  h('img', {
+                    src: login.qrCodeDataUrl,
+                    alt: 'WeChat login QR',
+                    style: { width: '180px', height: '180px', background: '#fff', borderRadius: '8px' },
+                  }),
+                  h('div', { className: 'dsh-pet-cfg__note', style: { maxWidth: '320px' }, children: loginHint }),
+                ],
+              })
+            : null,
+          platform === 'wechat' && !connected && login?.verificationRequired
+            ? h('div', {
+                className: 'dsh-pet-cfg__grid2',
+                children: [
+                  field(
+                    t('imVerifyCode'),
+                    h('input', {
+                      className: inputClass,
+                      value: imVerifyCode,
+                      disabled: isBusy,
+                      onChange: (e: ChangeEvent<HTMLInputElement>) => setImVerifyCode(e.target.value),
+                    }),
+                    t('imNeedVerify'),
+                  ),
+                  h('div', {
+                    className: 'dsh-pet-cfg__soulRow',
+                    children: [
+                      h('button', {
+                        type: 'button',
+                        className: 'dsh-pet-cfg__btn is-sm',
+                        disabled: isBusy || !imVerifyCode.trim(),
+                        onClick: () => void submitWechatVerify(),
+                        children: t('imSubmitVerify'),
+                      }),
+                    ],
+                  }),
+                ],
+              })
+            : null,
+          platform === 'qq' && !connected
+            ? h('div', {
+                className: 'dsh-pet-cfg__grid2',
+                children: [
+                  field(
+                    t('imQqAppId'),
+                    h('input', {
+                      className: inputClass,
+                      value: imQqAppId,
+                      disabled: isBusy,
+                      onChange: (e: ChangeEvent<HTMLInputElement>) => setImQqAppId(e.target.value),
+                    }),
+                    t('imQqHint'),
+                  ),
+                  field(
+                    t('imQqAppSecret'),
+                    h('input', {
+                      className: inputClass,
+                      type: 'password',
+                      autoComplete: 'off',
+                      value: imQqSecret,
+                      disabled: isBusy,
+                      onChange: (e: ChangeEvent<HTMLInputElement>) => setImQqSecret(e.target.value),
+                    }),
+                    undefined,
+                    true,
+                  ),
+                ],
+              })
+            : null,
+          platform === 'qq' && !connected
+            ? h('div', {
+                className: 'dsh-pet-cfg__soulRow',
+                children: [
+                  h('button', {
+                    type: 'button',
+                    className: 'dsh-pet-cfg__btn is-sm',
+                    disabled: isBusy || !imQqAppId.trim() || !imQqSecret.trim(),
+                    onClick: () => void bindQq(),
+                    children: t('imQqBind'),
+                  }),
+                ],
+              })
+            : null,
+          platform === 'qq' && connected
+            ? h('div', {
+                className: 'dsh-pet-cfg__soulRow',
+                children: [
+                  h('button', {
+                    type: 'button',
+                    className: 'dsh-pet-cfg__btn is-sm',
+                    disabled: isBusy,
+                    onClick: () => void logoutQq(),
+                    children: t('imDisconnect'),
+                  }),
+                ],
+              })
+            : null,
+          h('div', {
+            className: 'dsh-pet-cfg__grid2',
+            children: [
+              toggleCell('imEnableToggle', channel.enabled, busy, (v) => setImChannel(platform, { enabled: v })),
+              field(
+                t('imPetLabel'),
+                h('select', {
+                  className: inputClass,
+                  value: channel.petId,
+                  disabled: isBusy,
+                  onChange: (e: ChangeEvent<HTMLSelectElement>) => setImChannel(platform, { petId: e.target.value }),
+                  children: [
+                    h('option', { key: 'none', value: '', children: t('bridgePetNone') }),
+                    ...pets.map((p) =>
+                      h('option', { key: p.id, value: p.id, children: (p.name || p.id) + ' (' + p.id + ')' }),
+                    ),
+                  ],
+                }),
+                t('imPetHint'),
+                true,
+              ),
+            ],
+          }),
+          field(
+            t('imWhitelistLabel'),
+            h('textarea', {
+              className: inputClass,
+              style: { minHeight: '72px', resize: 'vertical', fontFamily: MONO, lineHeight: '1.5' },
+              rows: 3,
+              spellCheck: false,
+              placeholder: t('imWhitelistPlaceholder'),
+              value: whitelist,
+              disabled: isBusy,
+              onChange: (e: ChangeEvent<HTMLTextAreaElement>) => setWhitelist(e.target.value),
+            }),
+            t('imWhitelistHint'),
+          ),
+          h('div', {
+            className: 'dsh-pet-cfg__grid2',
+            children: [
+              toggleCell('imAllowOwnerToggle', channel.allowOwner, busy, (v) =>
+                setImChannel(platform, { allowOwner: v }),
+              ),
+              platform === 'qq'
+                ? toggleCell(
+                    'imAllowGroupsToggle',
+                    channel.allowGroups,
+                    busy,
+                    (v) => setImChannel(platform, { allowGroups: v }),
+                    true,
+                  )
+                : toggleCell(
+                    'imWriteSayToggle',
+                    channel.writeSay,
+                    busy,
+                    (v) => setImChannel(platform, { writeSay: v }),
+                    true,
+                  ),
+            ],
+          }),
+          platform === 'qq'
+            ? h('div', {
+                className: 'dsh-pet-cfg__grid2',
+                children: [
+                  toggleCell(
+                    'imWriteSayToggle',
+                    channel.writeSay,
+                    busy,
+                    (v) => setImChannel(platform, { writeSay: v }),
+                    true,
+                  ),
+                ],
+              })
+            : null,
+        ],
+      });
     };
 
     // 当前编辑中的灵魂色（用于色块）：草稿非法时 editedSoulCard 已回落到当前生效卡。
@@ -2895,6 +3444,20 @@ export function makePetConfigSection(rt: {
               t('bridgeTitle'),
               t('bridgeHint'),
               [
+                h('div', { className: 'dsh-pet-cfg__cardTitle', children: t('imTitle') }),
+                h('div', { className: 'dsh-pet-cfg__note', children: t('imHint') }),
+                imChannelBlock('wechat', im.wechat, imWechatWhitelist, setImWechatWhitelist),
+                imChannelBlock('qq', im.qq, imQqWhitelist, setImQqWhitelist),
+                imMsg.text
+                  ? h('p', {
+                      className: 'dsh-pet-cfg__note',
+                      style:
+                        imMsg.kind === 'err'
+                          ? { color: 'var(--dsw-alias-state-error-primary)' }
+                          : { color: 'var(--dsw-alias-state-success-primary)' },
+                      children: imMsg.text,
+                    })
+                  : null,
                 h('div', { className: 'dsh-pet-cfg__note', children: t('bridgePersonalNote') }),
                 h('div', {
                   className: 'dsh-pet-cfg__grid2',

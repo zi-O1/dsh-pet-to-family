@@ -1,9 +1,9 @@
 import { AnthropicError, DEFAULT_MEMORY_SYNC_INTERVAL_MS, MIN_MEMORY_SYNC_INTERVAL_MS, ToolError, __classPrivateFieldGet, __classPrivateFieldSet, checkMemorySyncInterval, decodeUTF8, encodeUTF8, isStatus, loggerFor, promiseWithResolvers } from "./promise-DxjFfmXm.js";
-import { child_process, crypto, fs, path, stream, util } from "./node-BRcZELkk.js";
-import * as path$1 from "node:path";
+import { child_process, crypto, fs, path, stream, util } from "./node-CKnzqwq0.js";
+import * as path$2 from "node:path";
 import * as fssync from "node:fs";
 import * as crypto$1 from "node:crypto";
-import * as fs$1 from "node:fs/promises";
+import * as fs$2 from "node:fs/promises";
 import * as cp from "node:child_process";
 import * as readline from "node:readline";
 
@@ -23,7 +23,7 @@ function betaTool(options) {
 
 //#endregion
 //#region node_modules/.pnpm/@anthropic-ai+sdk@0.135.0_zod@4.6.7/node_modules/@anthropic-ai/sdk/tools/agent-toolset/fs-util.mjs
-const fs$3 = fs.promises;
+const fs$4 = fs.promises;
 const DIR_CREATE_MODE = 448;
 const FILE_CREATE_MODE = 384;
 function isWithin(root, p) {
@@ -47,11 +47,11 @@ async function canonicalize(abs) {
 	for (;;) {
 		let real;
 		try {
-			real = await fs$3.realpath(prefix);
+			real = await fs$4.realpath(prefix);
 		} catch (realpathErr) {
 			let isLink;
 			try {
-				isLink = (await fs$3.lstat(prefix)).isSymbolicLink();
+				isLink = (await fs$4.lstat(prefix)).isSymbolicLink();
 			} catch (lstatErr) {
 				const code = errnoCode(lstatErr);
 				if (code !== "ENOENT" && code !== "ENOTDIR") throw lstatErr;
@@ -63,7 +63,7 @@ async function canonicalize(abs) {
 			}
 			if (!isLink) throw realpathErr;
 			if (++hops > MAX_SYMLINK_HOPS) throw Object.assign(new Error("too many levels of symbolic links"), { code: "ELOOP" });
-			prefix = path.resolve(path.dirname(prefix), await fs$3.readlink(prefix));
+			prefix = path.resolve(path.dirname(prefix), await fs$4.readlink(prefix));
 			continue;
 		}
 		return tail.length ? path.join(real, ...tail.reverse()) : real;
@@ -85,19 +85,19 @@ async function confineToRoot(root, p, opts) {
 async function atomicWriteFile(targetPath, content) {
 	const dir = path.dirname(targetPath);
 	const tempPath = path.join(dir, `.tmp-${process.pid}-${crypto.randomUUID()}`);
-	const existingMode = await fs$3.stat(targetPath).then((st) => st.mode & 511, () => void 0);
+	const existingMode = await fs$4.stat(targetPath).then((st) => st.mode & 511, () => void 0);
 	let handle;
 	try {
-		handle = await fs$3.open(tempPath, "wx", FILE_CREATE_MODE);
+		handle = await fs$4.open(tempPath, "wx", FILE_CREATE_MODE);
 		if (existingMode !== void 0) await handle.chmod(existingMode);
 		await handle.writeFile(content, "utf-8");
 		await handle.sync();
 		await handle.close();
 		handle = void 0;
-		await fs$3.rename(tempPath, targetPath);
+		await fs$4.rename(tempPath, targetPath);
 	} catch (err) {
 		if (handle) await handle.close().catch(() => {});
-		await fs$3.unlink(tempPath).catch(() => {});
+		await fs$4.unlink(tempPath).catch(() => {});
 		throw err;
 	}
 }
@@ -120,7 +120,7 @@ function fsErrorMessage(err, file) {
 
 //#endregion
 //#region node_modules/.pnpm/@anthropic-ai+sdk@0.135.0_zod@4.6.7/node_modules/@anthropic-ai/sdk/tools/agent-toolset/skills.mjs
-const fs$2 = fs.promises;
+const fs$3 = fs.promises;
 const execFileAsync = util.promisify(child_process.execFile);
 async function setupSkills(ctx) {
 	const { client, sessionId } = ctx;
@@ -147,11 +147,11 @@ async function setupSkills(ctx) {
 			continue;
 		}
 		const resp = await client.beta.skills.versions.download(version.id, { skill_id: skill.skill_id });
-		await fs$2.rm(dest, {
+		await fs$3.rm(dest, {
 			recursive: true,
 			force: true
 		});
-		await fs$2.mkdir(dest, {
+		await fs$3.mkdir(dest, {
 			recursive: true,
 			mode: DIR_CREATE_MODE
 		});
@@ -171,7 +171,7 @@ async function setupSkills(ctx) {
 		});
 	}
 	return async () => {
-		for (const dest of created) await fs$2.rm(dest, {
+		for (const dest of created) await fs$3.rm(dest, {
 			recursive: true,
 			force: true
 		}).catch((e) => {
@@ -247,7 +247,7 @@ function classifyArchiveListing(cmd, names, typed) {
 	};
 }
 async function assertOnlyPlainEntries(dir) {
-	for (const entry of await fs$2.readdir(dir, { withFileTypes: true })) if (entry.isDirectory()) await assertOnlyPlainEntries(path.join(dir, entry.name));
+	for (const entry of await fs$3.readdir(dir, { withFileTypes: true })) if (entry.isDirectory()) await assertOnlyPlainEntries(path.join(dir, entry.name));
 	else if (!entry.isFile()) throw new AnthropicError(INCONSISTENT_LISTING);
 }
 /**
@@ -306,21 +306,21 @@ async function extractSkillArchive(resp, dest) {
 		const { plain, special } = classifyArchiveListing(archiveCmd, names, typed);
 		assertSafeMemberNames([...plain, ...special]);
 		const top = archiveTopDir(plain);
-		await fs$2.mkdir(stage, {
+		await fs$3.mkdir(stage, {
 			recursive: true,
 			mode: DIR_CREATE_MODE
 		});
 		if (plain.length > 0) await runArchiveTool(archiveCmd, await extractArgs(archiveCmd, tmp, stage, special, excludeFile));
 		await assertOnlyPlainEntries(stage);
 		const srcRoot = top ? path.join(stage, top) : stage;
-		const entries = await fs$2.readdir(srcRoot).catch((e) => {
+		const entries = await fs$3.readdir(srcRoot).catch((e) => {
 			throw errnoCode(e) === "ENOENT" ? new AnthropicError(INCONSISTENT_LISTING) : e;
 		});
-		for (const entry of entries) await fs$2.rename(path.join(srcRoot, entry), path.join(dest, entry));
+		for (const entry of entries) await fs$3.rename(path.join(srcRoot, entry), path.join(dest, entry));
 	} finally {
-		await fs$2.rm(tmp, { force: true });
-		await fs$2.rm(excludeFile, { force: true });
-		await fs$2.rm(stage, {
+		await fs$3.rm(tmp, { force: true });
+		await fs$3.rm(excludeFile, { force: true });
+		await fs$3.rm(stage, {
 			recursive: true,
 			force: true
 		});
@@ -347,7 +347,7 @@ async function extractArgs(cmd, archive, stage, special, excludeFile) {
 		"-C",
 		stage
 	];
-	await fs$2.writeFile(excludeFile, patterns.join("\n") + "\n", {
+	await fs$3.writeFile(excludeFile, patterns.join("\n") + "\n", {
 		flag: "wx",
 		mode: 384
 	});
@@ -362,7 +362,7 @@ async function extractArgs(cmd, archive, stage, special, excludeFile) {
 }
 /** Read the first `n` bytes of `file`. */
 async function readHead(file, n) {
-	const handle = await fs$2.open(file, "r");
+	const handle = await fs$3.open(file, "r");
 	try {
 		const buf = Buffer.alloc(n);
 		const { bytesRead } = await handle.read(buf, 0, n, 0);
@@ -1509,7 +1509,7 @@ var BashTimeoutError = class extends AnthropicError {
 	}
 };
 const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
-const fsGlob = fs$1.glob;
+const fsGlob = fs$2.glob;
 function resolveMaxBytes(configured) {
 	return configured === void 0 ? DEFAULT_MAX_FILE_BYTES : configured;
 }
@@ -1775,7 +1775,7 @@ function betaReadTool(ctx) {
 			if (view_range?.length && view_range.length !== 2) throw new ToolError("read: view_range must be [start_line, end_line]");
 			let data;
 			try {
-				const st = await fs$1.stat(abs);
+				const st = await fs$2.stat(abs);
 				if (!st.isFile()) throw new ToolError(`read: ${file_path} is not a regular file`);
 				const limit = resolveMaxBytes(ctx.maxFileBytes);
 				if (limit !== null && st.size > limit) {
@@ -1783,7 +1783,7 @@ function betaReadTool(ctx) {
 					const [startLine$1, endLine$1] = view_range;
 					return await readRangeStreaming(abs, file_path, startLine$1, endLine$1, limit);
 				}
-				data = await fs$1.readFile(abs, "utf8");
+				data = await fs$2.readFile(abs, "utf8");
 			} catch (e) {
 				if (e instanceof ToolError) throw e;
 				throw new ToolError(`read: ${fsErrorMessage(e, file_path)}`);
@@ -1888,7 +1888,7 @@ function betaWriteTool(ctx) {
 			const ro = await readOnlyRootFor(ctx, abs);
 			if (ro !== void 0) throw new ToolError(`write: ${file_path} is inside read-only directory ${ro}`);
 			try {
-				await fs$1.mkdir(path$1.dirname(abs), {
+				await fs$2.mkdir(path$2.dirname(abs), {
 					recursive: true,
 					mode: DIR_CREATE_MODE
 				});
@@ -1927,11 +1927,11 @@ function betaEditTool(ctx) {
 			if (ro !== void 0) throw new ToolError(`edit: ${file_path} is inside read-only directory ${ro}`);
 			let data;
 			try {
-				const st = await fs$1.stat(abs);
+				const st = await fs$2.stat(abs);
 				if (!st.isFile()) throw new ToolError(`edit: ${file_path} is not a regular file`);
 				const limit = resolveMaxBytes(ctx.maxFileBytes);
 				if (limit !== null && st.size > limit) throw new ToolError(`edit: ${file_path} is ${st.size} bytes, exceeds ${limit}-byte limit. The edit tool loads the whole file and cannot modify a file this large.`);
-				data = await fs$1.readFile(abs, "utf8");
+				data = await fs$2.readFile(abs, "utf8");
 			} catch (e) {
 				if (e instanceof ToolError) throw e;
 				throw new ToolError(`edit: ${fsErrorMessage(e, file_path)}`);
@@ -1979,9 +1979,9 @@ function betaGlobTool(ctx) {
 		},
 		run: async ({ pattern, path: searchPath }) => {
 			if (!pattern) throw new ToolError("glob: pattern is required");
-			if (path$1.isAbsolute(pattern)) throw new ToolError("glob: absolute pattern not permitted; pass a relative pattern (and optionally path)");
+			if (path$2.isAbsolute(pattern)) throw new ToolError("glob: absolute pattern not permitted; pass a relative pattern (and optionally path)");
 			if (patternCanAscend(pattern)) throw new ToolError("glob: \"..\" is not permitted in the pattern");
-			const root = searchPath ? await resolvePath(ctx, searchPath) : path$1.resolve(ctx.workdir);
+			const root = searchPath ? await resolvePath(ctx, searchPath) : path$2.resolve(ctx.workdir);
 			const realRoot = searchPath ? root : await canonicalize(root);
 			const matches = [];
 			let remaining = WALK_MAX_ENTRIES;
@@ -1993,17 +1993,17 @@ function betaGlobTool(ctx) {
 				})) {
 					if (remaining-- <= 0) break;
 					if (!entry.isFile()) continue;
-					const full = path$1.join(entry.parentPath, entry.name);
+					const full = path$2.join(entry.parentPath, entry.name);
 					let real;
 					try {
-						real = await fs$1.realpath(full);
+						real = await fs$2.realpath(full);
 					} catch {
 						continue;
 					}
 					if (!isWithin(realRoot, real)) continue;
 					let mtime = 0;
 					try {
-						mtime = (await fs$1.stat(full)).mtimeMs;
+						mtime = (await fs$2.stat(full)).mtimeMs;
 					} catch {}
 					matches.push({
 						path: full,
@@ -2034,7 +2034,7 @@ function betaGrepTool(ctx) {
 		},
 		run: async ({ pattern, path: p }, context) => {
 			if (!pattern) throw new ToolError("grep: pattern is required");
-			let searchPath = path$1.resolve(ctx.workdir);
+			let searchPath = path$2.resolve(ctx.workdir);
 			if (p) searchPath = await resolvePath(ctx, p);
 			const rg = await findRg();
 			return rg ? runRipgrep(rg, pattern, searchPath, context?.signal) : runWalkGrep(pattern, searchPath, context?.signal);
@@ -2095,9 +2095,9 @@ async function runWalkGrep(pattern, root, signal) {
 		hits.push(line);
 		return true;
 	};
-	const stat$1 = await fs$1.stat(root).catch(() => null);
+	const stat$1 = await fs$2.stat(root).catch(() => null);
 	if (stat$1?.isFile()) await grepFile(root, re, push);
-	else await walk(root, "", (rel) => grepFile(path$1.join(root, rel), re, push), signal);
+	else await walk(root, "", (rel) => grepFile(path$2.join(root, rel), re, push), signal);
 	if (signal?.aborted) throw new ToolError("grep: aborted");
 	if (hits.length === 0) return "no matches";
 	return hits.join("\n");
@@ -2135,7 +2135,7 @@ async function walk(root, rel, fn, signal) {
 		if (signal?.aborted) return false;
 		let entries;
 		try {
-			entries = await fs$1.readdir(path$1.join(root, rel$1), { withFileTypes: true });
+			entries = await fs$2.readdir(path$2.join(root, rel$1), { withFileTypes: true });
 		} catch {
 			return true;
 		}
@@ -2143,7 +2143,7 @@ async function walk(root, rel, fn, signal) {
 			if (e.name === ".git" || e.name === "node_modules") continue;
 			if (remaining-- <= 0) return false;
 			if (signal?.aborted) return false;
-			const childRel = rel$1 ? path$1.join(rel$1, e.name) : e.name;
+			const childRel = rel$1 ? path$2.join(rel$1, e.name) : e.name;
 			if (e.isDirectory()) {
 				if (!await inner(childRel, depth + 1)) return false;
 			} else if (e.isFile()) {
@@ -2155,11 +2155,11 @@ async function walk(root, rel, fn, signal) {
 	await inner(rel, 0);
 }
 async function findRg() {
-	const dirs = (process.env["PATH"] ?? "").split(path$1.delimiter);
+	const dirs = (process.env["PATH"] ?? "").split(path$2.delimiter);
 	for (const d of dirs) {
-		const candidate = path$1.join(d, "rg");
+		const candidate = path$2.join(d, "rg");
 		try {
-			await fs$1.access(candidate, fssync.constants.X_OK);
+			await fs$2.access(candidate, fssync.constants.X_OK);
 			return candidate;
 		} catch {}
 	}
