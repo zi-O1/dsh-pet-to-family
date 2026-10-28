@@ -1069,6 +1069,7 @@ export function apply(ctx: any): void {
       }
     },
     chat: chatWithPet,
+    ctx,
     log: {
       info: (message: string) => log.info(message),
       warn: (message: string) => log.warn(message),
@@ -2550,74 +2551,115 @@ export function apply(ctx: any): void {
       });
     }
 
-    // 原生微信 / QQ：登录、状态、登出。凭据只在 host 进程与 im-auth.json 之间流转，
-    // 浏览器只拿二维码/状态，永远拿不到 bot_token 或 appSecret。
+    // 原生微信 / QQ：每平台多机器人。登录、状态、登出都按 botId 隔离；
+    // 凭据只在 host 进程与 im-auth.json 之间流转，浏览器只拿二维码/状态。
     if (rest === 'im/status') {
       if (method !== 'GET') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
-      return { kind: 'json', status: 200, obj: nativeIm.status(), headers: { 'cache-control': 'no-cache, no-store' } };
+      return {
+        kind: 'json',
+        status: 200,
+        obj: nativeIm.status(),
+        headers: { 'cache-control': 'no-cache, no-store' },
+      };
     }
-    if (rest === 'im/wechat/login') {
-      if (method === 'POST') {
+    if (rest === 'im/sessions') {
+      if (method !== 'GET') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+      try {
+        return {
+          kind: 'json',
+          status: 200,
+          obj: { ok: true, sessions: await nativeIm.listSessions(signal) },
+          headers: { 'cache-control': 'no-cache, no-store' },
+        };
+      } catch (e) {
+        return {
+          kind: 'json',
+          status: 200,
+          obj: { ok: false, sessions: [], message: e instanceof Error ? e.message : String(e) },
+        };
+      }
+    }
+    const imRoute = /^im\/(wechat|qq)\/bots\/([^/]+)\/(login|verify|logout|bind)$/.exec(rest);
+    if (imRoute) {
+      const platform = imRoute[1] as 'wechat' | 'qq';
+      const botId = decodeURIComponent(imRoute[2]);
+      const action = imRoute[3];
+      if (platform === 'wechat' && action === 'login') {
+        if (method === 'POST') {
+          try {
+            return { kind: 'json', status: 200, obj: await nativeIm.startWechatLogin(botId) };
+          } catch (e) {
+            return {
+              kind: 'json',
+              status: 200,
+              obj: {
+                botId,
+                id: '',
+                status: 'failed',
+                expiresAt: Date.now(),
+                error: { code: 'qr-start-failed', message: e instanceof Error ? e.message : String(e) },
+              },
+            };
+          }
+        }
+        if (method === 'GET') {
+          return {
+            kind: 'json',
+            status: 200,
+            obj: { login: nativeIm.wechatLoginStatus(botId) },
+            headers: { 'cache-control': 'no-cache, no-store' },
+          };
+        }
+        if (method === 'DELETE') {
+          nativeIm.cancelWechatLogin(botId);
+          return { kind: 'json', status: 200, obj: { ok: true } };
+        }
+        return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+      }
+      if (platform === 'wechat' && action === 'verify') {
+        if (method !== 'POST') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+        let payload: { code?: unknown };
         try {
-          return { kind: 'json', status: 200, obj: await nativeIm.startWechatLogin() };
+          payload = JSON.parse(body ?? '') as { code?: unknown };
+        } catch {
+          return { kind: 'json', status: 400, obj: { error: 'invalid JSON body' } };
+        }
+        return {
+          kind: 'json',
+          status: 200,
+          obj: { login: nativeIm.submitWechatVerifyCode(botId, String(payload.code ?? '')) },
+        };
+      }
+      if (platform === 'wechat' && action === 'logout') {
+        if (method !== 'POST') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+        await nativeIm.logoutWechat(botId);
+        return { kind: 'json', status: 200, obj: { ok: true } };
+      }
+      if (platform === 'qq' && action === 'bind') {
+        if (method !== 'POST') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+        let payload: { appId?: unknown; appSecret?: unknown };
+        try {
+          payload = JSON.parse(body ?? '') as { appId?: unknown; appSecret?: unknown };
+        } catch {
+          return { kind: 'json', status: 400, obj: { error: 'invalid JSON body' } };
+        }
+        try {
+          await nativeIm.bindQq(botId, String(payload.appId ?? ''), String(payload.appSecret ?? ''));
+          return { kind: 'json', status: 200, obj: { ok: true, status: nativeIm.status() } };
         } catch (e) {
           return {
             kind: 'json',
             status: 200,
-            obj: {
-              status: 'failed',
-              error: { code: 'qr-start-failed', message: e instanceof Error ? e.message : String(e) },
-            },
+            obj: { ok: false, message: e instanceof Error ? e.message : String(e) },
           };
         }
       }
-      if (method === 'GET')
-        return {
-          kind: 'json',
-          status: 200,
-          obj: { login: nativeIm.wechatLoginStatus() },
-          headers: { 'cache-control': 'no-cache, no-store' },
-        };
-      if (method === 'DELETE') {
-        nativeIm.cancelWechatLogin();
+      if (platform === 'qq' && action === 'logout') {
+        if (method !== 'POST') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+        await nativeIm.logoutQq(botId);
         return { kind: 'json', status: 200, obj: { ok: true } };
       }
       return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
-    }
-    if (rest === 'im/wechat/verify') {
-      if (method !== 'POST') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
-      let payload: { code?: unknown };
-      try {
-        payload = JSON.parse(body ?? '') as { code?: unknown };
-      } catch {
-        return { kind: 'json', status: 400, obj: { error: 'invalid JSON body' } };
-      }
-      return { kind: 'json', status: 200, obj: { login: nativeIm.submitWechatVerifyCode(String(payload.code ?? '')) } };
-    }
-    if (rest === 'im/wechat/logout') {
-      if (method !== 'POST') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
-      await nativeIm.logoutWechat();
-      return { kind: 'json', status: 200, obj: { ok: true } };
-    }
-    if (rest === 'im/qq/bind') {
-      if (method !== 'POST') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
-      let payload: { appId?: unknown; appSecret?: unknown };
-      try {
-        payload = JSON.parse(body ?? '') as { appId?: unknown; appSecret?: unknown };
-      } catch {
-        return { kind: 'json', status: 400, obj: { error: 'invalid JSON body' } };
-      }
-      try {
-        await nativeIm.bindQq(String(payload.appId ?? ''), String(payload.appSecret ?? ''));
-        return { kind: 'json', status: 200, obj: { ok: true, status: nativeIm.status() } };
-      } catch (e) {
-        return { kind: 'json', status: 200, obj: { ok: false, message: e instanceof Error ? e.message : String(e) } };
-      }
-    }
-    if (rest === 'im/qq/logout') {
-      if (method !== 'POST') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
-      await nativeIm.logoutQq();
-      return { kind: 'json', status: 200, obj: { ok: true } };
     }
 
     // 通用消息接入（Webhook bridge）：外部桥接器把白名单联系人的消息 POST 进来，

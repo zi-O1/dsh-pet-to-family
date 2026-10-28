@@ -19,12 +19,14 @@ import {
   formatImWhitelist,
   normalizeImConfig,
   parseImWhitelistText,
-  type ImChannelConfig,
+  nextImBotId,
+  type ImBotConfig,
   type ImConfig,
+  type ImMode,
+  type ImPlatform,
   type ImLoginAttemptView,
-  type ImQqStatusView,
   type ImStatusView,
-  type ImWechatStatusView,
+  type ImSessionSummary,
 } from '../shared/im';
 import { DEFAULT_FONT, FONT_PRESETS, FONT_SIZE_MAX, FONT_SIZE_MIN } from '../shared/fonts';
 import { DEFAULT_PHYSICS } from '../shared/physics';
@@ -429,7 +431,7 @@ export const zh = {
   bridgeInvalidNumbers: '请检查去重窗口（0~86400 秒）和每人每分钟上限（0~120）。',
   imTitle: '微信 / QQ 原生连接',
   imHint:
-    '插件自己连接微信（iLink 扫码）和 QQ 官方机器人（AppID + AppSecret），不依赖 dsh-im。消息按平台 + 发送者隔离记忆，由桌宠直接回复。',
+    '插件自己连接微信（iLink 扫码）和 QQ 官方机器人（AppID + AppSecret），不依赖 dsh-im。每个机器人可选「桌宠回复」或「DSH session 回复」。',
   imWechatTitle: '微信',
   imQqTitle: 'QQ',
   imConnected: '已连接',
@@ -466,6 +468,20 @@ export const zh = {
   imQrFailed: '二维码生成失败：{msg}',
   imStatusFailed: '读取连接状态失败。',
   imNeedVerify: '微信要求输入配对码，请在手机微信查看后输入。',
+  imAddBot: '添加机器人',
+  imRemoveBot: '移除',
+  imNoBots: '还没有机器人。点「添加机器人」创建一个，再配置登录和白名单。',
+  imModeLabel: '回复方式',
+  imModeHint: 'pet = 桌宠的人格与记忆；session = 投递到固定 DSH 对话 session。',
+  imModePet: '桌宠回复',
+  imModeSession: 'DSH session 回复',
+  imSessionLabel: 'DSH session ID',
+  imSessionPlaceholder: 'ses_...（也可从右侧下拉选择）',
+  imSessionHint: '一个机器人固定投递到一个 session；消息会在该 session 里排队执行。',
+  imSessionPick: '从当前 DSH session 选择',
+  imSessionManual: '（手动填写）',
+  imSessionPickHint: '下拉不可用时，直接填上面的 session ID。',
+  imInvalidSession: '选择 session 模式时必须填写一个 session ID。',
   imVerifyCode: '配对码',
   imSubmitVerify: '提交配对码',
   soulTitle: '人格灵魂色彩',
@@ -807,7 +823,7 @@ export const en = {
   bridgeInvalidNumbers: 'Check the dedupe window (0–86400 sec) and per-sender limit (0–120).',
   imTitle: 'Native WeChat / QQ',
   imHint:
-    'The plugin connects to WeChat (iLink QR) and the official QQ bot (AppID + AppSecret) itself, without dsh-im. Messages are isolated per platform + sender and answered by the pet.',
+    'The plugin connects to WeChat (iLink QR) and the official QQ bot (AppID + AppSecret) itself, without dsh-im. Each bot can reply through the pet or a fixed DSH session.',
   imWechatTitle: 'WeChat',
   imQqTitle: 'QQ',
   imConnected: 'Connected',
@@ -846,6 +862,20 @@ export const en = {
   imQrFailed: 'QR generation failed: {msg}',
   imStatusFailed: 'Failed to read connection status.',
   imNeedVerify: 'WeChat requires a pairing code; enter it below.',
+  imAddBot: 'Add bot',
+  imRemoveBot: 'Remove',
+  imNoBots: 'No bots yet. Click “Add bot”, then configure login and the whitelist.',
+  imModeLabel: 'Reply mode',
+  imModeHint: 'pet = the pet’s persona and memory; session = a fixed DSH conversation session.',
+  imModePet: 'Pet reply',
+  imModeSession: 'DSH session reply',
+  imSessionLabel: 'DSH session ID',
+  imSessionPlaceholder: 'ses_... (or pick from the list)',
+  imSessionHint: 'Each bot always posts to one session; messages are queued in that session.',
+  imSessionPick: 'Pick a current DSH session',
+  imSessionManual: '(manual)',
+  imSessionPickHint: 'If the dropdown is unavailable, type the session ID above.',
+  imInvalidSession: 'A session ID is required when session mode is selected.',
   imVerifyCode: 'Pairing code',
   imSubmitVerify: 'Submit code',
   soulTitle: 'Soul & personality color',
@@ -1396,18 +1426,14 @@ export function makePetConfigSection(rt: {
     const [bridgeWhitelistText, setBridgeWhitelistText] = useState('');
     // token 生成/复制等就地反馈，不污染页面级保存提示。
     const [bridgeMsg, setBridgeMsg] = useState<{ kind: 'ok' | 'err' | ''; text: string }>({ kind: '', text: '' });
-    // 原生微信 / QQ：配置随「保存」写入 main.im；登录凭据只在 host 的 im-auth.json。
-    const [im, setIm] = useState<ImConfig>({
-      ...DEFAULT_IM,
-      wechat: { ...DEFAULT_IM.wechat, whitelist: [] },
-      qq: { ...DEFAULT_IM.qq, whitelist: [] },
-    });
-    const [imWechatWhitelist, setImWechatWhitelist] = useState('');
-    const [imQqWhitelist, setImQqWhitelist] = useState('');
+    // 原生微信 / QQ：每平台多机器人；配置随「保存」写入 main.im，凭据只在 host。
+    const [im, setIm] = useState<ImConfig>(normalizeImConfig(DEFAULT_IM));
+    const [imWhitelist, setImWhitelist] = useState<Record<string, string>>({});
+    const [imQqCreds, setImQqCreds] = useState<Record<string, { appId: string; secret: string }>>({});
+    const [imVerifyCodes, setImVerifyCodes] = useState<Record<string, string>>({});
     const [imStatus, setImStatus] = useState<ImStatusView | null>(null);
-    const [imQqAppId, setImQqAppId] = useState('');
-    const [imQqSecret, setImQqSecret] = useState('');
-    const [imVerifyCode, setImVerifyCode] = useState('');
+    const [imSessions, setImSessions] = useState<ImSessionSummary[]>([]);
+    const [imSessionsMsg, setImSessionsMsg] = useState('');
     const [imMsg, setImMsg] = useState<{ kind: 'ok' | 'err' | ''; text: string }>({ kind: '', text: '' });
     const [imBusy, setImBusy] = useState('');
 
@@ -1508,8 +1534,13 @@ export function makePetConfigSection(rt: {
       setBridgeMsg({ kind: '', text: '' });
       const loadedIm = normalizeImConfig(m.im);
       setIm(loadedIm);
-      setImWechatWhitelist(formatImWhitelist(loadedIm.wechat.whitelist));
-      setImQqWhitelist(formatImWhitelist(loadedIm.qq.whitelist));
+      const loadedWhitelist: Record<string, string> = {};
+      for (const platform of ['wechat', 'qq'] as const) {
+        for (const bot of loadedIm[platform].bots) {
+          loadedWhitelist[bot.id] = formatImWhitelist(bot.whitelist);
+        }
+      }
+      setImWhitelist(loadedWhitelist);
       setImMsg({ kind: '', text: '' });
     }, []);
 
@@ -1998,24 +2029,31 @@ export function makePetConfigSection(rt: {
         setMsg({ kind: 'err', text: t('bridgeInvalidNumbers') });
         return false;
       }
-      for (const [platform, channel, text] of [
-        ['wechat', im.wechat, imWechatWhitelist],
-        ['qq', im.qq, imQqWhitelist],
-      ] as const) {
-        const parsed = parseImWhitelistText(text);
-        if (!parsed.ok) {
-          setMsg({
-            kind: 'err',
-            text: t('imInvalidWhitelist').replace('{line}', String(parsed.line)),
-          });
-          return false;
-        }
-        if (channel.enabled && !pets.some((p) => p.id === channel.petId.trim())) {
-          setMsg({
-            kind: 'err',
-            text: t('imInvalidPet').replace('{platform}', platform === 'wechat' ? t('imWechatTitle') : t('imQqTitle')),
-          });
-          return false;
+      for (const platform of ['wechat', 'qq'] as const) {
+        for (const bot of im[platform].bots) {
+          const parsed = parseImWhitelistText(imWhitelist[bot.id] ?? '');
+          if (!parsed.ok) {
+            setMsg({
+              kind: 'err',
+              text: t('imInvalidWhitelist').replace('{line}', String(parsed.line)),
+            });
+            return false;
+          }
+          if (!bot.enabled) continue;
+          if (bot.mode === 'session' && !bot.sessionId.trim()) {
+            setMsg({ kind: 'err', text: t('imInvalidSession') });
+            return false;
+          }
+          if (bot.mode === 'pet' && !pets.some((p) => p.id === bot.petId.trim())) {
+            setMsg({
+              kind: 'err',
+              text: t('imInvalidPet').replace(
+                '{platform}',
+                platform === 'wechat' ? t('imWechatTitle') : t('imQqTitle'),
+              ),
+            });
+            return false;
+          }
         }
       }
       // 灵魂卡：草稿必须是合法 JSON 对象（留空 / {} = 删除实例覆盖，跟随条目）；
@@ -2073,22 +2111,25 @@ export function makePetConfigSection(rt: {
           });
           return false;
         }
-        const imWechat = parseImWhitelistText(imWechatWhitelist);
-        const imQq = parseImWhitelistText(imQqWhitelist);
-        if (!imWechat.ok || !imQq.ok) {
-          setMsg({
-            kind: 'err',
-            text: t('imInvalidWhitelist').replace(
-              '{line}',
-              String(!imWechat.ok ? imWechat.line : !imQq.ok ? imQq.line : 0),
-            ),
-          });
-          return false;
+        const imPayload: ImConfig = { wechat: { bots: [] }, qq: { bots: [] } };
+        for (const platform of ['wechat', 'qq'] as const) {
+          for (const bot of im[platform].bots) {
+            const parsed = parseImWhitelistText(imWhitelist[bot.id] ?? '');
+            if (!parsed.ok) {
+              setMsg({
+                kind: 'err',
+                text: t('imInvalidWhitelist').replace('{line}', String(parsed.line)),
+              });
+              return false;
+            }
+            imPayload[platform].bots.push({
+              ...bot,
+              petId: bot.petId.trim(),
+              sessionId: bot.sessionId.trim(),
+              whitelist: parsed.list,
+            });
+          }
         }
-        const imPayload: ImConfig = {
-          wechat: { ...im.wechat, petId: im.wechat.petId.trim(), whitelist: imWechat.list },
-          qq: { ...im.qq, petId: im.qq.petId.trim(), whitelist: imQq.list },
-        };
         const bridgePayload: BridgeConfig = {
           ...bridge,
           petId: bridge.petId.trim(),
@@ -2143,9 +2184,13 @@ export function makePetConfigSection(rt: {
         // 保存后的归一化结果回填：用户手写的空白/重复白名单在界面上也变成实际落盘值。
         setBridge(normalizeBridgeConfig(bridgePayload));
         setBridgeWhitelistText(formatBridgeWhitelist(bridgePayload.whitelist));
-        setIm(normalizeImConfig(imPayload));
-        setImWechatWhitelist(formatImWhitelist(imPayload.wechat.whitelist));
-        setImQqWhitelist(formatImWhitelist(imPayload.qq.whitelist));
+        const nextIm = normalizeImConfig(imPayload);
+        setIm(nextIm);
+        const nextWhitelist: Record<string, string> = {};
+        for (const platform of ['wechat', 'qq'] as const) {
+          for (const bot of nextIm[platform].bots) nextWhitelist[bot.id] = formatImWhitelist(bot.whitelist);
+        }
+        setImWhitelist(nextWhitelist);
         void reloadNotifications(); // 保存后即时生效，无需刷新。
         setSoulPreview(null); // 旧预览可能对应保存前的卡，清掉避免误读。
         setMsg({ kind: 'ok', text: t('saved') });
@@ -2395,8 +2440,70 @@ export function makePetConfigSection(rt: {
     };
 
     /** 原生微信 / QQ 的状态与登录动作共用的小工具。 */
-    const setImChannel = (platform: 'wechat' | 'qq', patch: Partial<ImChannelConfig>): void => {
-      setIm((value) => ({ ...value, [platform]: { ...value[platform], ...patch } }));
+    const setImBot = (platform: ImPlatform, botId: string, patch: Partial<ImBotConfig>): void => {
+      setIm((value) => ({
+        ...value,
+        [platform]: {
+          bots: value[platform].bots.map((bot) => (bot.id === botId ? { ...bot, ...patch } : bot)),
+        },
+      }));
+    };
+
+    const addImBot = (platform: ImPlatform): void => {
+      const id = nextImBotId(platform, im[platform].bots);
+      setIm((value) => ({
+        ...value,
+        [platform]: {
+          bots: [
+            ...value[platform].bots,
+            {
+              id,
+              enabled: false,
+              mode: 'pet',
+              petId: '',
+              sessionId: '',
+              whitelist: [],
+              allowOwner: true,
+              allowGroups: false,
+              writeSay: false,
+            },
+          ],
+        },
+      }));
+      setImWhitelist((value) => ({ ...value, [id]: '' }));
+    };
+
+    const removeImBot = async (platform: ImPlatform, botId: string): Promise<void> => {
+      if (platform === 'wechat') {
+        await fetch(`/dsh-pet-7340/im/wechat/bots/${encodeURIComponent(botId)}/login`, { method: 'DELETE' }).catch(
+          () => undefined,
+        );
+      }
+      try {
+        await fetch(`/dsh-pet-7340/im/${platform}/bots/${encodeURIComponent(botId)}/logout`, { method: 'POST' });
+      } catch {
+        // 断开失败也允许移除本地配置；凭据可稍后再清。
+      }
+      setIm((value) => ({
+        ...value,
+        [platform]: { bots: value[platform].bots.filter((bot) => bot.id !== botId) },
+      }));
+      setImWhitelist((value) => {
+        const next = { ...value };
+        delete next[botId];
+        return next;
+      });
+      setImQqCreds((value) => {
+        const next = { ...value };
+        delete next[botId];
+        return next;
+      });
+      setImVerifyCodes((value) => {
+        const next = { ...value };
+        delete next[botId];
+        return next;
+      });
+      await refreshImStatus();
     };
 
     const refreshImStatus = async (): Promise<void> => {
@@ -2409,11 +2516,32 @@ export function makePetConfigSection(rt: {
       }
     };
 
-    const startWechatLogin = async (): Promise<void> => {
-      setImBusy('wechat');
+    const refreshImSessions = async (): Promise<void> => {
+      try {
+        const res = await fetch('/dsh-pet-7340/im/sessions', { cache: 'no-store' });
+        const data = (await res.json().catch(() => null)) as {
+          ok?: boolean;
+          sessions?: ImSessionSummary[];
+          message?: string;
+        } | null;
+        if (!res.ok || !data) throw new Error('HTTP ' + res.status);
+        setImSessions(Array.isArray(data.sessions) ? data.sessions : []);
+        setImSessionsMsg(data.ok === false ? (data.message ?? t('imStatusFailed')) : '');
+      } catch (e) {
+        setImSessions([]);
+        setImSessionsMsg(e instanceof Error ? e.message : String(e));
+      }
+    };
+
+    useEffect(() => {
+      if (loadState === 'ready') void refreshImSessions();
+    }, [loadState]);
+
+    const startWechatLogin = async (botId: string): Promise<void> => {
+      setImBusy(botId);
       setImMsg({ kind: '', text: '' });
       try {
-        const res = await fetch('/dsh-pet-7340/im/wechat/login', { method: 'POST' });
+        const res = await fetch(`/dsh-pet-7340/im/wechat/bots/${encodeURIComponent(botId)}/login`, { method: 'POST' });
         const data = (await res.json().catch(() => null)) as ImLoginAttemptView | null;
         if (!res.ok || !data) throw new Error('HTTP ' + res.status);
         if (data.status === 'failed') throw new Error(data.error?.message ?? 'login failed');
@@ -2425,54 +2553,56 @@ export function makePetConfigSection(rt: {
       }
     };
 
-    const cancelWechatLogin = async (): Promise<void> => {
-      setImBusy('wechat');
+    const cancelWechatLogin = async (botId: string): Promise<void> => {
+      setImBusy(botId);
       try {
-        await fetch('/dsh-pet-7340/im/wechat/login', { method: 'DELETE' });
+        await fetch(`/dsh-pet-7340/im/wechat/bots/${encodeURIComponent(botId)}/login`, { method: 'DELETE' });
         await refreshImStatus();
       } finally {
         setImBusy('');
       }
     };
 
-    const submitWechatVerify = async (): Promise<void> => {
-      if (!imVerifyCode.trim()) return;
-      setImBusy('wechat');
+    const submitWechatVerify = async (botId: string): Promise<void> => {
+      const code = (imVerifyCodes[botId] ?? '').trim();
+      if (!code) return;
+      setImBusy(botId);
       try {
-        await fetch('/dsh-pet-7340/im/wechat/verify', {
+        await fetch(`/dsh-pet-7340/im/wechat/bots/${encodeURIComponent(botId)}/verify`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ code: imVerifyCode.trim() }),
+          body: JSON.stringify({ code }),
         });
-        setImVerifyCode('');
+        setImVerifyCodes((value) => ({ ...value, [botId]: '' }));
         await refreshImStatus();
       } finally {
         setImBusy('');
       }
     };
 
-    const logoutWechat = async (): Promise<void> => {
-      setImBusy('wechat');
+    const logoutWechat = async (botId: string): Promise<void> => {
+      setImBusy(botId);
       try {
-        await fetch('/dsh-pet-7340/im/wechat/logout', { method: 'POST' });
+        await fetch(`/dsh-pet-7340/im/wechat/bots/${encodeURIComponent(botId)}/logout`, { method: 'POST' });
         await refreshImStatus();
       } finally {
         setImBusy('');
       }
     };
 
-    const bindQq = async (): Promise<void> => {
-      setImBusy('qq');
+    const bindQq = async (botId: string): Promise<void> => {
+      const creds = imQqCreds[botId] ?? { appId: '', secret: '' };
+      setImBusy(botId);
       setImMsg({ kind: '', text: '' });
       try {
-        const res = await fetch('/dsh-pet-7340/im/qq/bind', {
+        const res = await fetch(`/dsh-pet-7340/im/qq/bots/${encodeURIComponent(botId)}/bind`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ appId: imQqAppId, appSecret: imQqSecret }),
+          body: JSON.stringify({ appId: creds.appId, appSecret: creds.secret }),
         });
         const data = (await res.json().catch(() => null)) as { ok?: boolean; message?: string } | null;
         if (!res.ok || !data?.ok) throw new Error(data?.message || 'HTTP ' + res.status);
-        setImQqSecret('');
+        setImQqCreds((value) => ({ ...value, [botId]: { appId: '', secret: '' } }));
         await refreshImStatus();
         setImMsg({ kind: 'ok', text: t('imConnected') });
       } catch (e) {
@@ -2485,60 +2615,54 @@ export function makePetConfigSection(rt: {
       }
     };
 
-    const logoutQq = async (): Promise<void> => {
-      setImBusy('qq');
+    const logoutQq = async (botId: string): Promise<void> => {
+      setImBusy(botId);
       try {
-        await fetch('/dsh-pet-7340/im/qq/logout', { method: 'POST' });
+        await fetch(`/dsh-pet-7340/im/qq/bots/${encodeURIComponent(botId)}/logout`, { method: 'POST' });
         await refreshImStatus();
       } finally {
         setImBusy('');
       }
     };
 
-    /** 原生微信 / QQ 的一个平台卡片：状态、登录动作与配置共用同一套渲染。 */
-    const imChannelBlock = (
-      platform: 'wechat' | 'qq',
-      channel: ImChannelConfig,
-      whitelist: string,
-      setWhitelist: (value: string) => void,
-    ): ReturnType<typeof h> => {
-      const status = platform === 'wechat' ? imStatus?.wechat : imStatus?.qq;
-      const login = platform === 'wechat' ? imStatus?.wechat.login : undefined;
-      const isBusy = Boolean(imBusy === platform || busy);
+    const imBotCard = (platform: ImPlatform, bot: ImBotConfig): ReturnType<typeof h> => {
+      const status = imStatus?.[platform].bots.find((candidate) => candidate.id === bot.id);
+      const login = status?.login;
       const connected = status?.connected === true;
-      const stateText = !status
-        ? t('imDisconnected')
-        : connected
-          ? t('imConnected')
-          : status.state === 'connecting'
-            ? t('imConnecting')
-            : status.state === 'error'
-              ? t('imError')
-              : t('imDisconnected');
-      const account =
-        platform === 'wechat'
-          ? (status as ImWechatStatusView | undefined)?.account
-          : (status as ImQqStatusView | undefined)?.appId;
+      const isBusy = imBusy === bot.id;
+      const stateText = connected
+        ? t('imConnected')
+        : status?.state === 'connecting'
+          ? t('imConnecting')
+          : status?.state === 'error'
+            ? t('imError')
+            : t('imDisconnected');
       const count = t('imMessages')
         .replace('{n}', String(status?.messagesReceived ?? 0))
         .replace('{m}', String(status?.messagesReplied ?? 0));
-      const loginHint =
-        login?.status === 'scanned'
-          ? '已扫码，等待手机确认…'
-          : login?.status === 'needs_verification'
-            ? t('imNeedVerify')
-            : login?.status === 'expired'
-              ? t('imQrExpired')
-              : login?.status === 'failed'
-                ? (login.error?.message ?? t('imError'))
-                : t('imScanHint');
+      const activeLogin = Boolean(
+        login && ['starting', 'pending', 'scanned', 'needs_verification', 'connecting'].includes(login.status),
+      );
+      const creds = imQqCreds[bot.id] ?? { appId: '', secret: '' };
       return h('div', {
         className: 'dsh-pet-cfg__field',
         style: { border: '1px solid var(--dsw-alias-border-l2)', borderRadius: '12px', padding: '12px' },
         children: [
           h('div', {
-            className: 'dsh-pet-cfg__cardTitle',
-            children: platform === 'wechat' ? t('imWechatTitle') : t('imQqTitle'),
+            className: 'dsh-pet-cfg__soulRow',
+            children: [
+              h('div', {
+                className: 'dsh-pet-cfg__cardTitle',
+                children: `${platform === 'wechat' ? t('imWechatTitle') : t('imQqTitle')} · ${bot.id}`,
+              }),
+              h('button', {
+                type: 'button',
+                className: 'dsh-pet-cfg__btn is-sm',
+                disabled: isBusy,
+                onClick: () => void removeImBot(platform, bot.id),
+                children: t('imRemoveBot'),
+              }),
+            ],
           }),
           h('div', {
             className: 'dsh-pet-cfg__note',
@@ -2546,7 +2670,7 @@ export function makePetConfigSection(rt: {
               stateText +
               ' · ' +
               count +
-              (account ? ' · ' + account : '') +
+              (status?.account || status?.appId ? ' · ' + (status.account ?? status.appId) : '') +
               (status?.lastError ? ' · ' + status.lastError : ''),
           }),
           platform === 'wechat'
@@ -2558,18 +2682,17 @@ export function makePetConfigSection(rt: {
                         type: 'button',
                         className: 'dsh-pet-cfg__btn is-sm',
                         disabled: isBusy,
-                        onClick: () => void logoutWechat(),
+                        onClick: () => void logoutWechat(bot.id),
                         children: t('imDisconnect'),
                       }),
                     ]
-                  : login &&
-                      ['starting', 'pending', 'scanned', 'needs_verification', 'connecting'].includes(login.status)
+                  : activeLogin
                     ? [
                         h('button', {
                           type: 'button',
                           className: 'dsh-pet-cfg__btn is-sm',
                           disabled: isBusy,
-                          onClick: () => void cancelWechatLogin(),
+                          onClick: () => void cancelWechatLogin(bot.id),
                           children: t('imCancelQr'),
                         }),
                       ]
@@ -2578,16 +2701,13 @@ export function makePetConfigSection(rt: {
                           type: 'button',
                           className: 'dsh-pet-cfg__btn is-sm',
                           disabled: isBusy,
-                          onClick: () => void startWechatLogin(),
+                          onClick: () => void startWechatLogin(bot.id),
                           children: t('imGenerateQr'),
                         }),
                       ],
               })
             : null,
-          platform === 'wechat' &&
-          !connected &&
-          login?.qrCodeDataUrl &&
-          ['starting', 'pending', 'scanned', 'needs_verification', 'connecting'].includes(login.status)
+          platform === 'wechat' && activeLogin && login?.qrCodeDataUrl
             ? h('div', {
                 style: { display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' },
                 children: [
@@ -2596,11 +2716,15 @@ export function makePetConfigSection(rt: {
                     alt: 'WeChat login QR',
                     style: { width: '180px', height: '180px', background: '#fff', borderRadius: '8px' },
                   }),
-                  h('div', { className: 'dsh-pet-cfg__note', style: { maxWidth: '320px' }, children: loginHint }),
+                  h('div', {
+                    className: 'dsh-pet-cfg__note',
+                    style: { maxWidth: '320px' },
+                    children: login.status === 'scanned' ? '已扫码，等待手机确认…' : t('imScanHint'),
+                  }),
                 ],
               })
             : null,
-          platform === 'wechat' && !connected && login?.verificationRequired
+          platform === 'wechat' && login?.verificationRequired
             ? h('div', {
                 className: 'dsh-pet-cfg__grid2',
                 children: [
@@ -2608,9 +2732,10 @@ export function makePetConfigSection(rt: {
                     t('imVerifyCode'),
                     h('input', {
                       className: inputClass,
-                      value: imVerifyCode,
+                      value: imVerifyCodes[bot.id] ?? '',
                       disabled: isBusy,
-                      onChange: (e: ChangeEvent<HTMLInputElement>) => setImVerifyCode(e.target.value),
+                      onChange: (e: ChangeEvent<HTMLInputElement>) =>
+                        setImVerifyCodes((value) => ({ ...value, [bot.id]: e.target.value })),
                     }),
                     t('imNeedVerify'),
                   ),
@@ -2620,8 +2745,8 @@ export function makePetConfigSection(rt: {
                       h('button', {
                         type: 'button',
                         className: 'dsh-pet-cfg__btn is-sm',
-                        disabled: isBusy || !imVerifyCode.trim(),
-                        onClick: () => void submitWechatVerify(),
+                        disabled: isBusy || !(imVerifyCodes[bot.id] ?? '').trim(),
+                        onClick: () => void submitWechatVerify(bot.id),
                         children: t('imSubmitVerify'),
                       }),
                     ],
@@ -2637,9 +2762,10 @@ export function makePetConfigSection(rt: {
                     t('imQqAppId'),
                     h('input', {
                       className: inputClass,
-                      value: imQqAppId,
+                      value: creds.appId,
                       disabled: isBusy,
-                      onChange: (e: ChangeEvent<HTMLInputElement>) => setImQqAppId(e.target.value),
+                      onChange: (e: ChangeEvent<HTMLInputElement>) =>
+                        setImQqCreds((value) => ({ ...value, [bot.id]: { ...creds, appId: e.target.value } })),
                     }),
                     t('imQqHint'),
                   ),
@@ -2649,9 +2775,10 @@ export function makePetConfigSection(rt: {
                       className: inputClass,
                       type: 'password',
                       autoComplete: 'off',
-                      value: imQqSecret,
+                      value: creds.secret,
                       disabled: isBusy,
-                      onChange: (e: ChangeEvent<HTMLInputElement>) => setImQqSecret(e.target.value),
+                      onChange: (e: ChangeEvent<HTMLInputElement>) =>
+                        setImQqCreds((value) => ({ ...value, [bot.id]: { ...creds, secret: e.target.value } })),
                     }),
                     undefined,
                     true,
@@ -2666,8 +2793,8 @@ export function makePetConfigSection(rt: {
                   h('button', {
                     type: 'button',
                     className: 'dsh-pet-cfg__btn is-sm',
-                    disabled: isBusy || !imQqAppId.trim() || !imQqSecret.trim(),
-                    onClick: () => void bindQq(),
+                    disabled: isBusy || !creds.appId.trim() || !creds.secret.trim(),
+                    onClick: () => void bindQq(bot.id),
                     children: t('imQqBind'),
                   }),
                 ],
@@ -2681,7 +2808,7 @@ export function makePetConfigSection(rt: {
                     type: 'button',
                     className: 'dsh-pet-cfg__btn is-sm',
                     disabled: isBusy,
-                    onClick: () => void logoutQq(),
+                    onClick: () => void logoutQq(bot.id),
                     children: t('imDisconnect'),
                   }),
                 ],
@@ -2690,26 +2817,94 @@ export function makePetConfigSection(rt: {
           h('div', {
             className: 'dsh-pet-cfg__grid2',
             children: [
-              toggleCell('imEnableToggle', channel.enabled, busy, (v) => setImChannel(platform, { enabled: v })),
+              toggleCell('imEnableToggle', bot.enabled, isBusy, (v) => setImBot(platform, bot.id, { enabled: v })),
               field(
-                t('imPetLabel'),
+                t('imModeLabel'),
                 h('select', {
                   className: inputClass,
-                  value: channel.petId,
+                  value: bot.mode,
                   disabled: isBusy,
-                  onChange: (e: ChangeEvent<HTMLSelectElement>) => setImChannel(platform, { petId: e.target.value }),
+                  onChange: (e: ChangeEvent<HTMLSelectElement>) =>
+                    setImBot(platform, bot.id, { mode: e.target.value as ImMode }),
                   children: [
-                    h('option', { key: 'none', value: '', children: t('bridgePetNone') }),
-                    ...pets.map((p) =>
-                      h('option', { key: p.id, value: p.id, children: (p.name || p.id) + ' (' + p.id + ')' }),
-                    ),
+                    h('option', { key: 'pet', value: 'pet', children: t('imModePet') }),
+                    h('option', { key: 'session', value: 'session', children: t('imModeSession') }),
                   ],
                 }),
-                t('imPetHint'),
+                t('imModeHint'),
                 true,
               ),
             ],
           }),
+          bot.mode === 'pet'
+            ? h('div', {
+                className: 'dsh-pet-cfg__grid2',
+                children: [
+                  field(
+                    t('imPetLabel'),
+                    h('select', {
+                      className: inputClass,
+                      value: bot.petId,
+                      disabled: isBusy,
+                      onChange: (e: ChangeEvent<HTMLSelectElement>) =>
+                        setImBot(platform, bot.id, { petId: e.target.value }),
+                      children: [
+                        h('option', { key: 'none', value: '', children: t('bridgePetNone') }),
+                        ...pets.map((p) =>
+                          h('option', { key: p.id, value: p.id, children: (p.name || p.id) + ' (' + p.id + ')' }),
+                        ),
+                      ],
+                    }),
+                    t('imPetHint'),
+                  ),
+                  toggleCell(
+                    'imWriteSayToggle',
+                    bot.writeSay,
+                    isBusy,
+                    (v) => setImBot(platform, bot.id, { writeSay: v }),
+                    true,
+                  ),
+                ],
+              })
+            : h('div', {
+                className: 'dsh-pet-cfg__grid2',
+                children: [
+                  field(
+                    t('imSessionLabel'),
+                    h('input', {
+                      className: inputClass,
+                      value: bot.sessionId,
+                      disabled: isBusy,
+                      placeholder: t('imSessionPlaceholder'),
+                      onChange: (e: ChangeEvent<HTMLInputElement>) =>
+                        setImBot(platform, bot.id, { sessionId: e.target.value }),
+                    }),
+                    t('imSessionHint'),
+                  ),
+                  field(
+                    t('imSessionPick'),
+                    h('select', {
+                      className: inputClass,
+                      value: imSessions.some((session) => session.sessionId === bot.sessionId) ? bot.sessionId : '',
+                      disabled: isBusy || imSessions.length === 0,
+                      onChange: (e: ChangeEvent<HTMLSelectElement>) =>
+                        setImBot(platform, bot.id, { sessionId: e.target.value }),
+                      children: [
+                        h('option', { key: 'none', value: '', children: t('imSessionManual') }),
+                        ...imSessions.map((session) =>
+                          h('option', {
+                            key: session.sessionId,
+                            value: session.sessionId,
+                            children: session.title || session.sessionId,
+                          }),
+                        ),
+                      ],
+                    }),
+                    imSessionsMsg || t('imSessionPickHint'),
+                    true,
+                  ),
+                ],
+              }),
           field(
             t('imWhitelistLabel'),
             h('textarea', {
@@ -2718,52 +2913,57 @@ export function makePetConfigSection(rt: {
               rows: 3,
               spellCheck: false,
               placeholder: t('imWhitelistPlaceholder'),
-              value: whitelist,
+              value: imWhitelist[bot.id] ?? '',
               disabled: isBusy,
-              onChange: (e: ChangeEvent<HTMLTextAreaElement>) => setWhitelist(e.target.value),
+              onChange: (e: ChangeEvent<HTMLTextAreaElement>) =>
+                setImWhitelist((value) => ({ ...value, [bot.id]: e.target.value })),
             }),
             t('imWhitelistHint'),
           ),
           h('div', {
             className: 'dsh-pet-cfg__grid2',
             children: [
-              toggleCell('imAllowOwnerToggle', channel.allowOwner, busy, (v) =>
-                setImChannel(platform, { allowOwner: v }),
+              toggleCell('imAllowOwnerToggle', bot.allowOwner, isBusy, (v) =>
+                setImBot(platform, bot.id, { allowOwner: v }),
               ),
               platform === 'qq'
                 ? toggleCell(
                     'imAllowGroupsToggle',
-                    channel.allowGroups,
-                    busy,
-                    (v) => setImChannel(platform, { allowGroups: v }),
+                    bot.allowGroups,
+                    isBusy,
+                    (v) => setImBot(platform, bot.id, { allowGroups: v }),
                     true,
                   )
-                : toggleCell(
-                    'imWriteSayToggle',
-                    channel.writeSay,
-                    busy,
-                    (v) => setImChannel(platform, { writeSay: v }),
-                    true,
-                  ),
+                : null,
             ],
           }),
-          platform === 'qq'
-            ? h('div', {
-                className: 'dsh-pet-cfg__grid2',
-                children: [
-                  toggleCell(
-                    'imWriteSayToggle',
-                    channel.writeSay,
-                    busy,
-                    (v) => setImChannel(platform, { writeSay: v }),
-                    true,
-                  ),
-                ],
-              })
-            : null,
         ],
       });
     };
+
+    const imPlatformBlock = (platform: ImPlatform): ReturnType<typeof h> =>
+      h('div', {
+        className: 'dsh-pet-cfg__field',
+        children: [
+          h('div', {
+            className: 'dsh-pet-cfg__soulRow',
+            children: [
+              h('div', {
+                className: 'dsh-pet-cfg__cardTitle',
+                children: platform === 'wechat' ? t('imWechatTitle') : t('imQqTitle'),
+              }),
+              h('button', {
+                type: 'button',
+                className: 'dsh-pet-cfg__btn is-sm',
+                onClick: () => addImBot(platform),
+                children: t('imAddBot'),
+              }),
+            ],
+          }),
+          ...im[platform].bots.map((bot) => imBotCard(platform, bot)),
+          im[platform].bots.length === 0 ? h('div', { className: 'dsh-pet-cfg__note', children: t('imNoBots') }) : null,
+        ],
+      });
 
     // 当前编辑中的灵魂色（用于色块）：草稿非法时 editedSoulCard 已回落到当前生效卡。
     const curSoul = cur ? editedSoulCard(cur) : undefined;
@@ -3446,8 +3646,8 @@ export function makePetConfigSection(rt: {
               [
                 h('div', { className: 'dsh-pet-cfg__cardTitle', children: t('imTitle') }),
                 h('div', { className: 'dsh-pet-cfg__note', children: t('imHint') }),
-                imChannelBlock('wechat', im.wechat, imWechatWhitelist, setImWechatWhitelist),
-                imChannelBlock('qq', im.qq, imQqWhitelist, setImQqWhitelist),
+                imPlatformBlock('wechat'),
+                imPlatformBlock('qq'),
                 imMsg.text
                   ? h('p', {
                       className: 'dsh-pet-cfg__note',

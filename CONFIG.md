@@ -48,7 +48,7 @@ DSH 设置 → 「桌宠配置」：
 | `soul`                 | 条目级灵魂卡（可选，见下）                                                              | 对象，字段全部可选         |
 | `chatSoulEnabled`      | 灵魂注入总开关（全局默认，布尔，默认 `true`）                                           | 布尔                       |
 | `bridge`               | 消息接入（通用 Webhook）：开关 / 回复宠物 / token / 白名单 / 回调 / 去重 / 限流 / 群聊（见下） | 对象，字段全部可选         |
-| `im`                   | 原生微信 / QQ：连接开关 / 回复宠物 / 白名单 / 账号本人 / 群聊 / 气泡（见下） | 对象，字段全部可选         |
+| `im`                   | 原生微信 / QQ：每平台多机器人 / 桌宠或 DSH session 回复 / 白名单 / 群聊 / 气泡（见下） | 对象，字段全部可选         |
 
 > 覆盖语义：用户层给出即**整体替换**该字段（如写了 `animations` 就用你的整份动画池，替代默认），没写的字段回落包内默认。校验在插件加载时执行——格式错误会在 DSH 控制台显式报错，不会静默运行残缺配置。
 
@@ -97,43 +97,68 @@ DSH 设置 → 「桌宠配置」：
 
 ## 原生微信 / QQ（im）
 
-插件自己连接微信 iLink 与 QQ 官方机器人，不依赖 dsh-im。登录凭据单独保存在 `$DSH_HOME/dsh-pet/im-auth.json`（权限 0600），不写进本配置，也不会回传浏览器。当前只处理文本；微信只处理私聊，QQ 支持私聊与被 @ 的群聊。
+插件自己连接微信 iLink 与 QQ 官方机器人，不依赖 dsh-im。
+每个平台可以配置多个机器人；每个机器人独立选择回复方式：
+
+- `mode: "pet"`：由桌宠的 `chatWithPet` 回复（人格 / 灵魂 / 长期记忆 / 桌面气泡）；
+- `mode: "session"`：投递到固定 DSH 对话 session，由该 session 回复（不使用桌宠记忆，不弹气泡）。
+
+登录凭据单独保存在 `$DSH_HOME/dsh-pet/im-auth.json`（权限 0600），按 bot id 隔离，不写进本配置，也不会回传浏览器。当前只处理文本；微信只处理私聊，QQ 支持私聊与被 @ 的群聊。
 
 ```jsonc
 "im": {
   "wechat": {
-    "enabled": false,
-    "petId": "",
-    "whitelist": [],
-    "allowOwner": true,
-    "allowGroups": false,
-    "writeSay": false
+    "bots": [
+      {
+        "id": "wx-main",
+        "enabled": true,
+        "mode": "pet",
+        "petId": "main",
+        "sessionId": "",
+        "whitelist": [],
+        "allowOwner": true,
+        "allowGroups": false,
+        "writeSay": false
+      }
+    ]
   },
   "qq": {
-    "enabled": false,
-    "petId": "",
-    "whitelist": [],
-    "allowOwner": true,
-    "allowGroups": false,
-    "writeSay": false
+    "bots": [
+      {
+        "id": "qq-work",
+        "enabled": true,
+        "mode": "session",
+        "petId": "",
+        "sessionId": "ses_xxx",
+        "whitelist": [{ "platform": "qq", "id": "123456789" }],
+        "allowOwner": false,
+        "allowGroups": false,
+        "writeSay": false
+      }
+    ]
   }
 }
 ```
 
 | 字段 | 作用 | 规则 / 默认 |
 | --- | --- | --- |
-| `enabled` | 是否连接并处理该平台 | 布尔，默认 `false`；关闭时断开连接 |
-| `petId` | 用哪只桌宠回复 | 启用时必填真实存在的宠物 id |
-| `whitelist` | 权限白名单 | 数组，格式同 bridge；私聊填对方 id，QQ 群聊填群 openid；空白名单时只放行登录账号本人（微信） |
+| `id` | 机器人 id | 平台内唯一；凭据 / 状态 / 去重按它隔离 |
+| `enabled` | 是否连接并处理该机器人 | 布尔，默认 `false` |
+| `mode` | 回复方式 | `pet` 或 `session` |
+| `petId` | `mode=pet` 时用哪只桌宠 | 启用时必填真实存在的宠物 id |
+| `sessionId` | `mode=session` 时投递到哪个 DSH session | 启用时必填 |
+| `whitelist` | 权限白名单 | 数组，格式同 bridge；私聊填对方 id，QQ 群聊填群 openid；空白名单只放行登录账号本人（微信） |
 | `allowOwner` | 自动放行登录账号本人 | 布尔，默认 `true`；QQ 手动绑定没有 owner id，需要白名单 |
 | `allowGroups` | 是否允许 QQ 群聊 | 布尔，默认 `false`；只处理 @ 机器人的群消息 |
-| `writeSay` | 回复是否同时写桌面气泡 | 布尔，默认 `false` |
+| `writeSay` | `mode=pet` 时回复是否同时写桌面气泡 | 布尔，默认 `false`；session 模式不使用 |
 
+- **多机器人**：设置页每个平台可以「添加机器人」；每个机器人独立扫码 / AppID / 白名单 / 模式 / 状态。
 - **不要同时用 dsh-im 和 pet 连接同一个微信 / QQ 机器人**：两边都会收消息，可能双回复或登录冲突。
 - **凭据**：微信 token / QQ AppSecret 只在 host 内存与 `im-auth.json`；设置页只看到脱敏状态。
 - **白名单**与通用 Webhook 使用同一套「平台 | 稳定 id | 名字」文本格式；设置页会把重复项合并。
-- **记忆**：`im:wechat:<senderId>` / `im:qq:<senderId>` 独立记忆桶；灵魂状态仍按宠物 id 共享。
-- **登录/断开**：设置页「消息接入」卡片内生成微信二维码、填写 QQ AppID/AppSecret，并显示连接状态与收/发条数。
+- **记忆**：`mode=pet` 使用 `im:wechat:<botId>:<senderId>` / `im:qq:<botId>:<senderId>` 独立记忆桶；`mode=session` 直接用指定 DSH session。
+- **登录/断开**：设置页每张机器人卡片内生成微信二维码、填写 QQ AppID/AppSecret，并显示连接状态与收/发条数。
+- **旧配置兼容**：旧版单机器人 `im.wechat` / `im.qq` 会自动迁移成 `bots[0]`，id 为 `wechat-1` / `qq-1`。
 
 ## 人格灵魂色彩（soul）
 

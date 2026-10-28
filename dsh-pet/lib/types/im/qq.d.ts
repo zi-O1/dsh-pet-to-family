@@ -1,4 +1,4 @@
-import type { ImChannelConfig } from '../../shared/im';
+import type { ImBotConfig } from '../../shared/im';
 import type { ImStore, QqAuth } from './store';
 import type { ImChat, ImLogger } from './wechat';
 export interface QqRuntimeStatus {
@@ -16,7 +16,7 @@ export declare class QqRuntime {
     constructor(options: {
         auth: QqAuth;
         store: ImStore;
-        getConfig: () => ImChannelConfig;
+        getConfig: () => ImBotConfig;
         chat: ImChat;
         log: ImLogger;
     });

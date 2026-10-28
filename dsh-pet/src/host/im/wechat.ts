@@ -7,7 +7,7 @@
 import { randomUUID } from 'node:crypto';
 import QRCode from 'qrcode';
 
-import type { ImChannelConfig } from '../../shared/im';
+import type { ImBotConfig } from '../../shared/im';
 import type { ImStore, WechatAuth } from './store';
 import {
   createWeixinApi,
@@ -69,7 +69,7 @@ export class WechatRuntime {
     api: WechatApi;
     auth: WechatAuth;
     store: ImStore;
-    getConfig: () => ImChannelConfig;
+    getConfig: () => ImBotConfig;
     chat: ImChat;
     log: ImLogger;
   }) {
@@ -145,7 +145,7 @@ export class WechatRuntime {
         const response = await this.#api.getUpdates({
           baseUrl: this.#auth.baseUrl,
           token: this.#auth.token,
-          getUpdatesBuf: this.#store.state.wechat.getUpdatesBuf,
+          getUpdatesBuf: this.#store.wechatState(this.#auth.botId).getUpdatesBuf,
           signal,
         });
         if (signal.aborted) return;
@@ -168,7 +168,7 @@ export class WechatRuntime {
           });
         }
         if (typeof response.get_updates_buf === 'string' && response.get_updates_buf) {
-          this.#store.state.wechat.getUpdatesBuf = response.get_updates_buf;
+          this.#store.wechatState(this.#auth.botId).getUpdatesBuf = response.get_updates_buf;
           await this.#store.saveState();
         }
       } catch (error) {
@@ -201,11 +201,11 @@ export class WechatRuntime {
     const messageId = weixinMessageId(message);
     const text = extractWeixinText(message)?.trim() ?? '';
     if (!senderId || !messageId || !text) return;
-    if (this.#store.state.wechat.seenMessageIds.includes(messageId)) return;
+    if (this.#store.wechatState(this.#auth.botId).seenMessageIds.includes(messageId)) return;
     this.#status.messagesReceived += 1;
     const contextToken = typeof message.context_token === 'string' ? message.context_token : undefined;
     if (contextToken) {
-      this.#store.state.wechat.contextTokens[senderId] = { token: contextToken, at: Date.now() };
+      this.#store.wechatState(this.#auth.botId).contextTokens[senderId] = { token: contextToken, at: Date.now() };
       await this.#store.saveState();
     }
     const result = await this.#chat({
@@ -222,7 +222,7 @@ export class WechatRuntime {
           token: this.#auth.token,
           toUserId: senderId,
           text: result.reply,
-          contextToken: this.#store.state.wechat.contextTokens[senderId]?.token,
+          contextToken: this.#store.wechatState(this.#auth.botId).contextTokens[senderId]?.token,
         });
         this.#status.messagesReplied += 1;
       } catch (error) {
@@ -230,15 +230,18 @@ export class WechatRuntime {
       }
     }
     // 不回复的白名单外消息也标为已见，避免每轮重复计数/重复调用。
-    this.#store.state.wechat.seenMessageIds.push(messageId);
-    if (this.#store.state.wechat.seenMessageIds.length > 1_000) {
-      this.#store.state.wechat.seenMessageIds.splice(0, this.#store.state.wechat.seenMessageIds.length - 1_000);
+    this.#store.wechatState(this.#auth.botId).seenMessageIds.push(messageId);
+    if (this.#store.wechatState(this.#auth.botId).seenMessageIds.length > 1_000) {
+      this.#store
+        .wechatState(this.#auth.botId)
+        .seenMessageIds.splice(0, this.#store.wechatState(this.#auth.botId).seenMessageIds.length - 1_000);
     }
     await this.#store.saveState();
   }
 }
 
 export interface WechatAttempt {
+  botId: string;
   id: string;
   status: 'starting' | 'pending' | 'scanned' | 'needs_verification' | 'connecting' | 'connected' | 'expired' | 'failed';
   qrCodeDataUrl?: string;
@@ -260,10 +263,12 @@ export class WechatLogin {
   #qrcode = '';
   #baseUrl = 'https://ilinkai.weixin.qq.com/';
   #verifyCode = '';
+  #botId: string;
 
-  constructor(api: WechatApi, store: ImStore, onAuth: (auth: WechatAuth) => Promise<void>) {
+  constructor(api: WechatApi, store: ImStore, botId: string, onAuth: (auth: WechatAuth) => Promise<void>) {
     this.#api = api;
     this.#store = store;
+    this.#botId = botId;
     this.#onAuth = onAuth;
   }
 
@@ -274,6 +279,7 @@ export class WechatLogin {
   async start(): Promise<WechatAttempt> {
     this.cancel();
     const attempt: WechatAttempt = {
+      botId: this.#botId,
       id: randomUUID(),
       status: 'starting',
       expiresAt: Date.now() + QR_TTL_MS,
@@ -283,7 +289,7 @@ export class WechatLogin {
     this.#controller = controller;
     try {
       const login = await this.#api.beginLogin({
-        localTokens: this.#store.auth.wechat?.token ? [this.#store.auth.wechat.token] : [],
+        localTokens: this.#store.auth.wechat[this.#botId]?.token ? [this.#store.auth.wechat[this.#botId].token] : [],
         signal: controller.signal,
       });
       if (controller.signal.aborted) throw new Error('cancelled');
@@ -355,7 +361,7 @@ export class WechatLogin {
             attempt.status = 'scanned';
             break;
           case 'binded_redirect': {
-            const existing = this.#store.auth.wechat;
+            const existing = this.#store.auth.wechat[this.#botId];
             if (existing) {
               attempt.status = 'connected';
               attempt.accountId = existing.accountId;
@@ -380,14 +386,14 @@ export class WechatLogin {
               typeof response.baseurl === 'string' && response.baseurl.trim() ? response.baseurl : this.#baseUrl,
             );
             const auth: WechatAuth = {
-              botId: accountId,
+              botId: this.#botId,
               accountId,
               ownerUserId,
               token,
               baseUrl,
               connectedAt: new Date().toISOString(),
             };
-            this.#store.auth.wechat = auth;
+            this.#store.auth.wechat[this.#botId] = auth;
             await this.#store.saveAuth();
             await this.#onAuth(auth);
             attempt.status = 'connected';

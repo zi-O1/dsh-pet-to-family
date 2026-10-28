@@ -11,7 +11,7 @@ import { appendFileSync, chmodSync, closeSync, constants, createReadStream, exis
 import * as crypto$3 from "node:crypto";
 import * as crypto$2 from "node:crypto";
 import * as crypto$1 from "node:crypto";
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { appendFile, copyFile, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { execFileSync, spawn } from "node:child_process";
 import { homedir } from "node:os";
@@ -62,7 +62,7 @@ const CONTROL_CHARS$2 = /[\x00-\x1f]/;
 const SENDER_ID_MAX = 128;
 const MESSAGE_ID_MAX = 200;
 const SENDER_NAME_MAX = 80;
-const WHITELIST_MAX$1 = 200;
+const WHITELIST_MAX = 200;
 const DEFAULT_BRIDGE = {
 	enabled: false,
 	petId: "",
@@ -131,7 +131,7 @@ function normalizeBridgeWhitelist$1(value) {
 		if (seen.has(key)) continue;
 		seen.add(key);
 		out.push(entry);
-		if (out.length >= WHITELIST_MAX$1) break;
+		if (out.length >= WHITELIST_MAX) break;
 	}
 	return out;
 }
@@ -160,7 +160,7 @@ function bridgeValid(raw) {
 	if (o.petId !== void 0 && (typeof o.petId !== "string" || o.petId.trim().length > 64)) return false;
 	if (o.token !== void 0 && (typeof o.token !== "string" || o.token.trim().length > 256)) return false;
 	if (o.whitelist !== void 0) {
-		if (!Array.isArray(o.whitelist) || o.whitelist.length > WHITELIST_MAX$1) return false;
+		if (!Array.isArray(o.whitelist) || o.whitelist.length > WHITELIST_MAX) return false;
 		for (const item of o.whitelist) if (!normalizeBridgeWhitelistEntry$1(item)) return false;
 	}
 	if (o.replyUrl !== void 0) {
@@ -555,61 +555,100 @@ function normalizeBridgeWhitelist(value) {
 //#endregion
 //#region src/shared/im.ts
 const IM_PLATFORMS = ["wechat", "qq"];
-const DEFAULT_CHANNEL = {
+const IM_MAX_BOTS = 20;
+const EMPTY_BOT = {
+	id: "",
 	enabled: false,
+	mode: "pet",
 	petId: "",
+	sessionId: "",
 	whitelist: [],
 	allowOwner: true,
 	allowGroups: false,
 	writeSay: false
 };
-const DEFAULT_IM = {
-	wechat: {
-		...DEFAULT_CHANNEL,
-		whitelist: []
-	},
-	qq: {
-		...DEFAULT_CHANNEL,
-		whitelist: []
-	}
-};
-function normalizeImChannel(raw) {
+function cleanId(value) {
+	return typeof value === "string" ? value.trim().slice(0, 64) : "";
+}
+function normalizeImBotId(value) {
+	const id = cleanId(value);
+	return /^[A-Za-z0-9._-]{1,64}$/.test(id) ? id : "";
+}
+function normalizeBot(raw, fallbackId) {
 	const o = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+	const mode = o.mode === "session" ? "session" : "pet";
 	return {
-		enabled: typeof o.enabled === "boolean" ? o.enabled : DEFAULT_CHANNEL.enabled,
+		id: normalizeImBotId(o.id) || fallbackId,
+		enabled: typeof o.enabled === "boolean" ? o.enabled : EMPTY_BOT.enabled,
+		mode,
 		petId: typeof o.petId === "string" ? o.petId.trim().slice(0, 64) : "",
+		sessionId: typeof o.sessionId === "string" ? o.sessionId.trim().slice(0, 256) : "",
 		whitelist: normalizeBridgeWhitelist(o.whitelist),
-		allowOwner: typeof o.allowOwner === "boolean" ? o.allowOwner : DEFAULT_CHANNEL.allowOwner,
-		allowGroups: typeof o.allowGroups === "boolean" ? o.allowGroups : DEFAULT_CHANNEL.allowGroups,
-		writeSay: typeof o.writeSay === "boolean" ? o.writeSay : DEFAULT_CHANNEL.writeSay
+		allowOwner: typeof o.allowOwner === "boolean" ? o.allowOwner : EMPTY_BOT.allowOwner,
+		allowGroups: typeof o.allowGroups === "boolean" ? o.allowGroups : EMPTY_BOT.allowGroups,
+		writeSay: typeof o.writeSay === "boolean" ? o.writeSay : EMPTY_BOT.writeSay
 	};
+}
+function looksLikeLegacyBot(raw) {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+	const o = raw;
+	return "enabled" in o || "petId" in o || "whitelist" in o || "mode" in o;
+}
+function normalizePlatform$2(raw, platform) {
+	const o = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+	const list = Array.isArray(o.bots) ? o.bots : looksLikeLegacyBot(raw) ? [raw] : [];
+	const bots = [];
+	const seen = new Set();
+	for (let i = 0; i < list.length && bots.length < IM_MAX_BOTS; i += 1) {
+		const bot = normalizeBot(list[i], `${platform}-${i + 1}`);
+		if (!bot.id || seen.has(bot.id)) continue;
+		seen.add(bot.id);
+		bots.push(bot);
+	}
+	return { bots };
 }
 function normalizeImConfig(raw) {
 	const o = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
 	return {
-		wechat: normalizeImChannel(o.wechat),
-		qq: normalizeImChannel(o.qq)
+		wechat: normalizePlatform$2(o.wechat, "wechat"),
+		qq: normalizePlatform$2(o.qq, "qq")
 	};
 }
-const WHITELIST_MAX = 200;
 function isValidImConfig(raw) {
 	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
 	const o = raw;
 	for (const platform of IM_PLATFORMS) {
-		const channel = o[platform];
-		if (channel === void 0) continue;
-		if (!channel || typeof channel !== "object" || Array.isArray(channel)) return false;
-		const c = channel;
-		if (c.enabled !== void 0 && typeof c.enabled !== "boolean") return false;
-		if (c.petId !== void 0 && (typeof c.petId !== "string" || c.petId.trim().length > 64)) return false;
-		if (c.allowOwner !== void 0 && typeof c.allowOwner !== "boolean") return false;
-		if (c.allowGroups !== void 0 && typeof c.allowGroups !== "boolean") return false;
-		if (c.writeSay !== void 0 && typeof c.writeSay !== "boolean") return false;
-		if (c.whitelist !== void 0) {
-			if (!Array.isArray(c.whitelist) || c.whitelist.length > WHITELIST_MAX) return false;
-			for (const item of c.whitelist) if (!normalizeBridgeWhitelistEntry(item)) return false;
+		const value = o[platform];
+		if (value === void 0) continue;
+		if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+		const p = value;
+		const list = Array.isArray(p.bots) ? p.bots : looksLikeLegacyBot(value) ? [value] : null;
+		if (!list || list.length > IM_MAX_BOTS) return false;
+		const seen = new Set();
+		for (const item of list) {
+			if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+			const bot = item;
+			const id = normalizeImBotId(bot.id);
+			if (p.bots !== void 0 && !id) return false;
+			if (id && seen.has(id)) return false;
+			if (id) seen.add(id);
+			if (bot.mode !== void 0 && bot.mode !== "pet" && bot.mode !== "session") return false;
+			if (bot.enabled !== void 0 && typeof bot.enabled !== "boolean") return false;
+			if (bot.petId !== void 0 && (typeof bot.petId !== "string" || bot.petId.trim().length > 64)) return false;
+			if (bot.sessionId !== void 0 && (typeof bot.sessionId !== "string" || bot.sessionId.trim().length > 256)) return false;
+			if (bot.allowOwner !== void 0 && typeof bot.allowOwner !== "boolean") return false;
+			if (bot.allowGroups !== void 0 && typeof bot.allowGroups !== "boolean") return false;
+			if (bot.writeSay !== void 0 && typeof bot.writeSay !== "boolean") return false;
+			if (bot.whitelist !== void 0) {
+				if (!Array.isArray(bot.whitelist)) return false;
+				for (const entry of bot.whitelist) if (!normalizeBridgeWhitelistEntry(entry)) return false;
+			}
+			if (bot.enabled === true) {
+				const mode = bot.mode === "session" ? "session" : "pet";
+				if (mode === "session" && !(typeof bot.sessionId === "string" && bot.sessionId.trim())) return false;
+				if (mode === "pet" && !(typeof bot.petId === "string" && bot.petId.trim())) return false;
+			}
 		}
-		if (c.enabled === true && (typeof c.petId !== "string" || !c.petId.trim())) return false;
 	}
 	return true;
 }
@@ -7402,7 +7441,7 @@ var WechatRuntime = class {
 			const response = await this.#api.getUpdates({
 				baseUrl: this.#auth.baseUrl,
 				token: this.#auth.token,
-				getUpdatesBuf: this.#store.state.wechat.getUpdatesBuf,
+				getUpdatesBuf: this.#store.wechatState(this.#auth.botId).getUpdatesBuf,
 				signal
 			});
 			if (signal.aborted) return;
@@ -7417,7 +7456,7 @@ var WechatRuntime = class {
 				this.#log.error(`[dsh-pet] 微信消息处理失败：${error$1 instanceof Error ? error$1.message : String(error$1)}`);
 			});
 			if (typeof response.get_updates_buf === "string" && response.get_updates_buf) {
-				this.#store.state.wechat.getUpdatesBuf = response.get_updates_buf;
+				this.#store.wechatState(this.#auth.botId).getUpdatesBuf = response.get_updates_buf;
 				await this.#store.saveState();
 			}
 		} catch (error$1) {
@@ -7443,11 +7482,11 @@ var WechatRuntime = class {
 		const messageId = weixinMessageId(message);
 		const text$3 = extractWeixinText(message)?.trim() ?? "";
 		if (!senderId || !messageId || !text$3) return;
-		if (this.#store.state.wechat.seenMessageIds.includes(messageId)) return;
+		if (this.#store.wechatState(this.#auth.botId).seenMessageIds.includes(messageId)) return;
 		this.#status.messagesReceived += 1;
 		const contextToken = typeof message.context_token === "string" ? message.context_token : void 0;
 		if (contextToken) {
-			this.#store.state.wechat.contextTokens[senderId] = {
+			this.#store.wechatState(this.#auth.botId).contextTokens[senderId] = {
 				token: contextToken,
 				at: Date.now()
 			};
@@ -7466,14 +7505,14 @@ var WechatRuntime = class {
 				token: this.#auth.token,
 				toUserId: senderId,
 				text: result.reply,
-				contextToken: this.#store.state.wechat.contextTokens[senderId]?.token
+				contextToken: this.#store.wechatState(this.#auth.botId).contextTokens[senderId]?.token
 			});
 			this.#status.messagesReplied += 1;
 		} catch (error$1) {
 			this.#log.warn(`[dsh-pet] 微信回复发送失败：${error$1 instanceof Error ? error$1.message : String(error$1)}`);
 		}
-		this.#store.state.wechat.seenMessageIds.push(messageId);
-		if (this.#store.state.wechat.seenMessageIds.length > 1e3) this.#store.state.wechat.seenMessageIds.splice(0, this.#store.state.wechat.seenMessageIds.length - 1e3);
+		this.#store.wechatState(this.#auth.botId).seenMessageIds.push(messageId);
+		if (this.#store.wechatState(this.#auth.botId).seenMessageIds.length > 1e3) this.#store.wechatState(this.#auth.botId).seenMessageIds.splice(0, this.#store.wechatState(this.#auth.botId).seenMessageIds.length - 1e3);
 		await this.#store.saveState();
 	}
 };
@@ -7487,9 +7526,11 @@ var WechatLogin = class {
 	#qrcode = "";
 	#baseUrl = "https://ilinkai.weixin.qq.com/";
 	#verifyCode = "";
-	constructor(api, store, onAuth) {
+	#botId;
+	constructor(api, store, botId, onAuth) {
 		this.#api = api;
 		this.#store = store;
+		this.#botId = botId;
 		this.#onAuth = onAuth;
 	}
 	status() {
@@ -7498,6 +7539,7 @@ var WechatLogin = class {
 	async start() {
 		this.cancel();
 		const attempt = {
+			botId: this.#botId,
 			id: randomUUID(),
 			status: "starting",
 			expiresAt: Date.now() + QR_TTL_MS
@@ -7507,7 +7549,7 @@ var WechatLogin = class {
 		this.#controller = controller;
 		try {
 			const login = await this.#api.beginLogin({
-				localTokens: this.#store.auth.wechat?.token ? [this.#store.auth.wechat.token] : [],
+				localTokens: this.#store.auth.wechat[this.#botId]?.token ? [this.#store.auth.wechat[this.#botId].token] : [],
 				signal: controller.signal
 			});
 			if (controller.signal.aborted) throw new Error("cancelled");
@@ -7586,7 +7628,7 @@ var WechatLogin = class {
 						attempt.status = "scanned";
 						break;
 					case "binded_redirect": {
-						const existing = this.#store.auth.wechat;
+						const existing = this.#store.auth.wechat[this.#botId];
 						if (existing) {
 							attempt.status = "connected";
 							attempt.accountId = existing.accountId;
@@ -7615,14 +7657,14 @@ var WechatLogin = class {
 						attempt.status = "connecting";
 						const baseUrl = normalizeWeixinApiBaseUrl(typeof response.baseurl === "string" && response.baseurl.trim() ? response.baseurl : this.#baseUrl);
 						const auth = {
-							botId: accountId,
+							botId: this.#botId,
 							accountId,
 							ownerUserId,
 							token,
 							baseUrl,
 							connectedAt: new Date().toISOString()
 						};
-						this.#store.auth.wechat = auth;
+						this.#store.auth.wechat[this.#botId] = auth;
 						await this.#store.saveAuth();
 						await this.#onAuth(auth);
 						attempt.status = "connected";
@@ -14003,9 +14045,6 @@ function maskAppId(appId) {
 	if (appId.length <= 10) return appId ? `${appId.slice(0, 3)}•••` : "";
 	return `${appId.slice(0, 6)}••••${appId.slice(-4)}`;
 }
-function deriveQqBotId(appId) {
-	return "qq_" + createHash("sha256").update(appId).digest("hex").slice(0, 24);
-}
 var QqRuntime = class {
 	#auth;
 	#store;
@@ -14135,7 +14174,7 @@ var QqRuntime = class {
 		const id = isGroup ? message.groupOpenid ?? "" : message.senderId;
 		const text$3 = typeof message.content === "string" ? message.content.replace(/<@!?[^<>\s]+>/gu, "").trim() : "";
 		if (!id || !message.messageId || !text$3) return;
-		if (this.#store.state.qq.seenMessageIds.includes(message.messageId)) return;
+		if (this.#store.qqState(this.#auth.botId).seenMessageIds.includes(message.messageId)) return;
 		this.#status.messagesReceived += 1;
 		const result = await this.#chat({
 			platform: "qq",
@@ -14151,9 +14190,196 @@ var QqRuntime = class {
 		} catch (error$1) {
 			this.#log.warn(`[dsh-pet:qq] 回复发送失败：${error$1 instanceof Error ? error$1.message : String(error$1)}`);
 		}
-		this.#store.state.qq.seenMessageIds.push(message.messageId);
-		if (this.#store.state.qq.seenMessageIds.length > 1e3) this.#store.state.qq.seenMessageIds.splice(0, this.#store.state.qq.seenMessageIds.length - 1e3);
+		this.#store.qqState(this.#auth.botId).seenMessageIds.push(message.messageId);
+		if (this.#store.qqState(this.#auth.botId).seenMessageIds.length > 1e3) this.#store.qqState(this.#auth.botId).seenMessageIds.splice(0, this.#store.qqState(this.#auth.botId).seenMessageIds.length - 1e3);
 		await this.#store.saveState();
+	}
+};
+
+//#endregion
+//#region src/host/im/session.ts
+function textFromContent(content) {
+	return (Array.isArray(content) ? content : []).filter((part) => part?.type === "text" && typeof part.text === "string").map((part) => part.text).join("\n").trim();
+}
+var AssistantTextAccumulator = class {
+	#steps = new Map();
+	#legacy = "";
+	clear() {
+		this.#steps.clear();
+		this.#legacy = "";
+	}
+	appendDelta(step, index, text$3) {
+		if (typeof text$3 !== "string" || !text$3) return;
+		const s = Number.isSafeInteger(step) ? Number(step) : 0;
+		const i = Number.isSafeInteger(index) ? Number(index) : 0;
+		this.#legacy = "";
+		const parts = this.#steps.get(s) ?? new Map();
+		parts.set(i, (parts.get(i) ?? "") + text$3);
+		this.#steps.set(s, parts);
+	}
+	setCanonical(step, text$3) {
+		if (typeof text$3 !== "string" || !text$3.trim()) return;
+		if (!Number.isSafeInteger(step)) {
+			this.#steps.clear();
+			this.#legacy = text$3.trim();
+			return;
+		}
+		this.#legacy = "";
+		this.#steps.set(Number(step), new Map([[0, text$3.trim()]]));
+	}
+	get text() {
+		if (this.#steps.size === 0) return this.#legacy;
+		return [...this.#steps.entries()].sort(([a], [b]) => a - b).map(([, parts]) => [...parts.entries()].sort(([a], [b]) => a - b).map(([, value]) => value).join("\n").trim()).filter(Boolean).join("\n\n");
+	}
+};
+var DshSessionRunner = class {
+	#gateway;
+	#peer;
+	#pending = new Map();
+	#queues = new Map();
+	#disposeEvent;
+	constructor(ctx) {
+		try {
+			this.#gateway = ctx?.typertGateway ?? (typeof ctx?.get === "function" ? ctx.get("typertGateway") : void 0);
+		} catch {
+			this.#gateway = void 0;
+		}
+		try {
+			const connection = ctx?.connection ?? (typeof ctx?.get === "function" ? ctx.get("connection") : void 0);
+			this.#peer = typeof connection?.createPeer === "function" ? connection.createPeer({
+				principal: { kind: "owner" },
+				interactions: "none"
+			}) : void 0;
+		} catch {
+			this.#peer = void 0;
+		}
+		if (typeof ctx?.on === "function") {
+			const dispose = ctx.on("session/event", (session$1, event) => this.#onEvent(session$1, event), { global: true });
+			this.#disposeEvent = typeof dispose === "function" ? dispose : void 0;
+		}
+		ctx?.effect?.(() => () => {
+			for (const pending of this.#pending.values()) {
+				clearTimeout(pending.timer);
+				pending.cleanup();
+				pending.reject(new Error("DSH session runner disposed"));
+			}
+			this.#pending.clear();
+			this.#disposeEvent?.();
+			this.#peer?.dispose?.();
+		});
+	}
+	get available() {
+		return typeof this.#gateway?.invoke === "function";
+	}
+	async listSessions(signal) {
+		if (!this.available) throw new Error("当前 Host 没有 session 网关");
+		const result = await this.#gateway.invoke({
+			namespace: "session",
+			method: "list",
+			args: { _request: {} },
+			...signal ? { signal } : {},
+			...this.#peer ? { peer: this.#peer } : {}
+		});
+		const items = Array.isArray(result?.items) ? result.items : Array.isArray(result) ? result : [];
+		return items.map((item) => ({
+			sessionId: typeof item?.sessionId === "string" ? item.sessionId : "",
+			...typeof item?.title === "string" ? { title: item.title } : {},
+			...typeof item?.cwd === "string" ? { cwd: item.cwd } : {},
+			...typeof item?.running === "boolean" ? { running: item.running } : {}
+		})).filter((item) => item.sessionId);
+	}
+	ask(sessionId, text$3, options = {}) {
+		const previous = this.#queues.get(sessionId) ?? Promise.resolve();
+		const next = previous.catch(() => void 0).then(() => this.#ask(sessionId, text$3, options));
+		this.#queues.set(sessionId, next);
+		next.finally(() => {
+			if (this.#queues.get(sessionId) === next) this.#queues.delete(sessionId);
+		}).catch(() => void 0);
+		return next;
+	}
+	async #ask(sessionId, text$3, options) {
+		if (!this.available) throw new Error("当前 Host 没有 session 网关");
+		if (!sessionId.trim()) throw new Error("sessionId 必填");
+		if (!text$3.trim()) throw new Error("消息为空");
+		options.signal?.throwIfAborted();
+		const rpcId = `dsh-pet-im-${randomUUID()}`;
+		const timeoutMs = Number.isFinite(options.timeoutMs) && (options.timeoutMs ?? 0) > 0 ? options.timeoutMs : 6e5;
+		return new Promise((resolve$1, reject) => {
+			const pending = {
+				rpcId,
+				sessionId,
+				targetTurn: null,
+				openTurn: null,
+				text: new AssistantTextAccumulator(),
+				resolve: resolve$1,
+				reject,
+				timer: setTimeout(() => this.#finish(pending, new Error("DSH session 回复超时")), timeoutMs),
+				cleanup: () => void 0
+			};
+			const onAbort = () => this.#finish(pending, new Error("DSH session 请求已取消"));
+			options.signal?.addEventListener("abort", onAbort, { once: true });
+			pending.cleanup = () => options.signal?.removeEventListener("abort", onAbort);
+			this.#pending.set(rpcId, pending);
+			this.#gateway.invoke({
+				namespace: "session",
+				method: "prompt",
+				args: { request: {
+					requestId: rpcId,
+					sessionId,
+					mode: "queue",
+					content: [{
+						type: "text",
+						text: text$3
+					}]
+				} },
+				...options.signal ? { signal: options.signal } : {},
+				...this.#peer ? { peer: this.#peer } : {}
+			}).catch((error$1) => this.#finish(pending, error$1));
+		});
+	}
+	#onEvent(session$1, event) {
+		const sessionId = typeof session$1 === "string" ? session$1 : session$1?.id;
+		if (typeof sessionId !== "string" || !event || typeof event !== "object") return;
+		const pending = [...this.#pending.values()].find((entry) => entry.sessionId === sessionId);
+		if (!pending) return;
+		const turn = event.data?.turn;
+		if (event.type === "turn/start" && Number.isSafeInteger(turn)) {
+			pending.openTurn = turn;
+			return;
+		}
+		if (event.type === "user/message" && event.data?.source?.rpcId === pending.rpcId) {
+			pending.targetTurn = Number.isSafeInteger(turn) ? turn : pending.openTurn;
+			return;
+		}
+		if (pending.targetTurn === null || turn !== pending.targetTurn) return;
+		if (event.type === "tool/call") {
+			pending.text.clear();
+			return;
+		}
+		if (event.type === "assistant/chunk" && event.data?.chunk?.type === "text-delta") {
+			pending.text.appendDelta(event.data.step, event.data.chunk.index, event.data.chunk.text);
+			return;
+		}
+		if (event.type === "assistant/message") {
+			const content = event.data?.message?.content;
+			const text$3 = textFromContent(content);
+			if (!text$3 || Array.isArray(content) && content.some((part) => part?.type === "tool-call")) pending.text.clear();
+			else pending.text.setCanonical(event.data.step, text$3);
+			return;
+		}
+		if (event.type === "turn/end" && turn === pending.targetTurn) {
+			const answer = pending.text.text.trim();
+			if (!answer) this.#finish(pending, new Error("DSH session 没有返回 assistant 文本"));
+			else this.#finish(pending, null, answer);
+		}
+	}
+	#finish(pending, error$1, answer) {
+		if (this.#pending.get(pending.rpcId) !== pending) return;
+		this.#pending.delete(pending.rpcId);
+		clearTimeout(pending.timer);
+		pending.cleanup();
+		if (error$1) pending.reject(error$1);
+		else pending.resolve(answer ?? "");
 	}
 };
 
@@ -14167,21 +14393,34 @@ function maskId(value) {
 function platformName(platform) {
 	return platform === "wechat" ? "微信" : "QQ";
 }
+function idleStatus(bot) {
+	return {
+		id: bot.id,
+		enabled: bot.enabled,
+		mode: bot.mode,
+		connected: false,
+		state: "idle",
+		messagesReceived: 0,
+		messagesReplied: 0
+	};
+}
 var NativeImManager = class {
 	#store;
 	#getConfig;
 	#chat;
 	#log;
+	#session;
 	#wechatApi = createWeixinApi();
-	#wechatLogin = null;
-	#wechat = null;
-	#qq = null;
+	#wechatLogins = new Map();
+	#wechatRuntimes = new Map();
+	#qqRuntimes = new Map();
 	#started = false;
 	constructor(options) {
 		this.#store = options.store;
 		this.#getConfig = options.getConfig;
 		this.#chat = options.chat;
 		this.#log = options.log;
+		this.#session = new DshSessionRunner(options.ctx);
 	}
 	async start() {
 		if (this.#started) return;
@@ -14191,162 +14430,231 @@ var NativeImManager = class {
 	}
 	async stop() {
 		this.#started = false;
-		this.#wechatLogin?.cancel();
-		this.#wechatLogin = null;
-		await this.#wechat?.stop().catch(() => void 0);
-		this.#wechat = null;
-		await this.#qq?.stop().catch(() => void 0);
-		this.#qq = null;
+		for (const login of this.#wechatLogins.values()) login.cancel();
+		this.#wechatLogins.clear();
+		await Promise.allSettled([...this.#wechatRuntimes.values()].map((runtime) => runtime.stop()));
+		this.#wechatRuntimes.clear();
+		await Promise.allSettled([...this.#qqRuntimes.values()].map((runtime) => runtime.stop()));
+		this.#qqRuntimes.clear();
 	}
-	/** 配置保存/同步后调用：按最新 enabled 状态启停，不改已登录凭据。 */
 	reload() {
 		this.#sync();
 	}
+	async listSessions(signal) {
+		return this.#session.listSessions(signal);
+	}
 	status() {
-		const wechat = this.#wechat?.status() ?? {
-			state: "idle",
-			connected: false,
-			messagesReceived: 0,
-			messagesReplied: 0
-		};
-		const qq = this.#qq?.status() ?? {
-			state: "idle",
-			connected: false,
-			messagesReceived: 0,
-			messagesReplied: 0
-		};
+		const config$1 = this.#getConfig();
+		const wechatBots = [...config$1.wechat.bots];
+		const qqBots = [...config$1.qq.bots];
+		const wechatIds = new Set(wechatBots.map((bot) => bot.id));
+		const qqIds = new Set(qqBots.map((bot) => bot.id));
+		for (const id of [
+			...this.#wechatLogins.keys(),
+			...this.#wechatRuntimes.keys(),
+			...Object.keys(this.#store.auth.wechat)
+		]) if (!wechatIds.has(id)) wechatBots.push(this.#temporaryBot(id));
+		for (const id of [...this.#qqRuntimes.keys(), ...Object.keys(this.#store.auth.qq)]) if (!qqIds.has(id)) qqBots.push(this.#temporaryBot(id));
 		return {
-			wechat: {
-				connected: wechat.connected,
-				state: wechat.state,
-				...maskId(wechat.accountId) ? { account: maskId(wechat.accountId) } : {},
-				...maskId(wechat.ownerUserId) ? { owner: maskId(wechat.ownerUserId) } : {},
-				...wechat.lastError ? { lastError: wechat.lastError } : {},
-				messagesReceived: wechat.messagesReceived,
-				messagesReplied: wechat.messagesReplied,
-				login: this.#wechatLogin?.status() ?? null
-			},
-			qq: {
-				connected: qq.connected,
-				state: qq.state,
-				...qq.appId ? { appId: qq.appId } : {},
-				...qq.lastError ? { lastError: qq.lastError } : {},
-				messagesReceived: qq.messagesReceived,
-				messagesReplied: qq.messagesReplied
-			}
+			wechat: { bots: wechatBots.map((bot) => this.#wechatStatus(bot)) },
+			qq: { bots: qqBots.map((bot) => this.#qqStatus(bot)) }
 		};
 	}
-	async startWechatLogin() {
-		this.#wechatLogin?.cancel();
-		this.#wechatLogin = new WechatLogin(this.#wechatApi, this.#store, async (auth) => {
-			await this.#startWechat(auth);
+	#temporaryBot(id) {
+		return {
+			id,
+			enabled: false,
+			mode: "pet",
+			petId: "",
+			sessionId: "",
+			whitelist: [],
+			allowOwner: true,
+			allowGroups: false,
+			writeSay: false
+		};
+	}
+	async startWechatLogin(botId) {
+		if (!/^[A-Za-z0-9._-]{1,64}$/.test(botId)) throw new Error("机器人 id 非法");
+		this.#wechatLogins.get(botId)?.cancel();
+		const login = new WechatLogin(this.#wechatApi, this.#store, botId, async (auth) => {
+			await this.#startWechat(botId, auth);
 		});
-		return this.#wechatLogin.start();
+		this.#wechatLogins.set(botId, login);
+		return login.start();
 	}
-	wechatLoginStatus() {
-		return this.#wechatLogin?.status() ?? null;
+	wechatLoginStatus(botId) {
+		return this.#wechatLogins.get(botId)?.status() ?? null;
 	}
-	cancelWechatLogin() {
-		this.#wechatLogin?.cancel();
-		this.#wechatLogin = null;
+	cancelWechatLogin(botId) {
+		this.#wechatLogins.get(botId)?.cancel();
+		this.#wechatLogins.delete(botId);
 	}
-	submitWechatVerifyCode(code) {
-		return this.#wechatLogin?.submitVerifyCode(code) ?? null;
+	submitWechatVerifyCode(botId, code) {
+		return this.#wechatLogins.get(botId)?.submitVerifyCode(code) ?? null;
 	}
-	async logoutWechat() {
-		this.#wechatLogin?.cancel();
-		this.#wechatLogin = null;
-		await this.#wechat?.stop().catch(() => void 0);
-		this.#wechat = null;
-		await this.#store.clearAuth("wechat");
-		await this.#store.clearState("wechat");
+	async logoutWechat(botId) {
+		this.cancelWechatLogin(botId);
+		const runtime = this.#wechatRuntimes.get(botId);
+		this.#wechatRuntimes.delete(botId);
+		await runtime?.stop().catch(() => void 0);
+		await this.#store.clearAuth("wechat", botId);
+		await this.#store.clearState("wechat", botId);
 	}
-	async bindQq(appId, appSecret) {
+	async bindQq(botId, appId, appSecret) {
+		if (!/^[A-Za-z0-9._-]{1,64}$/.test(botId)) throw new Error("机器人 id 非法");
 		const id = appId.trim();
 		const secret = appSecret.trim();
 		if (!id || !secret) throw new Error("QQ AppID 和 AppSecret 都必填");
 		if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) throw new Error("QQ AppID 格式不正确");
 		if (secret.length > 512) throw new Error("QQ AppSecret 过长");
 		const auth = {
-			botId: deriveQqBotId(id),
+			botId,
 			appId: id,
 			appSecret: secret,
 			ownerUserOpenid: "",
 			connectedAt: new Date().toISOString()
 		};
-		this.#store.auth.qq = auth;
+		this.#store.auth.qq[botId] = auth;
 		await this.#store.saveAuth();
-		await this.#startQq(auth);
+		await this.#startQq(botId, auth);
 	}
-	async logoutQq() {
-		await this.#qq?.stop().catch(() => void 0);
-		this.#qq = null;
-		await this.#store.clearAuth("qq");
-		await this.#store.clearState("qq");
+	async logoutQq(botId) {
+		const runtime = this.#qqRuntimes.get(botId);
+		this.#qqRuntimes.delete(botId);
+		await runtime?.stop().catch(() => void 0);
+		await this.#store.clearAuth("qq", botId);
+		await this.#store.clearState("qq", botId);
+	}
+	#findBot(platform, botId) {
+		return this.#getConfig()[platform].bots.find((bot) => bot.id === botId);
+	}
+	#wechatStatus(bot) {
+		const runtime = this.#wechatRuntimes.get(bot.id)?.status();
+		const auth = this.#store.auth.wechat[bot.id];
+		const login = this.#wechatLogins.get(bot.id)?.status() ?? null;
+		const base = idleStatus(bot);
+		return {
+			...base,
+			connected: runtime?.connected === true,
+			state: runtime?.state ?? "idle",
+			...maskId(auth?.accountId) ? { account: maskId(auth?.accountId) } : {},
+			...maskId(auth?.ownerUserId) ? { owner: maskId(auth?.ownerUserId) } : {},
+			...runtime?.lastError ? { lastError: runtime.lastError } : {},
+			messagesReceived: runtime?.messagesReceived ?? 0,
+			messagesReplied: runtime?.messagesReplied ?? 0,
+			...login ? { login } : {}
+		};
+	}
+	#qqStatus(bot) {
+		const runtime = this.#qqRuntimes.get(bot.id)?.status();
+		const base = idleStatus(bot);
+		return {
+			...base,
+			connected: runtime?.connected === true,
+			state: runtime?.state ?? "idle",
+			...runtime?.appId ? { appId: runtime.appId } : {},
+			...runtime?.lastError ? { lastError: runtime.lastError } : {},
+			messagesReceived: runtime?.messagesReceived ?? 0,
+			messagesReplied: runtime?.messagesReplied ?? 0
+		};
 	}
 	#sync() {
 		if (!this.#started) return;
 		const config$1 = this.#getConfig();
-		if (!config$1.wechat.enabled) {
-			this.#wechat?.stop().catch(() => void 0);
-			this.#wechat = null;
-		} else if (this.#store.auth.wechat && !this.#wechat) this.#startWechat(this.#store.auth.wechat).catch((error$1) => {
-			this.#log.warn(`[dsh-pet] 微信连接失败：${error$1 instanceof Error ? error$1.message : String(error$1)}`);
-		});
-		if (!config$1.qq.enabled) {
-			this.#qq?.stop().catch(() => void 0);
-			this.#qq = null;
-		} else if (this.#store.auth.qq && !this.#qq) this.#startQq(this.#store.auth.qq).catch((error$1) => {
-			this.#log.warn(`[dsh-pet] QQ 连接失败：${error$1 instanceof Error ? error$1.message : String(error$1)}`);
-		});
+		this.#syncPlatform("wechat", config$1.wechat.bots);
+		this.#syncPlatform("qq", config$1.qq.bots);
 	}
-	async #startWechat(auth) {
-		await this.#wechat?.stop().catch(() => void 0);
+	#syncPlatform(platform, bots) {
+		const ids = new Set(bots.map((bot) => bot.id));
+		if (platform === "wechat") {
+			for (const [id, runtime] of this.#wechatRuntimes) if (!ids.has(id) || !bots.find((bot) => bot.id === id)?.enabled) {
+				this.#wechatRuntimes.delete(id);
+				runtime.stop().catch(() => void 0);
+			}
+			for (const [id, login] of this.#wechatLogins) if (!ids.has(id)) {
+				login.cancel();
+				this.#wechatLogins.delete(id);
+			}
+			for (const bot of bots) {
+				if (!bot.enabled || this.#wechatRuntimes.has(bot.id)) continue;
+				const auth = this.#store.auth.wechat[bot.id];
+				if (auth) this.#startWechat(bot.id, auth).catch((error$1) => {
+					this.#log.warn(`[dsh-pet] 微信 ${bot.id} 连接失败：${error$1 instanceof Error ? error$1.message : String(error$1)}`);
+				});
+			}
+			return;
+		}
+		for (const [id, runtime] of this.#qqRuntimes) if (!ids.has(id) || !bots.find((bot) => bot.id === id)?.enabled) {
+			this.#qqRuntimes.delete(id);
+			runtime.stop().catch(() => void 0);
+		}
+		for (const bot of bots) {
+			if (!bot.enabled || this.#qqRuntimes.has(bot.id)) continue;
+			const auth = this.#store.auth.qq[bot.id];
+			if (auth) this.#startQq(bot.id, auth).catch((error$1) => {
+				this.#log.warn(`[dsh-pet] QQ ${bot.id} 连接失败：${error$1 instanceof Error ? error$1.message : String(error$1)}`);
+			});
+		}
+	}
+	async #startWechat(botId, auth) {
+		await this.#wechatRuntimes.get(botId)?.stop().catch(() => void 0);
 		const runtime = new WechatRuntime({
 			api: this.#wechatApi,
 			auth,
 			store: this.#store,
-			getConfig: () => this.#getConfig().wechat,
-			chat: (inbound) => this.#handle(inbound),
+			getConfig: () => this.#findBot("wechat", botId) ?? { enabled: false },
+			chat: (inbound) => this.#handle(botId, inbound),
 			log: this.#log
 		});
-		this.#wechat = runtime;
+		this.#wechatRuntimes.set(botId, runtime);
 		try {
 			await runtime.start();
 		} catch (error$1) {
-			if (this.#wechat === runtime) this.#wechat = null;
+			if (this.#wechatRuntimes.get(botId) === runtime) this.#wechatRuntimes.delete(botId);
 			await runtime.stop().catch(() => void 0);
 			throw error$1;
 		}
 	}
-	async #startQq(auth) {
-		await this.#qq?.stop().catch(() => void 0);
+	async #startQq(botId, auth) {
+		await this.#qqRuntimes.get(botId)?.stop().catch(() => void 0);
 		const runtime = new QqRuntime({
 			auth,
 			store: this.#store,
-			getConfig: () => this.#getConfig().qq,
-			chat: (inbound) => this.#handle(inbound),
+			getConfig: () => this.#findBot("qq", botId) ?? { enabled: false },
+			chat: (inbound) => this.#handle(botId, inbound),
 			log: this.#log
 		});
-		this.#qq = runtime;
+		this.#qqRuntimes.set(botId, runtime);
 		try {
 			await runtime.start();
 		} catch (error$1) {
-			if (this.#qq === runtime) this.#qq = null;
+			if (this.#qqRuntimes.get(botId) === runtime) this.#qqRuntimes.delete(botId);
 			await runtime.stop().catch(() => void 0);
 			throw error$1;
 		}
 	}
-	async #handle(inbound) {
-		const config$1 = this.#getConfig()[inbound.platform];
-		if (!config$1.enabled) return { reason: "platform-disabled" };
-		if (!config$1.petId.trim()) return { reason: "pet-required" };
+	async #handle(botId, inbound) {
+		const platform = inbound.platform;
+		const config$1 = this.#findBot(platform, botId);
+		if (!config$1 || !config$1.enabled) return { reason: "bot-disabled" };
 		if (inbound.isGroup && !config$1.allowGroups) return { reason: "group-not-allowed" };
-		const allowed = this.#allowed(config$1, inbound);
-		if (!allowed) return { reason: "not-whitelisted" };
-		const speaker = `${platformName(inbound.platform)}·${inbound.senderName || inbound.senderId}`;
+		if (!this.#allowed(platform, botId, config$1, inbound)) return { reason: "not-whitelisted" };
+		if (config$1.mode === "session") {
+			if (!config$1.sessionId.trim()) return { reason: "session-required" };
+			try {
+				const reply = await this.#session.ask(config$1.sessionId, inbound.text);
+				return { reply };
+			} catch (error$1) {
+				return {
+					reason: "session-error",
+					message: error$1 instanceof Error ? error$1.message : String(error$1)
+				};
+			}
+		}
+		if (!config$1.petId.trim()) return { reason: "pet-required" };
+		const speaker = `${platformName(platform)}·${inbound.senderName || inbound.senderId}`;
 		const result = await this.#chat(config$1.petId, inbound.text, {
-			memoryKey: `im:${inbound.platform}:${inbound.senderId}`,
+			memoryKey: `im:${platform}:${botId}:${inbound.senderId}`,
 			writeSay: config$1.writeSay,
 			speaker
 		});
@@ -14356,85 +14664,154 @@ var NativeImManager = class {
 		};
 		return { reply: result.text };
 	}
-	#allowed(config$1, inbound) {
-		if (config$1.whitelist.some((entry) => entry.platform === inbound.platform && entry.id === inbound.senderId)) return true;
+	#allowed(platform, botId, config$1, inbound) {
+		if (config$1.whitelist.some((entry) => entry.platform === platform && entry.id === inbound.senderId)) return true;
 		if (!config$1.allowOwner) return false;
-		const owner = inbound.platform === "wechat" ? this.#store.auth.wechat?.ownerUserId : this.#store.auth.qq?.ownerUserOpenid;
+		const owner = platform === "wechat" ? this.#store.auth.wechat[botId]?.ownerUserId : this.#store.auth.qq[botId]?.ownerUserOpenid;
 		return Boolean(owner && owner === inbound.senderId);
 	}
 };
 
 //#endregion
 //#region src/host/im/store.ts
-const EMPTY_STATE = {
-	version: 1,
-	wechat: {
+function emptyBot() {
+	return {
 		getUpdatesBuf: "",
 		seenMessageIds: [],
 		contextTokens: {}
-	},
-	qq: { seenMessageIds: [] }
-};
+	};
+}
 function safeString(value, max = 4096) {
 	return typeof value === "string" ? value.slice(0, max) : "";
 }
+function safeBotId(value) {
+	const id = safeString(value, 64);
+	return /^[A-Za-z0-9._-]{1,64}$/.test(id) ? id : "";
+}
+function normalizeWechatAuth(raw) {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+	const o = raw;
+	const botId = safeBotId(o.botId);
+	const accountId = safeString(o.accountId, 256);
+	const ownerUserId = safeString(o.ownerUserId, 256);
+	const token = safeString(o.token, 4096);
+	if (!botId || !accountId || !ownerUserId || !token) return null;
+	return {
+		botId,
+		accountId,
+		ownerUserId,
+		token,
+		baseUrl: safeString(o.baseUrl, 2048) || "https://ilinkai.weixin.qq.com/",
+		connectedAt: safeString(o.connectedAt, 64) || new Date().toISOString()
+	};
+}
+function normalizeQqAuth(raw) {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+	const o = raw;
+	const botId = safeBotId(o.botId);
+	const appId = safeString(o.appId, 128);
+	const appSecret = safeString(o.appSecret, 512);
+	const ownerUserOpenid = safeString(o.ownerUserOpenid, 256);
+	if (!botId || !appId || !appSecret) return null;
+	return {
+		botId,
+		appId,
+		appSecret,
+		ownerUserOpenid,
+		connectedAt: safeString(o.connectedAt, 64) || new Date().toISOString()
+	};
+}
 function normalizeAuth(raw) {
 	const o = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
-	const w = o.wechat && typeof o.wechat === "object" ? o.wechat : null;
-	const q = o.qq && typeof o.qq === "object" ? o.qq : null;
-	const wechat = w && safeString(w.botId) && safeString(w.accountId) && safeString(w.ownerUserId) && safeString(w.token) ? {
-		botId: safeString(w.botId, 128),
-		accountId: safeString(w.accountId, 256),
-		ownerUserId: safeString(w.ownerUserId, 256),
-		token: safeString(w.token, 4096),
-		baseUrl: safeString(w.baseUrl, 2048) || "https://ilinkai.weixin.qq.com/",
-		connectedAt: safeString(w.connectedAt, 64) || new Date().toISOString()
-	} : void 0;
-	const qq = q && safeString(q.botId) && safeString(q.appId) && safeString(q.appSecret) && safeString(q.ownerUserOpenid) ? {
-		botId: safeString(q.botId, 128),
-		appId: safeString(q.appId, 128),
-		appSecret: safeString(q.appSecret, 512),
-		ownerUserOpenid: safeString(q.ownerUserOpenid, 256),
-		connectedAt: safeString(q.connectedAt, 64) || new Date().toISOString()
-	} : void 0;
+	const wechat = {};
+	const qq = {};
+	const w = o.wechat;
+	if (w && typeof w === "object" && !Array.isArray(w)) {
+		const entries = "token" in w ? { "wechat-1": w } : w;
+		for (const [key, value] of Object.entries(entries)) {
+			const auth = normalizeWechatAuth(value);
+			if (auth) {
+				auth.botId = safeBotId(key) || auth.botId;
+				wechat[auth.botId] = auth;
+			}
+		}
+	}
+	const q = o.qq;
+	if (q && typeof q === "object" && !Array.isArray(q)) {
+		const entries = "appSecret" in q ? { "qq-1": q } : q;
+		for (const [key, value] of Object.entries(entries)) {
+			const auth = normalizeQqAuth(value);
+			if (auth) {
+				auth.botId = safeBotId(key) || auth.botId;
+				qq[auth.botId] = auth;
+			}
+		}
+	}
 	return {
-		version: 1,
-		...wechat ? { wechat } : {},
-		...qq ? { qq } : {}
+		version: 2,
+		wechat,
+		qq
 	};
 }
 function normalizeState(raw) {
 	const o = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
-	const w = o.wechat && typeof o.wechat === "object" ? o.wechat : {};
-	const q = o.qq && typeof o.qq === "object" ? o.qq : {};
-	const contexts = {};
-	const rawContexts = w.contextTokens && typeof w.contextTokens === "object" ? w.contextTokens : {};
-	for (const [id, entry] of Object.entries(rawContexts).slice(-1e3)) {
-		const e = entry && typeof entry === "object" ? entry : {};
-		const token = safeString(e.token, 4096);
-		if (!id || !token) continue;
-		contexts[id] = {
-			token,
-			...safeString(e.seq, 64) ? { seq: safeString(e.seq, 64) } : {},
-			at: Number.isFinite(Number(e.at)) ? Number(e.at) : Date.now()
-		};
+	const wechat = {};
+	const qq = {};
+	const w = o.wechat;
+	if (w && typeof w === "object" && !Array.isArray(w)) {
+		const entries = "getUpdatesBuf" in w ? { "wechat-1": w } : w;
+		for (const [id, value] of Object.entries(entries)) {
+			const botId = safeBotId(id);
+			if (!botId || !value || typeof value !== "object" || Array.isArray(value)) continue;
+			const v = value;
+			const contexts = {};
+			const rawContexts = v.contextTokens && typeof v.contextTokens === "object" ? v.contextTokens : {};
+			for (const [sender, entry] of Object.entries(rawContexts).slice(-1e3)) {
+				const e = entry && typeof entry === "object" ? entry : {};
+				const token = safeString(e.token, 4096);
+				if (!sender || !token) continue;
+				contexts[sender] = {
+					token,
+					...safeString(e.seq, 64) ? { seq: safeString(e.seq, 64) } : {},
+					at: Number.isFinite(Number(e.at)) ? Number(e.at) : Date.now()
+				};
+			}
+			wechat[botId] = {
+				getUpdatesBuf: safeString(v.getUpdatesBuf, 4096),
+				seenMessageIds: Array.isArray(v.seenMessageIds) ? v.seenMessageIds.map((x) => safeString(x, 256)).filter(Boolean).slice(-1e3) : [],
+				contextTokens: contexts
+			};
+		}
 	}
-	const ids = (value) => Array.isArray(value) ? value.map((v) => safeString(v, 256)).filter(Boolean).slice(-1e3) : [];
+	const q = o.qq;
+	if (q && typeof q === "object" && !Array.isArray(q)) {
+		const entries = "seenMessageIds" in q ? { "qq-1": q } : q;
+		for (const [id, value] of Object.entries(entries)) {
+			const botId = safeBotId(id);
+			if (!botId || !value || typeof value !== "object") continue;
+			const v = value;
+			qq[botId] = { seenMessageIds: Array.isArray(v.seenMessageIds) ? v.seenMessageIds.map((x) => safeString(x, 256)).filter(Boolean).slice(-1e3) : [] };
+		}
+	}
 	return {
-		version: 1,
-		wechat: {
-			getUpdatesBuf: safeString(w.getUpdatesBuf, 4096),
-			seenMessageIds: ids(w.seenMessageIds),
-			contextTokens: contexts
-		},
-		qq: { seenMessageIds: ids(q.seenMessageIds) }
+		version: 2,
+		wechat,
+		qq
 	};
 }
 var ImStore = class {
 	authPath;
 	statePath;
-	auth = { version: 1 };
-	state = structuredClone(EMPTY_STATE);
+	auth = {
+		version: 2,
+		wechat: {},
+		qq: {}
+	};
+	state = {
+		version: 2,
+		wechat: {},
+		qq: {}
+	};
 	#queue = Promise.resolve();
 	constructor(userRoot) {
 		this.authPath = join(userRoot, "im-auth.json");
@@ -14444,13 +14821,27 @@ var ImStore = class {
 		try {
 			this.auth = normalizeAuth(JSON.parse(await readFile(this.authPath, "utf8")));
 		} catch (e) {
-			if (e?.code !== "ENOENT") this.auth = { version: 1 };
+			if (e?.code !== "ENOENT") this.auth = {
+				version: 2,
+				wechat: {},
+				qq: {}
+			};
 		}
 		try {
 			this.state = normalizeState(JSON.parse(await readFile(this.statePath, "utf8")));
 		} catch (e) {
-			if (e?.code !== "ENOENT") this.state = structuredClone(EMPTY_STATE);
+			if (e?.code !== "ENOENT") this.state = {
+				version: 2,
+				wechat: {},
+				qq: {}
+			};
 		}
+	}
+	wechatState(botId) {
+		return this.state.wechat[botId] ??= emptyBot();
+	}
+	qqState(botId) {
+		return this.state.qq[botId] ??= { seenMessageIds: [] };
 	}
 	async saveAuth() {
 		await this.#write(this.authPath, this.auth);
@@ -14458,17 +14849,15 @@ var ImStore = class {
 	async saveState() {
 		await this.#write(this.statePath, this.state);
 	}
-	async clearAuth(platform) {
-		if (platform === "wechat") delete this.auth.wechat;
-		else delete this.auth.qq;
+	async clearAuth(platform, botId) {
+		delete this.auth[platform][botId];
 		await this.saveAuth();
 	}
-	async clearState(platform) {
-		if (platform === "wechat") this.state.wechat = structuredClone(EMPTY_STATE.wechat);
-		else this.state.qq = structuredClone(EMPTY_STATE.qq);
+	async clearState(platform, botId) {
+		if (platform === "wechat") delete this.state.wechat[botId];
+		else delete this.state.qq[botId];
 		await this.saveState();
 	}
-	/** 串行写盘（同进程内多个消息同时更新游标时防交错）。 */
 	#write(path$4, value) {
 		const operation = this.#queue.then(async () => {
 			await mkdir(dirname(path$4), {
@@ -18622,6 +19011,7 @@ function apply(ctx) {
 			}
 		},
 		chat: chatWithPet,
+		ctx,
 		log: {
 			info: (message) => log$1.info(message),
 			warn: (message) => log$1.warn(message),
@@ -20386,34 +20776,161 @@ function apply(ctx) {
 				headers: { "cache-control": "no-cache, no-store" }
 			};
 		}
-		if (rest === "im/wechat/login") {
-			if (method === "POST") try {
+		if (rest === "im/sessions") {
+			if (method !== "GET") return {
+				kind: "json",
+				status: 405,
+				obj: { error: "method not allowed" }
+			};
+			try {
 				return {
 					kind: "json",
 					status: 200,
-					obj: await nativeIm.startWechatLogin()
+					obj: {
+						ok: true,
+						sessions: await nativeIm.listSessions(signal)
+					},
+					headers: { "cache-control": "no-cache, no-store" }
 				};
 			} catch (e) {
 				return {
 					kind: "json",
 					status: 200,
 					obj: {
-						status: "failed",
-						error: {
-							code: "qr-start-failed",
-							message: e instanceof Error ? e.message : String(e)
-						}
+						ok: false,
+						sessions: [],
+						message: e instanceof Error ? e.message : String(e)
 					}
 				};
 			}
-			if (method === "GET") return {
-				kind: "json",
-				status: 200,
-				obj: { login: nativeIm.wechatLoginStatus() },
-				headers: { "cache-control": "no-cache, no-store" }
-			};
-			if (method === "DELETE") {
-				nativeIm.cancelWechatLogin();
+		}
+		const imRoute = /^im\/(wechat|qq)\/bots\/([^/]+)\/(login|verify|logout|bind)$/.exec(rest);
+		if (imRoute) {
+			const platform = imRoute[1];
+			const botId = decodeURIComponent(imRoute[2]);
+			const action = imRoute[3];
+			if (platform === "wechat" && action === "login") {
+				if (method === "POST") try {
+					return {
+						kind: "json",
+						status: 200,
+						obj: await nativeIm.startWechatLogin(botId)
+					};
+				} catch (e) {
+					return {
+						kind: "json",
+						status: 200,
+						obj: {
+							botId,
+							id: "",
+							status: "failed",
+							expiresAt: Date.now(),
+							error: {
+								code: "qr-start-failed",
+								message: e instanceof Error ? e.message : String(e)
+							}
+						}
+					};
+				}
+				if (method === "GET") return {
+					kind: "json",
+					status: 200,
+					obj: { login: nativeIm.wechatLoginStatus(botId) },
+					headers: { "cache-control": "no-cache, no-store" }
+				};
+				if (method === "DELETE") {
+					nativeIm.cancelWechatLogin(botId);
+					return {
+						kind: "json",
+						status: 200,
+						obj: { ok: true }
+					};
+				}
+				return {
+					kind: "json",
+					status: 405,
+					obj: { error: "method not allowed" }
+				};
+			}
+			if (platform === "wechat" && action === "verify") {
+				if (method !== "POST") return {
+					kind: "json",
+					status: 405,
+					obj: { error: "method not allowed" }
+				};
+				let payload;
+				try {
+					payload = JSON.parse(body ?? "");
+				} catch {
+					return {
+						kind: "json",
+						status: 400,
+						obj: { error: "invalid JSON body" }
+					};
+				}
+				return {
+					kind: "json",
+					status: 200,
+					obj: { login: nativeIm.submitWechatVerifyCode(botId, String(payload.code ?? "")) }
+				};
+			}
+			if (platform === "wechat" && action === "logout") {
+				if (method !== "POST") return {
+					kind: "json",
+					status: 405,
+					obj: { error: "method not allowed" }
+				};
+				await nativeIm.logoutWechat(botId);
+				return {
+					kind: "json",
+					status: 200,
+					obj: { ok: true }
+				};
+			}
+			if (platform === "qq" && action === "bind") {
+				if (method !== "POST") return {
+					kind: "json",
+					status: 405,
+					obj: { error: "method not allowed" }
+				};
+				let payload;
+				try {
+					payload = JSON.parse(body ?? "");
+				} catch {
+					return {
+						kind: "json",
+						status: 400,
+						obj: { error: "invalid JSON body" }
+					};
+				}
+				try {
+					await nativeIm.bindQq(botId, String(payload.appId ?? ""), String(payload.appSecret ?? ""));
+					return {
+						kind: "json",
+						status: 200,
+						obj: {
+							ok: true,
+							status: nativeIm.status()
+						}
+					};
+				} catch (e) {
+					return {
+						kind: "json",
+						status: 200,
+						obj: {
+							ok: false,
+							message: e instanceof Error ? e.message : String(e)
+						}
+					};
+				}
+			}
+			if (platform === "qq" && action === "logout") {
+				if (method !== "POST") return {
+					kind: "json",
+					status: 405,
+					obj: { error: "method not allowed" }
+				};
+				await nativeIm.logoutQq(botId);
 				return {
 					kind: "json",
 					status: 200,
@@ -20424,91 +20941,6 @@ function apply(ctx) {
 				kind: "json",
 				status: 405,
 				obj: { error: "method not allowed" }
-			};
-		}
-		if (rest === "im/wechat/verify") {
-			if (method !== "POST") return {
-				kind: "json",
-				status: 405,
-				obj: { error: "method not allowed" }
-			};
-			let payload;
-			try {
-				payload = JSON.parse(body ?? "");
-			} catch {
-				return {
-					kind: "json",
-					status: 400,
-					obj: { error: "invalid JSON body" }
-				};
-			}
-			return {
-				kind: "json",
-				status: 200,
-				obj: { login: nativeIm.submitWechatVerifyCode(String(payload.code ?? "")) }
-			};
-		}
-		if (rest === "im/wechat/logout") {
-			if (method !== "POST") return {
-				kind: "json",
-				status: 405,
-				obj: { error: "method not allowed" }
-			};
-			await nativeIm.logoutWechat();
-			return {
-				kind: "json",
-				status: 200,
-				obj: { ok: true }
-			};
-		}
-		if (rest === "im/qq/bind") {
-			if (method !== "POST") return {
-				kind: "json",
-				status: 405,
-				obj: { error: "method not allowed" }
-			};
-			let payload;
-			try {
-				payload = JSON.parse(body ?? "");
-			} catch {
-				return {
-					kind: "json",
-					status: 400,
-					obj: { error: "invalid JSON body" }
-				};
-			}
-			try {
-				await nativeIm.bindQq(String(payload.appId ?? ""), String(payload.appSecret ?? ""));
-				return {
-					kind: "json",
-					status: 200,
-					obj: {
-						ok: true,
-						status: nativeIm.status()
-					}
-				};
-			} catch (e) {
-				return {
-					kind: "json",
-					status: 200,
-					obj: {
-						ok: false,
-						message: e instanceof Error ? e.message : String(e)
-					}
-				};
-			}
-		}
-		if (rest === "im/qq/logout") {
-			if (method !== "POST") return {
-				kind: "json",
-				status: 405,
-				obj: { error: "method not allowed" }
-			};
-			await nativeIm.logoutQq();
-			return {
-				kind: "json",
-				status: 200,
-				obj: { ok: true }
 			};
 		}
 		if (rest === "bridge/inbound") {

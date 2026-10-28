@@ -1326,44 +1326,99 @@ describe('saveUserConfig —— 消息接入 bridge（白名单 + 归一化 + �
   });
 });
 
-describe('saveUserConfig —— 原生微信 / QQ 配置 im', () => {
-  test('合法 im 落盘时归一化两个平台与白名单', () => {
+describe('saveUserConfig —— 原生微信 / QQ 配置 im（多机器人）', () => {
+  test('合法 im 落盘时归一化两个平台的机器人数组', () => {
     const out = saveOnce({
       pets: PETS,
       im: {
-        wechat: { enabled: true, petId: ' main ', whitelist: ['wechat:wxid_1'] },
-        qq: { enabled: false, petId: '', whitelist: [{ platform: 'qq', id: '123', name: '李四' }] },
+        wechat: {
+          bots: [
+            { id: 'wx-main', enabled: true, mode: 'pet', petId: ' main ', whitelist: ['wechat:wxid_1'] },
+            { id: 'wx-work', enabled: true, mode: 'session', sessionId: ' ses_1 ' },
+          ],
+        },
+        qq: {
+          bots: [
+            {
+              id: 'qq-main',
+              enabled: false,
+              mode: 'pet',
+              petId: '',
+              whitelist: [{ platform: 'qq', id: '123', name: '李四' }],
+            },
+          ],
+        },
       },
     });
     assert.ok(out);
     assert.deepEqual((out.im as Record<string, unknown>).wechat, {
-      enabled: true,
-      petId: 'main',
-      whitelist: [{ platform: 'wechat', id: 'wxid_1' }],
-      allowOwner: true,
-      allowGroups: false,
-      writeSay: false,
+      bots: [
+        {
+          id: 'wx-main',
+          enabled: true,
+          mode: 'pet',
+          petId: 'main',
+          sessionId: '',
+          whitelist: [{ platform: 'wechat', id: 'wxid_1' }],
+          allowOwner: true,
+          allowGroups: false,
+          writeSay: false,
+        },
+        {
+          id: 'wx-work',
+          enabled: true,
+          mode: 'session',
+          petId: '',
+          sessionId: 'ses_1',
+          whitelist: [],
+          allowOwner: true,
+          allowGroups: false,
+          writeSay: false,
+        },
+      ],
     });
     assert.deepEqual((out.im as Record<string, unknown>).qq, {
-      enabled: false,
-      petId: '',
-      whitelist: [{ platform: 'qq', id: '123', name: '李四' }],
-      allowOwner: true,
-      allowGroups: false,
-      writeSay: false,
+      bots: [
+        {
+          id: 'qq-main',
+          enabled: false,
+          mode: 'pet',
+          petId: '',
+          sessionId: '',
+          whitelist: [{ platform: 'qq', id: '123', name: '李四' }],
+          allowOwner: true,
+          allowGroups: false,
+          writeSay: false,
+        },
+      ],
     });
   });
 
-  test('im 启用但宠物为空 / 白名单非法 → 整包拒绝', () => {
-    assert.equal(saveOnce({ pets: PETS, im: { wechat: { enabled: true, petId: '' } } }), null);
-    assert.equal(saveOnce({ pets: PETS, im: { qq: { enabled: true, petId: 'main', whitelist: ['bad'] } } }), null);
+  test('im 启用但缺少宠物 / session / 白名单非法 → 整包拒绝', () => {
+    assert.equal(saveOnce({ pets: PETS, im: { wechat: { bots: [{ id: 'wx1', enabled: true, mode: 'pet' }] } } }), null);
+    assert.equal(saveOnce({ pets: PETS, im: { qq: { bots: [{ id: 'qq1', enabled: true, mode: 'session' }] } } }), null);
+    assert.equal(
+      saveOnce({
+        pets: PETS,
+        im: { qq: { bots: [{ id: 'qq1', enabled: true, mode: 'pet', petId: 'main', whitelist: ['bad'] }] } },
+      }),
+      null,
+    );
     assert.equal(saveOnce({ pets: PETS, im: { wechat: 'on' } }), null);
   });
 
-  test('请求体没带 im → 透传磁盘旧值', () => {
-    const existing = {
+  test('旧版单机器人对象仍可保存并迁移成 bots[0]', () => {
+    const out = saveOnce({
+      pets: PETS,
       im: { wechat: { enabled: true, petId: 'main', whitelist: ['wechat:wxid_1'] } },
-    };
+    });
+    assert.ok(out);
+    assert.equal((out.im as { wechat: { bots: unknown[] } }).wechat.bots.length, 1);
+    assert.equal((out.im as { wechat: { bots: Array<{ id: string }> } }).wechat.bots[0].id, 'wechat-1');
+  });
+
+  test('请求体没带 im → 透传磁盘旧值', () => {
+    const existing = { im: { wechat: { enabled: true, petId: 'main', whitelist: ['wechat:wxid_1'] } } };
     const out = saveOnce({ pets: PETS }, existing);
     assert.ok(out);
     assert.deepEqual(out.im, existing.im);

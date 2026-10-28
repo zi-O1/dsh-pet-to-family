@@ -8,7 +8,7 @@
 import { createHash } from 'node:crypto';
 import { QQBot, type QQBotInboundMessage } from '@tencent-connect/qqbot-nodejs';
 
-import type { ImChannelConfig } from '../../shared/im';
+import type { ImBotConfig } from '../../shared/im';
 import type { ImStore, QqAuth } from './store';
 import type { ImChat, ImLogger } from './wechat';
 
@@ -42,13 +42,7 @@ export class QqRuntime {
   #botIds = new Set<string>();
   #status: QqRuntimeStatus = { state: 'idle', connected: false, messagesReceived: 0, messagesReplied: 0 };
 
-  constructor(options: {
-    auth: QqAuth;
-    store: ImStore;
-    getConfig: () => ImChannelConfig;
-    chat: ImChat;
-    log: ImLogger;
-  }) {
+  constructor(options: { auth: QqAuth; store: ImStore; getConfig: () => ImBotConfig; chat: ImChat; log: ImLogger }) {
     this.#auth = options.auth;
     this.#store = options.store;
     this.#chat = options.chat;
@@ -179,7 +173,7 @@ export class QqRuntime {
     const id = isGroup ? (message.groupOpenid ?? '') : message.senderId;
     const text = typeof message.content === 'string' ? message.content.replace(/<@!?[^<>\s]+>/gu, '').trim() : '';
     if (!id || !message.messageId || !text) return;
-    if (this.#store.state.qq.seenMessageIds.includes(message.messageId)) return;
+    if (this.#store.qqState(this.#auth.botId).seenMessageIds.includes(message.messageId)) return;
     this.#status.messagesReceived += 1;
     const result = await this.#chat({
       platform: 'qq',
@@ -197,9 +191,11 @@ export class QqRuntime {
         this.#log.warn(`[dsh-pet:qq] 回复发送失败：${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    this.#store.state.qq.seenMessageIds.push(message.messageId);
-    if (this.#store.state.qq.seenMessageIds.length > 1_000) {
-      this.#store.state.qq.seenMessageIds.splice(0, this.#store.state.qq.seenMessageIds.length - 1_000);
+    this.#store.qqState(this.#auth.botId).seenMessageIds.push(message.messageId);
+    if (this.#store.qqState(this.#auth.botId).seenMessageIds.length > 1_000) {
+      this.#store
+        .qqState(this.#auth.botId)
+        .seenMessageIds.splice(0, this.#store.qqState(this.#auth.botId).seenMessageIds.length - 1_000);
     }
     await this.#store.saveState();
   }

@@ -1,36 +1,25 @@
 /**
- * 原生微信 / QQ 接入的总控：配置读取、登录生命周期、白名单、pet 对话与平台发送。
+ * 原生微信 / QQ 接入的总控（每平台多机器人）。
  *
- * 与通用 Webhook bridge 独立：这里由插件自己连接平台，不经过任何外部桥接器。
+ * 每个 bot 独立配置 mode：
+ *  - pet：调用 chatWithPet，使用桌宠人格/灵魂/记忆；
+ *  - session：通过 DshSessionRunner 投递到固定 DSH session，由该 session 回复。
  * @module dsh-pet/src/host/im
  */
-import type { ImChannelConfig, ImConfig } from '../../shared/im';
+import type {
+  ImBotConfig,
+  ImBotStatusView,
+  ImConfig,
+  ImLoginAttemptView,
+  ImPlatform,
+  ImStatusView,
+} from '../../shared/im';
 import type { ImStore, QqAuth, WechatAuth } from './store';
 import { createWeixinApi } from './weixin-api';
-import { WechatLogin, WechatRuntime, type WechatAttempt, type WechatRuntimeStatus } from './wechat';
-import { deriveQqBotId, QqRuntime, type QqRuntimeStatus } from './qq';
+import { WechatLogin, WechatRuntime, type WechatAttempt } from './wechat';
+import { QqRuntime } from './qq';
 import type { ImInbound, ImLogger } from './wechat';
-
-export interface ImStatus {
-  wechat: {
-    connected: boolean;
-    state: string;
-    account?: string;
-    owner?: string;
-    lastError?: string;
-    messagesReceived: number;
-    messagesReplied: number;
-    login?: WechatAttempt | null;
-  };
-  qq: {
-    connected: boolean;
-    state: string;
-    appId?: string;
-    lastError?: string;
-    messagesReceived: number;
-    messagesReplied: number;
-  };
-}
+import { DshSessionRunner } from './session';
 
 type ChatFn = (
   petId: string,
@@ -44,8 +33,20 @@ function maskId(value: string | undefined): string | undefined {
   return `${value.slice(0, 4)}••${value.slice(-4)}`;
 }
 
-function platformName(platform: 'wechat' | 'qq'): string {
+function platformName(platform: ImPlatform): string {
   return platform === 'wechat' ? '微信' : 'QQ';
+}
+
+function idleStatus(bot: ImBotConfig): ImBotStatusView {
+  return {
+    id: bot.id,
+    enabled: bot.enabled,
+    mode: bot.mode,
+    connected: false,
+    state: 'idle',
+    messagesReceived: 0,
+    messagesReplied: 0,
+  };
 }
 
 export class NativeImManager {
@@ -53,17 +54,19 @@ export class NativeImManager {
   #getConfig: () => ImConfig;
   #chat: ChatFn;
   #log: ImLogger;
+  #session: DshSessionRunner;
   #wechatApi = createWeixinApi();
-  #wechatLogin: WechatLogin | null = null;
-  #wechat: WechatRuntime | null = null;
-  #qq: QqRuntime | null = null;
+  #wechatLogins = new Map<string, WechatLogin>();
+  #wechatRuntimes = new Map<string, WechatRuntime>();
+  #qqRuntimes = new Map<string, QqRuntime>();
   #started = false;
 
-  constructor(options: { store: ImStore; getConfig: () => ImConfig; chat: ChatFn; log: ImLogger }) {
+  constructor(options: { store: ImStore; getConfig: () => ImConfig; chat: ChatFn; log: ImLogger; ctx: unknown }) {
     this.#store = options.store;
     this.#getConfig = options.getConfig;
     this.#chat = options.chat;
     this.#log = options.log;
+    this.#session = new DshSessionRunner(options.ctx);
   }
 
   async start(): Promise<void> {
@@ -75,183 +78,271 @@ export class NativeImManager {
 
   async stop(): Promise<void> {
     this.#started = false;
-    this.#wechatLogin?.cancel();
-    this.#wechatLogin = null;
-    await this.#wechat?.stop().catch(() => undefined);
-    this.#wechat = null;
-    await this.#qq?.stop().catch(() => undefined);
-    this.#qq = null;
+    for (const login of this.#wechatLogins.values()) login.cancel();
+    this.#wechatLogins.clear();
+    await Promise.allSettled([...this.#wechatRuntimes.values()].map((runtime) => runtime.stop()));
+    this.#wechatRuntimes.clear();
+    await Promise.allSettled([...this.#qqRuntimes.values()].map((runtime) => runtime.stop()));
+    this.#qqRuntimes.clear();
   }
 
-  /** 配置保存/同步后调用：按最新 enabled 状态启停，不改已登录凭据。 */
   reload(): void {
     this.#sync();
   }
 
-  status(): ImStatus {
-    const wechat =
-      this.#wechat?.status() ??
-      ({
-        state: 'idle',
-        connected: false,
-        messagesReceived: 0,
-        messagesReplied: 0,
-      } satisfies WechatRuntimeStatus);
-    const qq =
-      this.#qq?.status() ??
-      ({
-        state: 'idle',
-        connected: false,
-        messagesReceived: 0,
-        messagesReplied: 0,
-      } satisfies QqRuntimeStatus);
+  async listSessions(signal?: AbortSignal) {
+    return this.#session.listSessions(signal);
+  }
+
+  status(): ImStatusView {
+    const config = this.#getConfig();
+    const wechatBots = [...config.wechat.bots];
+    const qqBots = [...config.qq.bots];
+    const wechatIds = new Set(wechatBots.map((bot) => bot.id));
+    const qqIds = new Set(qqBots.map((bot) => bot.id));
+    // 新加的机器人可能还没点「保存」，但已经扫码/绑定；把内存里的连接也列出来，
+    // 设置页才能显示二维码/连接状态。保存后由正式配置取代这些临时条目。
+    for (const id of [
+      ...this.#wechatLogins.keys(),
+      ...this.#wechatRuntimes.keys(),
+      ...Object.keys(this.#store.auth.wechat),
+    ]) {
+      if (!wechatIds.has(id)) wechatBots.push(this.#temporaryBot(id));
+    }
+    for (const id of [...this.#qqRuntimes.keys(), ...Object.keys(this.#store.auth.qq)]) {
+      if (!qqIds.has(id)) qqBots.push(this.#temporaryBot(id));
+    }
     return {
-      wechat: {
-        connected: wechat.connected,
-        state: wechat.state,
-        ...(maskId(wechat.accountId) ? { account: maskId(wechat.accountId) } : {}),
-        ...(maskId(wechat.ownerUserId) ? { owner: maskId(wechat.ownerUserId) } : {}),
-        ...(wechat.lastError ? { lastError: wechat.lastError } : {}),
-        messagesReceived: wechat.messagesReceived,
-        messagesReplied: wechat.messagesReplied,
-        login: this.#wechatLogin?.status() ?? null,
-      },
-      qq: {
-        connected: qq.connected,
-        state: qq.state,
-        ...(qq.appId ? { appId: qq.appId } : {}),
-        ...(qq.lastError ? { lastError: qq.lastError } : {}),
-        messagesReceived: qq.messagesReceived,
-        messagesReplied: qq.messagesReplied,
-      },
+      wechat: { bots: wechatBots.map((bot) => this.#wechatStatus(bot)) },
+      qq: { bots: qqBots.map((bot) => this.#qqStatus(bot)) },
     };
   }
 
-  async startWechatLogin(): Promise<WechatAttempt> {
-    this.#wechatLogin?.cancel();
-    this.#wechatLogin = new WechatLogin(this.#wechatApi, this.#store, async (auth) => {
-      await this.#startWechat(auth);
+  #temporaryBot(id: string): ImBotConfig {
+    return {
+      id,
+      enabled: false,
+      mode: 'pet',
+      petId: '',
+      sessionId: '',
+      whitelist: [],
+      allowOwner: true,
+      allowGroups: false,
+      writeSay: false,
+    };
+  }
+
+  async startWechatLogin(botId: string): Promise<WechatAttempt> {
+    if (!/^[A-Za-z0-9._-]{1,64}$/.test(botId)) throw new Error('机器人 id 非法');
+    this.#wechatLogins.get(botId)?.cancel();
+    const login = new WechatLogin(this.#wechatApi, this.#store, botId, async (auth) => {
+      await this.#startWechat(botId, auth);
     });
-    return this.#wechatLogin.start();
+    this.#wechatLogins.set(botId, login);
+    return login.start();
   }
 
-  wechatLoginStatus(): WechatAttempt | null {
-    return this.#wechatLogin?.status() ?? null;
+  wechatLoginStatus(botId: string): WechatAttempt | null {
+    return this.#wechatLogins.get(botId)?.status() ?? null;
   }
 
-  cancelWechatLogin(): void {
-    this.#wechatLogin?.cancel();
-    this.#wechatLogin = null;
+  cancelWechatLogin(botId: string): void {
+    this.#wechatLogins.get(botId)?.cancel();
+    this.#wechatLogins.delete(botId);
   }
 
-  submitWechatVerifyCode(code: string): WechatAttempt | null {
-    return this.#wechatLogin?.submitVerifyCode(code) ?? null;
+  submitWechatVerifyCode(botId: string, code: string): WechatAttempt | null {
+    return this.#wechatLogins.get(botId)?.submitVerifyCode(code) ?? null;
   }
 
-  async logoutWechat(): Promise<void> {
-    this.#wechatLogin?.cancel();
-    this.#wechatLogin = null;
-    await this.#wechat?.stop().catch(() => undefined);
-    this.#wechat = null;
-    await this.#store.clearAuth('wechat');
-    await this.#store.clearState('wechat');
+  async logoutWechat(botId: string): Promise<void> {
+    this.cancelWechatLogin(botId);
+    const runtime = this.#wechatRuntimes.get(botId);
+    this.#wechatRuntimes.delete(botId);
+    await runtime?.stop().catch(() => undefined);
+    await this.#store.clearAuth('wechat', botId);
+    await this.#store.clearState('wechat', botId);
   }
 
-  async bindQq(appId: string, appSecret: string): Promise<void> {
+  async bindQq(botId: string, appId: string, appSecret: string): Promise<void> {
+    if (!/^[A-Za-z0-9._-]{1,64}$/.test(botId)) throw new Error('机器人 id 非法');
     const id = appId.trim();
     const secret = appSecret.trim();
     if (!id || !secret) throw new Error('QQ AppID 和 AppSecret 都必填');
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) throw new Error('QQ AppID 格式不正确');
     if (secret.length > 512) throw new Error('QQ AppSecret 过长');
     const auth: QqAuth = {
-      botId: deriveQqBotId(id),
+      botId,
       appId: id,
       appSecret: secret,
       ownerUserOpenid: '',
       connectedAt: new Date().toISOString(),
     };
-    this.#store.auth.qq = auth;
+    this.#store.auth.qq[botId] = auth;
     await this.#store.saveAuth();
-    await this.#startQq(auth);
+    await this.#startQq(botId, auth);
   }
 
-  async logoutQq(): Promise<void> {
-    await this.#qq?.stop().catch(() => undefined);
-    this.#qq = null;
-    await this.#store.clearAuth('qq');
-    await this.#store.clearState('qq');
+  async logoutQq(botId: string): Promise<void> {
+    const runtime = this.#qqRuntimes.get(botId);
+    this.#qqRuntimes.delete(botId);
+    await runtime?.stop().catch(() => undefined);
+    await this.#store.clearAuth('qq', botId);
+    await this.#store.clearState('qq', botId);
+  }
+
+  #findBot(platform: ImPlatform, botId: string): ImBotConfig | undefined {
+    return this.#getConfig()[platform].bots.find((bot) => bot.id === botId);
+  }
+
+  #wechatStatus(bot: ImBotConfig): ImBotStatusView {
+    const runtime = this.#wechatRuntimes.get(bot.id)?.status();
+    const auth = this.#store.auth.wechat[bot.id];
+    const login = this.#wechatLogins.get(bot.id)?.status() ?? null;
+    const base = idleStatus(bot);
+    return {
+      ...base,
+      connected: runtime?.connected === true,
+      state: runtime?.state ?? 'idle',
+      ...(maskId(auth?.accountId) ? { account: maskId(auth?.accountId) } : {}),
+      ...(maskId(auth?.ownerUserId) ? { owner: maskId(auth?.ownerUserId) } : {}),
+      ...(runtime?.lastError ? { lastError: runtime.lastError } : {}),
+      messagesReceived: runtime?.messagesReceived ?? 0,
+      messagesReplied: runtime?.messagesReplied ?? 0,
+      ...(login ? { login: login as unknown as ImLoginAttemptView } : {}),
+    };
+  }
+
+  #qqStatus(bot: ImBotConfig): ImBotStatusView {
+    const runtime = this.#qqRuntimes.get(bot.id)?.status();
+    const base = idleStatus(bot);
+    return {
+      ...base,
+      connected: runtime?.connected === true,
+      state: runtime?.state ?? 'idle',
+      ...(runtime?.appId ? { appId: runtime.appId } : {}),
+      ...(runtime?.lastError ? { lastError: runtime.lastError } : {}),
+      messagesReceived: runtime?.messagesReceived ?? 0,
+      messagesReplied: runtime?.messagesReplied ?? 0,
+    };
   }
 
   #sync(): void {
     if (!this.#started) return;
     const config = this.#getConfig();
-    if (!config.wechat.enabled) {
-      void this.#wechat?.stop().catch(() => undefined);
-      this.#wechat = null;
-    } else if (this.#store.auth.wechat && !this.#wechat) {
-      void this.#startWechat(this.#store.auth.wechat).catch((error) => {
-        this.#log.warn(`[dsh-pet] 微信连接失败：${error instanceof Error ? error.message : String(error)}`);
-      });
+    this.#syncPlatform('wechat', config.wechat.bots);
+    this.#syncPlatform('qq', config.qq.bots);
+  }
+
+  #syncPlatform(platform: ImPlatform, bots: ImBotConfig[]): void {
+    const ids = new Set(bots.map((bot) => bot.id));
+    if (platform === 'wechat') {
+      for (const [id, runtime] of this.#wechatRuntimes) {
+        if (!ids.has(id) || !bots.find((bot) => bot.id === id)?.enabled) {
+          this.#wechatRuntimes.delete(id);
+          void runtime.stop().catch(() => undefined);
+        }
+      }
+      for (const [id, login] of this.#wechatLogins) {
+        if (!ids.has(id)) {
+          login.cancel();
+          this.#wechatLogins.delete(id);
+        }
+      }
+      for (const bot of bots) {
+        if (!bot.enabled || this.#wechatRuntimes.has(bot.id)) continue;
+        const auth = this.#store.auth.wechat[bot.id];
+        if (auth) {
+          void this.#startWechat(bot.id, auth).catch((error) => {
+            this.#log.warn(
+              `[dsh-pet] 微信 ${bot.id} 连接失败：${error instanceof Error ? error.message : String(error)}`,
+            );
+          });
+        }
+      }
+      return;
     }
-    if (!config.qq.enabled) {
-      void this.#qq?.stop().catch(() => undefined);
-      this.#qq = null;
-    } else if (this.#store.auth.qq && !this.#qq) {
-      void this.#startQq(this.#store.auth.qq).catch((error) => {
-        this.#log.warn(`[dsh-pet] QQ 连接失败：${error instanceof Error ? error.message : String(error)}`);
-      });
+    for (const [id, runtime] of this.#qqRuntimes) {
+      if (!ids.has(id) || !bots.find((bot) => bot.id === id)?.enabled) {
+        this.#qqRuntimes.delete(id);
+        void runtime.stop().catch(() => undefined);
+      }
+    }
+    for (const bot of bots) {
+      if (!bot.enabled || this.#qqRuntimes.has(bot.id)) continue;
+      const auth = this.#store.auth.qq[bot.id];
+      if (auth) {
+        void this.#startQq(bot.id, auth).catch((error) => {
+          this.#log.warn(`[dsh-pet] QQ ${bot.id} 连接失败：${error instanceof Error ? error.message : String(error)}`);
+        });
+      }
     }
   }
 
-  async #startWechat(auth: WechatAuth): Promise<void> {
-    await this.#wechat?.stop().catch(() => undefined);
+  async #startWechat(botId: string, auth: WechatAuth): Promise<void> {
+    await this.#wechatRuntimes
+      .get(botId)
+      ?.stop()
+      .catch(() => undefined);
     const runtime = new WechatRuntime({
       api: this.#wechatApi,
       auth,
       store: this.#store,
-      getConfig: () => this.#getConfig().wechat,
-      chat: (inbound) => this.#handle(inbound),
+      getConfig: () => this.#findBot('wechat', botId) ?? ({ enabled: false } as never),
+      chat: (inbound) => this.#handle(botId, inbound),
       log: this.#log,
     });
-    this.#wechat = runtime;
+    this.#wechatRuntimes.set(botId, runtime);
     try {
       await runtime.start();
     } catch (error) {
-      if (this.#wechat === runtime) this.#wechat = null;
+      if (this.#wechatRuntimes.get(botId) === runtime) this.#wechatRuntimes.delete(botId);
       await runtime.stop().catch(() => undefined);
       throw error;
     }
   }
 
-  async #startQq(auth: QqAuth): Promise<void> {
-    await this.#qq?.stop().catch(() => undefined);
+  async #startQq(botId: string, auth: QqAuth): Promise<void> {
+    await this.#qqRuntimes
+      .get(botId)
+      ?.stop()
+      .catch(() => undefined);
     const runtime = new QqRuntime({
       auth,
       store: this.#store,
-      getConfig: () => this.#getConfig().qq,
-      chat: (inbound) => this.#handle(inbound),
+      getConfig: () => this.#findBot('qq', botId) ?? ({ enabled: false } as never),
+      chat: (inbound) => this.#handle(botId, inbound),
       log: this.#log,
     });
-    this.#qq = runtime;
+    this.#qqRuntimes.set(botId, runtime);
     try {
       await runtime.start();
     } catch (error) {
-      if (this.#qq === runtime) this.#qq = null;
+      if (this.#qqRuntimes.get(botId) === runtime) this.#qqRuntimes.delete(botId);
       await runtime.stop().catch(() => undefined);
       throw error;
     }
   }
 
-  async #handle(inbound: ImInbound): Promise<{ reply?: string; reason?: string; message?: string }> {
-    const config = this.#getConfig()[inbound.platform];
-    if (!config.enabled) return { reason: 'platform-disabled' };
-    if (!config.petId.trim()) return { reason: 'pet-required' };
+  async #handle(botId: string, inbound: ImInbound): Promise<{ reply?: string; reason?: string; message?: string }> {
+    const platform = inbound.platform;
+    const config = this.#findBot(platform, botId);
+    if (!config || !config.enabled) return { reason: 'bot-disabled' };
     if (inbound.isGroup && !config.allowGroups) return { reason: 'group-not-allowed' };
-    const allowed = this.#allowed(config, inbound);
-    if (!allowed) return { reason: 'not-whitelisted' };
-    const speaker = `${platformName(inbound.platform)}·${inbound.senderName || inbound.senderId}`;
+    if (!this.#allowed(platform, botId, config, inbound)) return { reason: 'not-whitelisted' };
+    if (config.mode === 'session') {
+      if (!config.sessionId.trim()) return { reason: 'session-required' };
+      try {
+        const reply = await this.#session.ask(config.sessionId, inbound.text);
+        return { reply };
+      } catch (error) {
+        return { reason: 'session-error', message: error instanceof Error ? error.message : String(error) };
+      }
+    }
+    if (!config.petId.trim()) return { reason: 'pet-required' };
+    const speaker = `${platformName(platform)}·${inbound.senderName || inbound.senderId}`;
     const result = await this.#chat(config.petId, inbound.text, {
-      memoryKey: `im:${inbound.platform}:${inbound.senderId}`,
+      memoryKey: `im:${platform}:${botId}:${inbound.senderId}`,
       writeSay: config.writeSay,
       speaker,
     });
@@ -259,13 +350,11 @@ export class NativeImManager {
     return { reply: result.text };
   }
 
-  #allowed(config: ImChannelConfig, inbound: ImInbound): boolean {
-    if (config.whitelist.some((entry) => entry.platform === inbound.platform && entry.id === inbound.senderId)) {
-      return true;
-    }
+  #allowed(platform: ImPlatform, botId: string, config: ImBotConfig, inbound: ImInbound): boolean {
+    if (config.whitelist.some((entry) => entry.platform === platform && entry.id === inbound.senderId)) return true;
     if (!config.allowOwner) return false;
     const owner =
-      inbound.platform === 'wechat' ? this.#store.auth.wechat?.ownerUserId : this.#store.auth.qq?.ownerUserOpenid;
+      platform === 'wechat' ? this.#store.auth.wechat[botId]?.ownerUserId : this.#store.auth.qq[botId]?.ownerUserOpenid;
     return Boolean(owner && owner === inbound.senderId);
   }
 }

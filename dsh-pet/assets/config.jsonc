@@ -156,26 +156,18 @@
     // 是否允许群聊消息触发回复；默认 false（群聊最容易刷屏/误触）。
     "allowGroups": false
   },
-  // ===================== 原生微信 / QQ 接入（不依赖 dsh-im） =====================
+  // ===================== 原生微信 / QQ 接入（不依赖 dsh-im；每平台可多机器人） =====================
   // 登录凭据单独保存在 <DSH_HOME>/dsh-pet/im-auth.json（0600），不会写进本配置。
-  // 微信：iLink 扫码登录，只处理私聊文本；QQ：官方机器人 AppID + AppSecret，支持私聊与 @群聊。
-  // 白名单格式与 bridge 相同：platform | 稳定 id | 名字（可选）；空白名单只放行登录账号本人。
+  // 每个机器人独立选择 mode：
+  //   "pet"     = 由桌宠的 chatWithPet 回复（人格 / 灵魂 / 长期记忆）
+  //   "session" = 投递到固定 DSH 对话 session，由该 session 回复
+  // 白名单格式与 bridge 相同：platform | 稳定 id | 名字（可选）；空白名单只放行登录账号本人（微信）。
   "im": {
     "wechat": {
-      "enabled": false,
-      "petId": "",
-      "whitelist": [],
-      "allowOwner": true,
-      "allowGroups": false,
-      "writeSay": false
+      "bots": []
     },
     "qq": {
-      "enabled": false,
-      "petId": "",
-      "whitelist": [],
-      "allowOwner": true,
-      "allowGroups": false,
-      "writeSay": false
+      "bots": []
     }
   },
   // ===================== 表情包：图片映射（名称 → 描述，模型据此选图） =====================

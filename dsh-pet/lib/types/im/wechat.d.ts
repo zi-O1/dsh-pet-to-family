@@ -1,4 +1,4 @@
-import type { ImChannelConfig } from '../../shared/im';
+import type { ImBotConfig } from '../../shared/im';
 import type { ImStore, WechatAuth } from './store';
 import { createWeixinApi } from './weixin-api';
 export type WechatApi = ReturnType<typeof createWeixinApi>;
@@ -37,7 +37,7 @@ export declare class WechatRuntime {
         api: WechatApi;
         auth: WechatAuth;
         store: ImStore;
-        getConfig: () => ImChannelConfig;
+        getConfig: () => ImBotConfig;
         chat: ImChat;
         log: ImLogger;
     });
@@ -46,6 +46,7 @@ export declare class WechatRuntime {
     stop(): Promise<void>;
 }
 export interface WechatAttempt {
+    botId: string;
     id: string;
     status: 'starting' | 'pending' | 'scanned' | 'needs_verification' | 'connecting' | 'connected' | 'expired' | 'failed';
     qrCodeDataUrl?: string;
@@ -60,7 +61,7 @@ export interface WechatAttempt {
 }
 export declare class WechatLogin {
     #private;
-    constructor(api: WechatApi, store: ImStore, onAuth: (auth: WechatAuth) => Promise<void>);
+    constructor(api: WechatApi, store: ImStore, botId: string, onAuth: (auth: WechatAuth) => Promise<void>);
     status(): WechatAttempt | null;
     start(): Promise<WechatAttempt>;
     cancel(): void;

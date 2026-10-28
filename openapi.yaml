@@ -1638,8 +1638,8 @@ paths:
     get:
       tags: [IM]
       operationId: getImStatus
-      summary: 原生微信 / QQ 连接状态
-      description: 返回连接状态、脱敏账号、收发条数与当前微信扫码尝试。凭据不会出现在响应中。
+      summary: 原生微信 / QQ 连接状态（多机器人）
+      description: 返回每个平台下所有机器人的连接状态、脱敏账号、收发条数与当前扫码尝试。
       responses:
         "200":
           description: 当前状态
@@ -1650,15 +1650,48 @@ paths:
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
 
-  /dsh-pet-7340/im/wechat/login:
+  /dsh-pet-7340/im/sessions:
+    get:
+      tags: [IM]
+      operationId: listImSessions
+      summary: 可选 DSH 对话 session
+      description: session 模式使用；返回当前 Host 的 session 摘要。网关不可用时返回 ok:false 和空列表，设置页仍可手动填写 ID。
+      responses:
+        "200":
+          description: session 列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  sessions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        sessionId:
+                          type: string
+                        title:
+                          type: string
+                        cwd:
+                          type: string
+                        running:
+                          type: boolean
+                  message:
+                    type: string
+
+  /dsh-pet-7340/im/wechat/bots/{botId}/login:
     post:
       tags: [IM]
       operationId: startWechatLogin
-      summary: 生成微信登录二维码
-      description: 调用微信 iLink 生成一次性二维码；二维码图片以 data URL 返回，token 只留在 host。
+      summary: 为指定微信机器人生成登录二维码
+      parameters:
+        - $ref: "#/components/parameters/ImBotId"
       responses:
         "200":
-          description: 登录尝试（status 为 pending / failed 等）
+          description: 登录尝试
           content:
             application/json:
               schema:
@@ -1668,7 +1701,9 @@ paths:
     get:
       tags: [IM]
       operationId: getWechatLogin
-      summary: 读取微信扫码状态
+      summary: 读取指定微信机器人的扫码状态
+      parameters:
+        - $ref: "#/components/parameters/ImBotId"
       responses:
         "200":
           description: 当前登录尝试
@@ -1686,7 +1721,9 @@ paths:
     delete:
       tags: [IM]
       operationId: cancelWechatLogin
-      summary: 取消微信扫码
+      summary: 取消指定微信机器人的扫码
+      parameters:
+        - $ref: "#/components/parameters/ImBotId"
       responses:
         "200":
           description: 操作完成
@@ -1697,11 +1734,13 @@ paths:
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
 
-  /dsh-pet-7340/im/wechat/verify:
+  /dsh-pet-7340/im/wechat/bots/{botId}/verify:
     post:
       tags: [IM]
       operationId: verifyWechatLogin
-      summary: 提交微信配对码（预留）
+      summary: 提交微信配对码
+      parameters:
+        - $ref: "#/components/parameters/ImBotId"
       requestBody:
         required: true
         content:
@@ -1733,11 +1772,13 @@ paths:
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
 
-  /dsh-pet-7340/im/wechat/logout:
+  /dsh-pet-7340/im/wechat/bots/{botId}/logout:
     post:
       tags: [IM]
       operationId: logoutWechat
-      summary: 断开微信并删除本机凭据
+      summary: 断开指定微信机器人并删除本机凭据
+      parameters:
+        - $ref: "#/components/parameters/ImBotId"
       responses:
         "200":
           description: 操作完成
@@ -1748,11 +1789,13 @@ paths:
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
 
-  /dsh-pet-7340/im/qq/bind:
+  /dsh-pet-7340/im/qq/bots/{botId}/bind:
     post:
       tags: [IM]
       operationId: bindQqBot
-      summary: 绑定 QQ 官方机器人
+      summary: 绑定指定 QQ 机器人
+      parameters:
+        - $ref: "#/components/parameters/ImBotId"
       requestBody:
         required: true
         content:
@@ -1788,11 +1831,13 @@ paths:
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
 
-  /dsh-pet-7340/im/qq/logout:
+  /dsh-pet-7340/im/qq/bots/{botId}/logout:
     post:
       tags: [IM]
       operationId: logoutQq
-      summary: 断开 QQ 并删除本机凭据
+      summary: 断开指定 QQ 机器人并删除本机凭据
+      parameters:
+        - $ref: "#/components/parameters/ImBotId"
       responses:
         "200":
           description: 操作完成
@@ -2916,6 +2961,14 @@ components:
         `/bridge/inbound` 与出站回复回调。
 
   parameters:
+    ImBotId:
+      name: botId
+      in: path
+      required: true
+      description: 平台内的机器人 id（设置页卡片标题里的 id）
+      schema:
+        type: string
+
     PetIdQuery:
       name: pet
       in: query
@@ -3159,8 +3212,10 @@ components:
 
     ImLoginAttempt:
       type: object
-      required: [id, status, expiresAt]
+      required: [botId, id, status, expiresAt]
       properties:
+        botId:
+          type: string
         id:
           type: string
         status:
@@ -3185,46 +3240,58 @@ components:
             message:
               type: string
 
+    ImBotStatus:
+      type: object
+      required: [id, enabled, mode, connected, state, messagesReceived, messagesReplied]
+      properties:
+        id:
+          type: string
+        enabled:
+          type: boolean
+        mode:
+          type: string
+          enum: [pet, session]
+        connected:
+          type: boolean
+        state:
+          type: string
+        account:
+          type: string
+        owner:
+          type: string
+        appId:
+          type: string
+        lastError:
+          type: string
+        messagesReceived:
+          type: integer
+        messagesReplied:
+          type: integer
+        login:
+          oneOf:
+            - $ref: "#/components/schemas/ImLoginAttempt"
+            - type: "null"
+
     ImStatus:
       type: object
       required: [wechat, qq]
       properties:
         wechat:
           type: object
+          required: [bots]
           properties:
-            connected:
-              type: boolean
-            state:
-              type: string
-            account:
-              type: string
-            owner:
-              type: string
-            lastError:
-              type: string
-            messagesReceived:
-              type: integer
-            messagesReplied:
-              type: integer
-            login:
-              oneOf:
-                - $ref: "#/components/schemas/ImLoginAttempt"
-                - type: "null"
+            bots:
+              type: array
+              items:
+                $ref: "#/components/schemas/ImBotStatus"
         qq:
           type: object
+          required: [bots]
           properties:
-            connected:
-              type: boolean
-            state:
-              type: string
-            appId:
-              type: string
-            lastError:
-              type: string
-            messagesReceived:
-              type: integer
-            messagesReplied:
-              type: integer
+            bots:
+              type: array
+              items:
+                $ref: "#/components/schemas/ImBotStatus"
 
     SayResponse:
       type: object

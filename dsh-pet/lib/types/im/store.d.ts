@@ -14,11 +14,11 @@ export interface QqAuth {
     connectedAt: string;
 }
 export interface ImAuth {
-    version: 1;
-    wechat?: WechatAuth;
-    qq?: QqAuth;
+    version: 2;
+    wechat: Record<string, WechatAuth>;
+    qq: Record<string, QqAuth>;
 }
-export interface WechatState {
+export interface ImStateBot {
     getUpdatesBuf: string;
     seenMessageIds: string[];
     contextTokens: Record<string, {
@@ -28,11 +28,11 @@ export interface WechatState {
     }>;
 }
 export interface ImState {
-    version: 1;
-    wechat: WechatState;
-    qq: {
+    version: 2;
+    wechat: Record<string, ImStateBot>;
+    qq: Record<string, {
         seenMessageIds: string[];
-    };
+    }>;
 }
 export declare class ImStore {
     #private;
@@ -42,10 +42,14 @@ export declare class ImStore {
     state: ImState;
     constructor(userRoot: string);
     load(): Promise<void>;
+    wechatState(botId: string): ImStateBot;
+    qqState(botId: string): {
+        seenMessageIds: string[];
+    };
     saveAuth(): Promise<void>;
     saveState(): Promise<void>;
-    clearAuth(platform: 'wechat' | 'qq'): Promise<void>;
-    clearState(platform: 'wechat' | 'qq'): Promise<void>;
+    clearAuth(platform: 'wechat' | 'qq', botId: string): Promise<void>;
+    clearState(platform: 'wechat' | 'qq', botId: string): Promise<void>;
 }
 /** 删除文件；不存在视为成功。 */
 export declare function removeIfExists(path: string): Promise<void>;
