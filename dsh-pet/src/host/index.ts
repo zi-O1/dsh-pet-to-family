@@ -13,7 +13,7 @@
 import { spawn } from 'node:child_process';
 import { createReadStream, existsSync, fstatSync, readdirSync, readFileSync } from 'node:fs';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
-import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
 import { dirname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +23,7 @@ import { listBalanceProviders, queryBalance, registerBalanceProvider } from './b
 import { generateWhisper } from './whisper';
 import { automaticWhisperSchedule, type StandaloneWhisperPolicy } from './whisper-policy';
 import { generateChat, type ChatMemoryMessage } from './chat';
+import { BridgeRuntime, normalizeBridgeConfig, postBridgeReply, processBridgeInbound } from './bridge';
 import {
   applySoulReflection,
   buildSoulReflectionPrompt,
@@ -629,6 +630,8 @@ export function apply(ctx: any): void {
   const memoryPath = join(userRoot, 'memory.json');
   // 对话写操作串行队列：read-modify-write 排队执行，防两端同时对话时交错写盘
   let chatQueue: Promise<void> = Promise.resolve();
+  // 消息接入的进程内去重 / 每发送者限流窗口；重启后清空（配置里的 dedupeTtlSec 只约束进程生命周期）。
+  const bridgeRuntime = new BridgeRuntime();
 
   /** 读记忆文件：不存在 → 空；解析失败/根不是对象 → 记日志 + 空记忆（不备份、不改写源文件） */
   const readMemory = async (): Promise<Record<string, Record<string, { messages: ChatMemoryMessage[] }>>> => {
@@ -936,14 +939,21 @@ export function apply(ctx: any): void {
   };
 
   /** 与某只宠物对话：截取最近记忆 → 生成回复 → 写入记忆 → 写进 S 的 pets.<id>.say。
-   *  供 POST /chat 与 /chat 命令共用（锁内读写，防两端交错写盘）；成功带回回复文本。 */
+   *  供 POST /chat、/chat 命令与消息接入共用（锁内读写，防两端交错写盘）；成功带回回复文本。
+   *  opts.memoryKey：消息接入按「平台 + 发送者」隔离记忆桶；缺省 = 宠物 id（本机聊天）。
+   *  opts.writeSay：消息接入默认不写桌面气泡，避免多人聊天时桌面频繁弹话；缺省 true。
+   *  opts.speaker：给模型与记忆加一个说话人前缀（如「wechat·张三」），仅消息接入使用。 */
   const chatWithPet = async (
     petId: string,
     text: string,
+    opts?: { memoryKey?: string; writeSay?: boolean; speaker?: string },
   ): Promise<
     | { ok: true; text: string; image?: string }
     | { ok: false; reason: 'provider-missing' | 'generate-error' | 'unknown-pet'; message?: string }
   > => {
+    const memoryKey = opts?.memoryKey?.trim() || petId;
+    const speaker = opts?.speaker?.trim() ?? '';
+    const userText = speaker ? `[${speaker}] ${text}` : text;
     let reflectionJob: {
       petId: string;
       card: SoulCard;
@@ -966,7 +976,7 @@ export function apply(ctx: any): void {
       if (soulCard && soulState) {
         const soulNow = new Date();
         decaySoulState(soulState, soulCard, soulNow);
-        observeUserText(soulState, text, soulNow);
+        observeUserText(soulState, userText, soulNow);
       }
       // 人设：实例级 whisperPrompt 优先，没写回落所属条目（与碎碎念同一拼装）；灵魂段只在有卡时追加
       const system = petSystemPrompt(found, soulCard, soulState);
@@ -982,20 +992,22 @@ export function apply(ctx: any): void {
         mem[found.entry] && typeof mem[found.entry] === 'object' && !Array.isArray(mem[found.entry])
           ? mem[found.entry]
           : (mem[found.entry] = {});
-      const existing = bucket[petId];
+      const existing = bucket[memoryKey];
       if (existing !== undefined && (!existing || !Array.isArray(existing.messages))) {
-        log.error(`[dsh-pet] 记忆结构异常（messages 不是数组）pet=${petId}，按新会话处理：${memoryPath}`);
+        log.error(
+          `[dsh-pet] 记忆结构异常（messages 不是数组）pet=${petId} key=${memoryKey}，按新会话处理：${memoryPath}`,
+        );
       }
-      const entry = existing && Array.isArray(existing.messages) ? existing : (bucket[petId] = { messages: [] });
+      const entry = existing && Array.isArray(existing.messages) ? existing : (bucket[memoryKey] = { messages: [] });
       // rounds = 0（用户关掉历史）→ 空历史；否则截尾部 rounds 轮（1 轮 = 1 问 1 答）。
       // 不能写 slice(-rounds * 2)：-0 在 JS 里 === 0，slice(-0) 返回整个数组而不是空。
       const list = sliceMemoryRounds(entry.messages, rounds);
       // 模型：条目配置的 chatModel 优先（留空 = 不指定）；生成侧失败会回落到当前对话的模型重试一次
       const preferred = configuredModel(found.conf, 'chatModel');
-      const generated = await generateChat(ctx, system, list, text, pool, preferred);
+      const generated = await generateChat(ctx, system, list, userText, pool, preferred);
       if (!generated.ok) return generated;
       const now = Date.now();
-      entry.messages.push({ role: 'user', content: text, ts: now });
+      entry.messages.push({ role: 'user', content: userText, ts: now });
       // 记忆只存正文（配图属展示层，不进上下文——否则下次请求会把标记当历史读回去）
       entry.messages.push({ role: 'assistant', content: generated.text, ts: now });
       await writeMemory(mem);
@@ -1003,7 +1015,7 @@ export function apply(ctx: any): void {
       // 最多丢一次连续性，下一轮会从磁盘旧状态继续；记忆已经保存，回复照常返回。
       let soulStateSaved = false;
       if (soulCard && soulState) {
-        recordExchange(soulState, text, generated.text, new Date());
+        recordExchange(soulState, userText, generated.text, new Date());
         soulStates[petId] = soulState;
         try {
           await writeSoulStates(soulStates);
@@ -1025,12 +1037,15 @@ export function apply(ctx: any): void {
           preferred,
         };
       }
-      // 回复写进 S（与碎碎念同一个叶子：前端本来就是同一条展示链路）
-      state.writePet(
-        petId,
-        'say',
-        generated.image ? { text: generated.text, image: generated.image } : { text: generated.text },
-      );
+      // 回复写进 S（与碎碎念同一个叶子：前端本来就是同一条展示链路）；消息接入默认不写，
+      // 由配置 bridge.writeSay 决定，避免多人聊天时桌面频繁弹话。
+      if (opts?.writeSay !== false) {
+        state.writePet(
+          petId,
+          'say',
+          generated.image ? { text: generated.text, image: generated.image } : { text: generated.text },
+        );
+      }
       // 同一份文本随返回值带出（叶子照写，不是二选一）
       return { ok: true as const, text: generated.text, ...(generated.image ? { image: generated.image } : {}) };
     });
@@ -1423,10 +1438,11 @@ export function apply(ctx: any): void {
     method: string,
     body?: string,
     signal?: AbortSignal,
+    headers?: IncomingHttpHeaders,
   ): Promise<RouteResult> => {
     const url = new URL(rawUrl, 'http://localhost');
     const rest = decodeURIComponent(url.pathname.slice(ROUTE_PREFIX.length + 1));
-    const run = (): Promise<RouteResult> => dispatchPetRoute(url, rest, method, body, signal);
+    const run = (): Promise<RouteResult> => dispatchPetRoute(url, rest, method, body, signal, headers);
     if (rest === 'config' || (rest === 'pet-display' && method === 'POST')) {
       const pending = configQueue.then(run, run);
       configQueue = pending.then(
@@ -1444,6 +1460,7 @@ export function apply(ctx: any): void {
     method: string,
     body?: string,
     signal?: AbortSignal,
+    headers?: IncomingHttpHeaders,
   ): Promise<RouteResult> => {
     // 成品配置：/dsh-pet-7340/config（GET 读取合并成品 / PUT 保存用户层 / POST 同步内置默认）
     if (rest === 'config') {
@@ -2502,6 +2519,40 @@ export function apply(ctx: any): void {
       });
     }
 
+    // 通用消息接入（Webhook bridge）：外部桥接器把白名单联系人的消息 POST 进来，
+    // 插件用桌宠的对话管线生成回复；回复同时放在响应里，可选再 POST 到 replyUrl。
+    // 与 /chat 不同：这里必须带 token，且只处理白名单发送者；详见 API.md / CONFIG.md。
+    if (rest === 'bridge/inbound') {
+      if (method !== 'POST') return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
+      try {
+        const cfg = readAllConfig(configPaths);
+        const bridge = normalizeBridgeConfig(cfg.main?.bridge);
+        const result = await processBridgeInbound({
+          config: bridge,
+          headers: headers ?? {},
+          body,
+          runtime: bridgeRuntime,
+          chat: chatWithPet,
+        });
+        if (result.obj.ok === true && result.obj.duplicate !== true) {
+          log.info(`[dsh-pet] 消息接入已回复 pet=${bridge.petId}`);
+        }
+        if (result.callback) {
+          const callback = result.callback;
+          void postBridgeReply(callback).then((r) => {
+            if (!r.ok) log.warn(`[dsh-pet] 消息接入回复回调失败：${r.error}`);
+          });
+        }
+        return { kind: 'json', status: result.status, obj: result.obj };
+      } catch (e) {
+        return {
+          kind: 'json',
+          status: 500,
+          obj: { ok: false, reason: 'error', message: e instanceof Error ? e.message : String(e) },
+        };
+      }
+    }
+
     // 对话：GET /chat 读最近记忆窗口（截尾 chatMemoryRounds 轮，一次读、不是轮询），
     // POST /chat 携带历史生成回复并写入记忆，回复同时写 S 的 pets.<id>.say。
     // 记忆唯一读写方是 host（memory.json），浏览器与桌面天然共享同一份。
@@ -2912,7 +2963,7 @@ export function apply(ctx: any): void {
           res.on('close', onClose);
           try {
             const body = req.method === 'PUT' || req.method === 'POST' ? await readBody(req) : undefined;
-            const result = await handlePetRoute(req.url ?? '/', req.method ?? 'GET', body, abort.signal);
+            const result = await handlePetRoute(req.url ?? '/', req.method ?? 'GET', body, abort.signal, req.headers);
             res.off('close', onClose);
             if (result.kind === 'json') sendJson(res, result.status, result.obj, result.headers);
             else if (result.kind === 'text') sendText(res, result.status, result.body);

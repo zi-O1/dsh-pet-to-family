@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: dsh-pet-to-family HTTP API
-  version: 0.4.0
+  version: 0.4.1
   summary: DSH 桌宠插件的宿主 HTTP 接口
   description: |
     dsh-pet 的宿主（host）半侧通过 DSH 的 `webServer` 服务注册**一条前缀路由** `/dsh-pet-7340`，
@@ -16,8 +16,8 @@ info:
     - `servers` 里的 `http://127.0.0.1:{port}` 是占位——`{port}` 就是 `ctx.webServer.port`，
       也就是 `dsh web` 启动时打印的地址（未显式指定端口时默认 3080）。
       插件本身不固定监听端口，只往宿主的 Web 服务上挂路由。
-    - 只监听 **127.0.0.1**，不对外网暴露，也**没有任何鉴权**：任何能访问本机该端口的进程都能调用。
-      请勿把该端口转发/代理到公网。
+    - 只监听 **127.0.0.1**，不对外网暴露。除 `POST /bridge/inbound` 需要 `bridge.token` 外，
+      其余端点**没有任何鉴权**：任何能访问本机该端口的进程都能调用。请勿把该端口转发/代理到公网。
     - 桌面半侧不走 HTTP，而是 `dsh-pet-bridge://` 自定义 scheme 经主进程管道转发到**同一个**
       `handlePetRoute`。所以下表所有路径对两端行为完全一致。
 
@@ -84,6 +84,8 @@ tags:
     description: 配置的读取、保存与元信息
   - name: Soul
     description: 人格灵魂卡的只读预览与动态状态
+  - name: Bridge
+    description: 通用消息接入（Webhook 桥接）——外部桥接器把白名单联系人消息转给桌宠；需要 bridge token
   - name: Settings
     description: 独立设置小窗页面与脚本（宿主 UI 资源，不是第三方业务 API）
   - name: Assets
@@ -1536,6 +1538,100 @@ paths:
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
 
+  /dsh-pet-7340/bridge/inbound:
+    post:
+      tags: [Bridge]
+      operationId: bridgeInbound
+      summary: 通用消息接入入站（外部桥接器调用）
+      description: |
+        外部微信 / QQ / 其他桥接器把白名单联系人的消息转成统一 JSON 后 POST 到这里；
+        宿主用 `bridge.petId` 指定的桌宠、当前对话模型生成回复，并把回复放在响应里。
+
+        **鉴权**：必须带 `bridge.token`。支持 `Authorization: Bearer <token>`，也支持
+        `X-DSH-Pet-Bridge-Token: <token>`。未启用时返回 HTTP 200 + `reason: bridge-disabled`；
+        token 缺失/错误返回 401。端点只监听 127.0.0.1，外部平台 webhook 需要自己的内网穿透/反向代理。
+
+        **白名单**：只有 `bridge.whitelist` 中 `platform + senderId` 完全匹配才放行；空白名单 = 谁都不回。
+        群聊消息必须显式 `isGroup: true`，且 `bridge.allowGroups: true`。
+
+        **去重与限流**：同一 `messageId` 在 `bridge.dedupeTtlSec` 内只处理一次（重复返回
+        `duplicate: true`）；每个发送者每分钟最多 `bridge.rateLimitPerMin` 条。去重窗口在进程内，
+        DSH 重启后清空。
+
+        **记忆**：按 `platform + senderId` 隔离到 `bridge:<platform>:<senderId>` 记忆桶；灵魂状态
+        仍按宠物 id 共享。默认不写桌面气泡（`bridge.writeSay: false`），回复由桥接器发送。
+
+        **回调**：配置了 `bridge.replyUrl` 时，生成成功后会异步 POST 回复到该地址（同样带 token），
+        失败只记日志，不影响本响应。
+      security:
+        - bridgeToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BridgeInboundRequest"
+            examples:
+              wechat:
+                summary: 微信联系人发来一条消息
+                value:
+                  platform: wechat
+                  senderId: wxid_abc123
+                  senderName: 张三
+                  messageId: msg-20261028-001
+                  text: 在吗？今天过得怎么样
+                  isGroup: false
+      responses:
+        "200":
+          description: |
+            成功回复、重复消息或业务失败（`bridge-disabled` / `unknown-pet` / `provider-missing` / `generate-error`）。
+            重复消息返回 `duplicate: true`，桥接器应停止重试；生成失败会撤销去重键，允许重试。
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/BridgeInboundSuccess"
+                  - $ref: "#/components/schemas/BridgeInboundDuplicate"
+                  - $ref: "#/components/schemas/BridgeInboundFailure"
+        "400":
+          description: 'JSON 非法、缺字段、文本为空或超过 2000 字'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BridgeInboundFailure"
+        "401":
+          description: 'token 缺失或错误'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BridgeInboundFailure"
+        "403":
+          description: '发送者不在白名单，或群聊未开启'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BridgeInboundFailure"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "413":
+          description: '请求体超过 64 KiB'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BridgeInboundFailure"
+        "429":
+          description: '该发送者超过 bridge.rateLimitPerMin'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BridgeInboundFailure"
+        "500":
+          description: '读配置或内部处理异常'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BridgeInboundFailure"
+
   /dsh-pet-7340/soul:
     get:
       tags: [Soul]
@@ -2639,6 +2735,15 @@ paths:
           description: 方法不允许（只接受 POST）
 
 components:
+  securitySchemes:
+    bridgeToken:
+      type: http
+      scheme: bearer
+      description: |
+        消息接入 token（`bridge.token`）。标准写法是 `Authorization: Bearer <token>`；
+        也可以改用 `X-DSH-Pet-Bridge-Token: <token>`。token 长度要求 16–256 个字符，只用于
+        `/bridge/inbound` 与出站回复回调。
+
   parameters:
     PetIdQuery:
       name: pet
@@ -2742,6 +2847,144 @@ components:
           type: boolean
           const: true
       description: 动作已完成。数据请从 `GET /state` 读取。
+
+    BridgeInboundRequest:
+      type: object
+      required: [platform, senderId, messageId, text]
+      properties:
+        platform:
+          type: string
+          minLength: 1
+          maxLength: 32
+          pattern: '^[a-zA-Z0-9._-]+$'
+          description: 平台标识；宿主会转小写（例如 wechat / qq / telegram）。
+          example: wechat
+        senderId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: 平台内稳定发送者 id（不要用会变的昵称）。
+          example: wxid_abc123
+        senderName:
+          type: string
+          maxLength: 80
+          description: 显示名，可选；只用于提示/模型上下文，不参与鉴权。
+          example: 张三
+        messageId:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: 平台内稳定的消息 id，用于去重；桥接器重试时应保持不变。
+          example: msg-20261028-001
+        text:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: 消息正文；宿主会 trim 后校验。
+          example: 在吗？今天过得怎么样
+        isGroup:
+          type: boolean
+          default: false
+          description: 是否群聊消息；为 true 时还要求 bridge.allowGroups=true。
+      additionalProperties: true
+
+    BridgeInboundSuccess:
+      type: object
+      required: [ok, reply, petId, messageId, conversation]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        reply:
+          type: string
+          description: 生成的回复正文；桥接器负责发回微信/QQ。
+        image:
+          type: string
+          description: 可选表情包名；生成端选中配图时才有。
+        petId:
+          type: string
+          description: 实际回复的宠物 id（来自 bridge.petId）。
+        messageId:
+          type: string
+          description: 原样回带入站消息 id。
+        conversation:
+          type: string
+          description: 记忆桶键，形如 `bridge:<platform>:<senderId>`。
+          example: bridge:wechat:wxid_abc123
+      additionalProperties: true
+
+    BridgeInboundDuplicate:
+      type: object
+      required: [ok, duplicate, messageId]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        duplicate:
+          type: boolean
+          const: true
+        messageId:
+          type: string
+      description: 同一 messageId 在去重窗口内重复到达；桥接器应停止重试。
+
+    BridgeInboundFailure:
+      type: object
+      required: [ok, reason]
+      properties:
+        ok:
+          type: boolean
+          const: false
+        reason:
+          type: string
+          enum:
+            [
+              bridge-disabled,
+              unauthorized,
+              not-whitelisted,
+              group-not-allowed,
+              too-large,
+              rate-limited,
+              bad-request,
+              unknown-pet,
+              provider-missing,
+              generate-error,
+              error,
+            ]
+          description: |
+            `bridge-disabled` 未启用；`unauthorized` token 错误；`not-whitelisted` 发送者不在白名单；
+            `group-not-allowed` 群聊未开启；`too-large` 请求体超过 64 KiB；`rate-limited` 超频；
+            `bad-request` 报文非法；`unknown-pet` 配置的宠物不存在；`provider-missing` 没有可用的对话服务商；
+            `generate-error` 生成/IO 失败；`error` 内部异常。
+        message:
+          type: string
+          description: 人类可读补充说明（可选）。
+      additionalProperties: true
+
+    BridgeReplyCallback:
+      type: object
+      required: [platform, senderId, messageId, isGroup, petId, conversation, reply]
+      properties:
+        platform:
+          type: string
+        senderId:
+          type: string
+        senderName:
+          type: string
+        messageId:
+          type: string
+        isGroup:
+          type: boolean
+        petId:
+          type: string
+        conversation:
+          type: string
+        reply:
+          type: string
+        image:
+          type: string
+      description: |
+        `bridge.replyUrl` 配置后，插件异步 POST 的回调体；请求头同样带
+        `Authorization: Bearer <token>` 与 `X-DSH-Pet-Bridge-Token`。回调失败只记日志。
 
     SayResponse:
       type: object

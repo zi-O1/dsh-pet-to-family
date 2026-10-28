@@ -7,7 +7,7 @@
  */
 import type { Animations, Category, PetDisplay } from './types';
 /** 设置页手风琴分组 id：右键「桌宠设置」子菜单与独立设置页共用同一套值。 */
-export declare const SETTINGS_SECTIONS: readonly ["pets", "soul", "global", "font", "model", "physics", "config", "storage", "move"];
+export declare const SETTINGS_SECTIONS: readonly ["pets", "soul", "global", "font", "model", "bridge", "physics", "config", "storage", "move"];
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 /** 叶子：可点击的菜单项。 */
 export interface MenuLeaf {

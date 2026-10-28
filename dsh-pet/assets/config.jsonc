@@ -11,7 +11,7 @@
 //     chatMemoryRounds / chatSoulEnabled / whisperModel / chatModel / eventsRefreshSec
 //   · 条目级（每个条目一份：main 一份、每个种类各一份；种类文件顶层可覆盖）：
 //     whisperPrompt / soul / memes / workStatusTexts / animations / animationWeights
-//   · 只读 main（写了也只认 main 条目那份）：notificationsEnabled / eventsRefreshSec.balance
+//   · 只读 main（写了也只认 main 条目那份）：notificationsEnabled / eventsRefreshSec.balance / bridge
 // 合并口径：所有顶层字段都是**整段替换**——写了就整段用自己的，缺的子键不会从本文件补回来
 //   （消费端各自兜底：余额周期读不到按 1800、碎碎念按 300）。
 {
@@ -128,6 +128,34 @@
   // false = 完全关闭灵魂注入（不读卡、不写 soul-state.json、不追加任何段落），行为回到旧版。
   // 只影响 AI 提示词；设置页的灵魂卡预览仍可查看。布尔值；缺失默认 true。
   "chatSoulEnabled": true,
+  // ===================== 消息接入（通用 Webhook 桥接） =====================
+  // 让白名单里的外部联系人（微信 / QQ / 其他桥接器）给桌宠发消息，桌宠用当前对话模型回复。
+  // 个人微信 / QQ 没有稳定的官方 API；本插件只提供通用 HTTP 入口，平台连接由外部桥接器负责。
+  // 安全：enabled=true 时必须设置 token；只处理 whitelist 中 platform + id 完全匹配的发送者；
+  // 未授权 / 非白名单 / 重复消息 / 超频都会被拒绝。群聊默认不回复（allowGroups=false）。
+  // 字段说明与 curl 示例见仓库 CONFIG.md / API.md。
+  "bridge": {
+    // 总开关；关闭时 /bridge/inbound 直接返回 bridge-disabled。
+    "enabled": false,
+    // 用哪只桌宠回复（宠物 id，必须真实存在；设置页下拉选择）。
+    "petId": "",
+    // 入站鉴权 token；enabled=true 时 16–256 个字符。设置页可一键生成/复制。
+    "token": "",
+    // 权限白名单：每项 { platform, id, name? }；只有 platform + id 精确匹配才放行。
+    // id 必须是平台内稳定 id（不是会变的昵称）；设置页用「平台 | id | 名字」逐行编辑。
+    "whitelist": [],
+    // 可选出站回调地址：插件生成回复后 POST 到这里，由桥接器负责真正发出去。
+    // 留空则只把 reply 放在入站 HTTP 响应里，桥接器自己发送。
+    "replyUrl": "",
+    // 同一 messageId 的去重窗口（秒）；0 = 不去重。默认 600。
+    "dedupeTtlSec": 600,
+    // 每个发送者每分钟最多处理几条；0 = 不限制。默认 20。
+    "rateLimitPerMin": 20,
+    // 回复时是否同时写进桌宠气泡；默认 false，避免多人聊天时桌面频繁弹话。
+    "writeSay": false,
+    // 是否允许群聊消息触发回复；默认 false（群聊最容易刷屏/误触）。
+    "allowGroups": false
+  },
   // ===================== 表情包：图片映射（名称 → 描述，模型据此选图） =====================
   // 键 = assets/memes/<键>.png 的文件名（不含扩展名）；值 = 该图内容的简要描述。
   // 用途：碎碎念随机抽到某张图后，把该图描述注入提示词让模型配合画面说话；

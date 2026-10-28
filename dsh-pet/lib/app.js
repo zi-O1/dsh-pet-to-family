@@ -3,10 +3,10 @@ import { createRequire as createRequire$1 } from "node:module";
 import { dirname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { appendFileSync, chmodSync, closeSync, constants, createReadStream, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { appendFile, copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { execFileSync, spawn } from "node:child_process";
 import { homedir } from "node:os";
-import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 import { Readable } from "node:stream";
 
@@ -40,6 +40,449 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 	value: mod,
 	enumerable: true
 }) : target, mod));
+
+//#endregion
+//#region src/host/bridge.ts
+const MAX_BRIDGE_BODY_BYTES = 64 * 1024;
+const MAX_BRIDGE_TEXT_LENGTH = 2e3;
+/** 平台标识白名单（与 shared/bridge 同一套）。 */
+const PLATFORM_RE = /^[a-z0-9._-]{1,32}$/;
+const CONTROL_CHARS$1 = /[\x00-\x1f]/;
+const SENDER_ID_MAX = 128;
+const MESSAGE_ID_MAX = 200;
+const SENDER_NAME_MAX = 80;
+const WHITELIST_MAX = 200;
+const DEFAULT_BRIDGE = {
+	enabled: false,
+	petId: "",
+	token: "",
+	whitelist: [],
+	replyUrl: "",
+	dedupeTtlSec: 600,
+	rateLimitPerMin: 20,
+	writeSay: false,
+	allowGroups: false
+};
+function normalizeBridgeReplyUrl(value) {
+	if (typeof value !== "string") return "";
+	const raw = value.trim();
+	if (!raw || raw.length > 2048) return "";
+	try {
+		const url = new URL(raw);
+		if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+		if (url.username || url.password) return "";
+		return raw;
+	} catch {
+		return "";
+	}
+}
+function normalizeBridgePlatform(value) {
+	const platform = typeof value === "string" ? value.trim().toLowerCase() : "";
+	return PLATFORM_RE.test(platform) ? platform : "";
+}
+function normalizeBridgeWhitelistEntry(value) {
+	if (typeof value === "string") {
+		const raw = value.trim();
+		const sep$1 = raw.indexOf(":");
+		if (sep$1 <= 0) return null;
+		const platform$1 = normalizeBridgePlatform(raw.slice(0, sep$1));
+		const id$1 = raw.slice(sep$1 + 1).trim();
+		if (!platform$1 || !id$1 || id$1.length > SENDER_ID_MAX || id$1.includes("|") || CONTROL_CHARS$1.test(id$1)) return null;
+		return {
+			platform: platform$1,
+			id: id$1
+		};
+	}
+	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+	const o = value;
+	const platform = normalizeBridgePlatform(o.platform);
+	const id = typeof o.id === "string" ? o.id.trim() : "";
+	if (!platform || !id || id.length > SENDER_ID_MAX || id.includes("|") || CONTROL_CHARS$1.test(id)) return null;
+	const rawName = typeof o.name === "string" ? o.name.trim() : "";
+	const name = rawName ? rawName.slice(0, SENDER_NAME_MAX).replace(/\|/g, " ").trim() : "";
+	return name ? {
+		platform,
+		id,
+		name
+	} : {
+		platform,
+		id
+	};
+}
+function normalizeBridgeWhitelist(value) {
+	if (!Array.isArray(value)) return [];
+	const out = [];
+	const seen = new Set();
+	for (const item of value) {
+		const entry = normalizeBridgeWhitelistEntry(item);
+		if (!entry) continue;
+		const key = entry.platform + "\0" + entry.id;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		out.push(entry);
+		if (out.length >= WHITELIST_MAX) break;
+	}
+	return out;
+}
+function normalizeBridgeConfig(raw) {
+	const o = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+	const token = typeof o.token === "string" ? o.token.trim().slice(0, 256) : "";
+	const petId = typeof o.petId === "string" ? o.petId.trim().slice(0, 64) : "";
+	const dedupeRaw = Number(o.dedupeTtlSec);
+	const rateRaw = Number(o.rateLimitPerMin);
+	return {
+		enabled: typeof o.enabled === "boolean" ? o.enabled : DEFAULT_BRIDGE.enabled,
+		petId,
+		token,
+		whitelist: normalizeBridgeWhitelist(o.whitelist),
+		replyUrl: normalizeBridgeReplyUrl(o.replyUrl),
+		dedupeTtlSec: Number.isFinite(dedupeRaw) && dedupeRaw >= 0 && dedupeRaw <= 86400 ? Math.floor(dedupeRaw) : DEFAULT_BRIDGE.dedupeTtlSec,
+		rateLimitPerMin: Number.isFinite(rateRaw) && rateRaw >= 0 && rateRaw <= 120 ? Math.floor(rateRaw) : DEFAULT_BRIDGE.rateLimitPerMin,
+		writeSay: typeof o.writeSay === "boolean" ? o.writeSay : DEFAULT_BRIDGE.writeSay,
+		allowGroups: typeof o.allowGroups === "boolean" ? o.allowGroups : DEFAULT_BRIDGE.allowGroups
+	};
+}
+function bridgeValid(raw) {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+	const o = raw;
+	if (o.enabled !== void 0 && typeof o.enabled !== "boolean") return false;
+	if (o.petId !== void 0 && (typeof o.petId !== "string" || o.petId.trim().length > 64)) return false;
+	if (o.token !== void 0 && (typeof o.token !== "string" || o.token.trim().length > 256)) return false;
+	if (o.whitelist !== void 0) {
+		if (!Array.isArray(o.whitelist) || o.whitelist.length > WHITELIST_MAX) return false;
+		for (const item of o.whitelist) if (!normalizeBridgeWhitelistEntry(item)) return false;
+	}
+	if (o.replyUrl !== void 0) {
+		if (typeof o.replyUrl !== "string") return false;
+		if (o.replyUrl.trim() && !normalizeBridgeReplyUrl(o.replyUrl)) return false;
+	}
+	for (const key of ["dedupeTtlSec", "rateLimitPerMin"]) {
+		if (o[key] === void 0) continue;
+		const n = Number(o[key]);
+		const max = key === "dedupeTtlSec" ? 86400 : 120;
+		if (!Number.isFinite(n) || n < 0 || n > max) return false;
+	}
+	if (o.writeSay !== void 0 && typeof o.writeSay !== "boolean") return false;
+	if (o.allowGroups !== void 0 && typeof o.allowGroups !== "boolean") return false;
+	if (o.enabled === true) {
+		const petId = typeof o.petId === "string" ? o.petId.trim() : "";
+		const token = typeof o.token === "string" ? o.token.trim() : "";
+		if (!petId || token.length < 16) return false;
+	}
+	return true;
+}
+function bridgeTokenMatches(expected, actual) {
+	if (!expected || !actual) return false;
+	const a = Buffer.from(expected, "utf8");
+	const b = Buffer.from(actual, "utf8");
+	return a.length === b.length && timingSafeEqual(a, b);
+}
+function bridgeTokenFromHeaders(headers) {
+	const first = (v) => Array.isArray(v) ? v[0] ?? "" : v ?? "";
+	const auth = first(headers.authorization).trim();
+	const bearer = /^Bearer\s+(.+)$/i.exec(auth)?.[1]?.trim() ?? "";
+	return bearer || first(headers["x-dsh-pet-bridge-token"]).trim();
+}
+function isBridgeSenderAllowed(config$1, platform, senderId, isGroup) {
+	if (isGroup && !config$1.allowGroups) return false;
+	const p = normalizeBridgePlatform(platform);
+	const id = senderId.trim();
+	if (!p || !id) return false;
+	return config$1.whitelist.some((entry) => entry.platform === p && entry.id === id);
+}
+function bridgeConversationKey(platform, senderId) {
+	return "bridge:" + normalizeBridgePlatform(platform) + ":" + senderId.trim();
+}
+function parseBridgePayload(raw) {
+	const o = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : null;
+	if (!o) return {
+		ok: false,
+		reason: "bad-request",
+		message: "请求体必须是 JSON 对象"
+	};
+	const platform = normalizeBridgePlatform(o.platform);
+	if (!platform) return {
+		ok: false,
+		reason: "bad-request",
+		message: "platform 必须是 1–32 位小写字母/数字/._-"
+	};
+	const senderId = typeof o.senderId === "string" ? o.senderId.trim() : "";
+	if (!senderId || senderId.length > SENDER_ID_MAX || CONTROL_CHARS$1.test(senderId)) return {
+		ok: false,
+		reason: "bad-request",
+		message: "senderId 必填，且长度不超过 128"
+	};
+	const rawName = typeof o.senderName === "string" ? o.senderName.trim() : "";
+	if (rawName.length > SENDER_NAME_MAX || CONTROL_CHARS$1.test(rawName)) return {
+		ok: false,
+		reason: "bad-request",
+		message: "senderName 过长或包含控制字符"
+	};
+	const messageId = typeof o.messageId === "string" ? o.messageId.trim() : "";
+	if (!messageId || messageId.length > MESSAGE_ID_MAX || CONTROL_CHARS$1.test(messageId)) return {
+		ok: false,
+		reason: "bad-request",
+		message: "messageId 必填，且长度不超过 200"
+	};
+	const text$3 = typeof o.text === "string" ? o.text.trim() : "";
+	if (!text$3) return {
+		ok: false,
+		reason: "bad-request",
+		message: "消息为空"
+	};
+	if (text$3.length > MAX_BRIDGE_TEXT_LENGTH) return {
+		ok: false,
+		reason: "bad-request",
+		message: "消息过长（限 2000 字）"
+	};
+	if (o.isGroup !== void 0 && typeof o.isGroup !== "boolean") return {
+		ok: false,
+		reason: "bad-request",
+		message: "isGroup 必须是布尔值"
+	};
+	return {
+		ok: true,
+		value: {
+			platform,
+			senderId,
+			...rawName ? { senderName: rawName } : {},
+			messageId,
+			text: text$3,
+			isGroup: o.isGroup === true
+		}
+	};
+}
+var BridgeRuntime = class {
+	constructor(now = () => Date.now()) {
+		this.seen = new Map();
+		this.hits = new Map();
+		this.now = now;
+	}
+	/** 清理过期去重键与一分钟前的限流记录。 */
+	prune() {
+		const t = this.now();
+		for (const [key, expires] of this.seen) if (expires <= t) this.seen.delete(key);
+		for (const [key, list] of this.hits) {
+			const keep = list.filter((ts) => t - ts < 6e4);
+			if (keep.length) this.hits.set(key, keep);
+			else this.hits.delete(key);
+		}
+	}
+	/** 这个 messageId 是否已在去重窗口内。 */
+	isDuplicate(key, ttlSec) {
+		this.prune();
+		if (!Number.isFinite(ttlSec) || ttlSec <= 0) return false;
+		const expires = this.seen.get(key);
+		return expires !== void 0 && expires > this.now();
+	}
+	/** 记住一个已接受的 messageId。 */
+	remember(key, ttlSec) {
+		if (!Number.isFinite(ttlSec) || ttlSec <= 0) return;
+		this.seen.set(key, this.now() + Math.floor(ttlSec) * 1e3);
+	}
+	/** 生成失败/被拒绝时撤销去重键，让桥接器的重试仍有机会成功。 */
+	forget(key) {
+		this.seen.delete(key);
+	}
+	/** 每发送者每分钟限流；limit <= 0 表示不限制。 */
+	allow(senderKey, limit$2) {
+		this.prune();
+		if (!Number.isFinite(limit$2) || limit$2 <= 0) return true;
+		const t = this.now();
+		const list = this.hits.get(senderKey) ?? [];
+		const recent = list.filter((ts) => t - ts < 6e4);
+		if (recent.length >= Math.floor(limit$2)) {
+			this.hits.set(senderKey, recent);
+			return false;
+		}
+		recent.push(t);
+		this.hits.set(senderKey, recent);
+		return true;
+	}
+	/** 测试/重载用：清空所有窗口。 */
+	reset() {
+		this.seen.clear();
+		this.hits.clear();
+	}
+};
+async function processBridgeInbound(input) {
+	const { config: config$1, headers, body, runtime, chat } = input;
+	if (!config$1.enabled) return {
+		status: 200,
+		obj: {
+			ok: false,
+			reason: "bridge-disabled",
+			message: "消息接入未启用"
+		}
+	};
+	if (!config$1.token || !bridgeTokenMatches(config$1.token, bridgeTokenFromHeaders(headers))) return {
+		status: 401,
+		obj: {
+			ok: false,
+			reason: "unauthorized",
+			message: "token 不正确"
+		}
+	};
+	if (body !== void 0 && Buffer.byteLength(body, "utf8") > MAX_BRIDGE_BODY_BYTES) return {
+		status: 413,
+		obj: {
+			ok: false,
+			reason: "too-large",
+			message: "请求体超过 64 KiB"
+		}
+	};
+	if (!body) return {
+		status: 400,
+		obj: {
+			ok: false,
+			reason: "bad-request",
+			message: "请求体为空"
+		}
+	};
+	let raw;
+	try {
+		raw = JSON.parse(body);
+	} catch {
+		return {
+			status: 400,
+			obj: {
+				ok: false,
+				reason: "bad-request",
+				message: "invalid JSON body"
+			}
+		};
+	}
+	const parsed = parseBridgePayload(raw);
+	if (!parsed.ok) return {
+		status: 400,
+		obj: {
+			ok: false,
+			reason: parsed.reason,
+			message: parsed.message
+		}
+	};
+	const msg = parsed.value;
+	if (!isBridgeSenderAllowed(config$1, msg.platform, msg.senderId, msg.isGroup)) return {
+		status: 403,
+		obj: {
+			ok: false,
+			reason: msg.isGroup && !config$1.allowGroups ? "group-not-allowed" : "not-whitelisted",
+			message: "发送者不在白名单或群聊未启用"
+		}
+	};
+	const senderKey = msg.platform + "\0" + msg.senderId;
+	const messageKey = senderKey + "\0" + msg.messageId;
+	if (runtime.isDuplicate(messageKey, config$1.dedupeTtlSec)) return {
+		status: 200,
+		obj: {
+			ok: true,
+			duplicate: true,
+			messageId: msg.messageId
+		}
+	};
+	if (!runtime.allow(senderKey, config$1.rateLimitPerMin)) return {
+		status: 429,
+		obj: {
+			ok: false,
+			reason: "rate-limited",
+			message: "发送太频繁，请稍后再试"
+		}
+	};
+	runtime.remember(messageKey, config$1.dedupeTtlSec);
+	const speaker = msg.platform + "·" + (msg.senderName || msg.senderId);
+	let result;
+	try {
+		result = await chat(config$1.petId, msg.text, {
+			memoryKey: bridgeConversationKey(msg.platform, msg.senderId),
+			writeSay: config$1.writeSay,
+			speaker
+		});
+	} catch (e) {
+		runtime.forget(messageKey);
+		return {
+			status: 200,
+			obj: {
+				ok: false,
+				reason: "generate-error",
+				message: e instanceof Error ? e.message : String(e)
+			}
+		};
+	}
+	if (!result.ok) {
+		runtime.forget(messageKey);
+		return {
+			status: 200,
+			obj: {
+				ok: false,
+				reason: result.reason,
+				...result.message ? { message: result.message } : {}
+			}
+		};
+	}
+	const callback = config$1.replyUrl ? {
+		url: config$1.replyUrl,
+		token: config$1.token,
+		payload: {
+			platform: msg.platform,
+			senderId: msg.senderId,
+			...msg.senderName ? { senderName: msg.senderName } : {},
+			messageId: msg.messageId,
+			isGroup: msg.isGroup,
+			petId: config$1.petId,
+			conversation: bridgeConversationKey(msg.platform, msg.senderId),
+			reply: result.text,
+			...result.image ? { image: result.image } : {}
+		}
+	} : void 0;
+	return {
+		status: 200,
+		obj: {
+			ok: true,
+			reply: result.text,
+			...result.image ? { image: result.image } : {},
+			petId: config$1.petId,
+			messageId: msg.messageId,
+			conversation: bridgeConversationKey(msg.platform, msg.senderId)
+		},
+		...callback ? { callback } : {}
+	};
+}
+async function postBridgeReply(req, timeoutMs = 1e4) {
+	if (!normalizeBridgeReplyUrl(req.url)) return {
+		ok: false,
+		error: "回调地址不是合法的 http/https URL"
+	};
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), Math.max(1, timeoutMs));
+	try {
+		const res = await fetch(req.url, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json; charset=utf-8",
+				authorization: "Bearer " + req.token,
+				"x-dsh-pet-bridge-token": req.token
+			},
+			body: JSON.stringify(req.payload),
+			signal: controller.signal,
+			redirect: "error"
+		});
+		return res.ok ? {
+			ok: true,
+			status: res.status
+		} : {
+			ok: false,
+			status: res.status,
+			error: "HTTP " + res.status
+		};
+	} catch (e) {
+		return {
+			ok: false,
+			error: e instanceof Error ? e.message : String(e)
+		};
+	} finally {
+		clearTimeout(timer);
+	}
+}
 
 //#endregion
 //#region src/host/log-file.ts
@@ -419,6 +862,7 @@ function topFieldValid(key, value) {
 		case "whisperImageEnabled": return typeof value === "boolean";
 		case "chatImageEnabled": return typeof value === "boolean";
 		case "chatSoulEnabled": return typeof value === "boolean";
+		case "bridge": return bridgeValid(value);
 		case "soul": return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 		case "confineToScreen": return typeof value === "boolean";
 		case "trayEnabled": return typeof value === "boolean";
@@ -471,15 +915,15 @@ function mergeEntry(base, overlay, label, basePets, seenIds) {
 		}
 		const own$1 = overlay ? overlay[key] : void 0;
 		if (own$1 === void 0) {
-			out[key] = base[key];
+			out[key] = key === "bridge" ? normalizeBridgeConfig(base[key]) : base[key];
 			continue;
 		}
 		if (!topFieldValid(key, own$1)) {
 			warnOnce(`${label}:${key}`, `「${label}」的 ${key} 非法，已取默认值`);
-			out[key] = base[key];
+			out[key] = key === "bridge" ? normalizeBridgeConfig(base[key]) : base[key];
 			continue;
 		}
-		out[key] = own$1;
+		out[key] = key === "bridge" ? normalizeBridgeConfig(own$1) : own$1;
 	}
 	return out;
 }
@@ -696,6 +1140,8 @@ function saveUserConfig(raw, existing) {
 	if (cmr !== void 0 && !topFieldValid("chatMemoryRounds", cmr)) return null;
 	const cil = o.chatImageLimit;
 	if (cil !== void 0 && !topFieldValid("chatImageLimit", cil)) return null;
+	const br = o.bridge;
+	if (br !== void 0 && !bridgeValid(br)) return null;
 	const cleanModel = (v) => ({
 		provider: String(v.provider).trim(),
 		model: String(v.model).trim()
@@ -714,6 +1160,7 @@ function saveUserConfig(raw, existing) {
 	if (cm !== void 0) outConfig.chatModel = cleanModel(cm);
 	if (cmr !== void 0) outConfig.chatMemoryRounds = Number(cmr);
 	if (cil !== void 0) outConfig.chatImageLimit = Number(cil);
+	if (br !== void 0) outConfig.bridge = normalizeBridgeConfig(br);
 	const bodyOwned = new Set(["pets"]);
 	if (ne !== void 0) bodyOwned.add("notificationsEnabled");
 	if (cse !== void 0) bodyOwned.add("clickSoundEnabled");
@@ -728,6 +1175,7 @@ function saveUserConfig(raw, existing) {
 	if (cm !== void 0) bodyOwned.add("chatModel");
 	if (cmr !== void 0) bodyOwned.add("chatMemoryRounds");
 	if (cil !== void 0) bodyOwned.add("chatImageLimit");
+	if (br !== void 0) bodyOwned.add("bridge");
 	if (existing && typeof existing === "object") for (const key of Object.keys(existing)) {
 		if (bodyOwned.has(key)) continue;
 		outConfig[key] = existing[key];
@@ -5249,6 +5697,7 @@ const SETTINGS_SECTIONS = [
 	"global",
 	"font",
 	"model",
+	"bridge",
 	"physics",
 	"config",
 	"storage",
@@ -5709,6 +6158,7 @@ function apply(ctx) {
 	const lastWhisperAt = new Map();
 	const memoryPath = join(userRoot, "memory.json");
 	let chatQueue = Promise.resolve();
+	const bridgeRuntime = new BridgeRuntime();
 	/** 读记忆文件：不存在 → 空；解析失败/根不是对象 → 记日志 + 空记忆（不备份、不改写源文件） */
 	const readMemory = async () => {
 		let raw;
@@ -5938,8 +6388,14 @@ function apply(ctx) {
 		}
 	};
 	/** 与某只宠物对话：截取最近记忆 → 生成回复 → 写入记忆 → 写进 S 的 pets.<id>.say。
-	*  供 POST /chat 与 /chat 命令共用（锁内读写，防两端交错写盘）；成功带回回复文本。 */
-	const chatWithPet = async (petId, text$3) => {
+	*  供 POST /chat、/chat 命令与消息接入共用（锁内读写，防两端交错写盘）；成功带回回复文本。
+	*  opts.memoryKey：消息接入按「平台 + 发送者」隔离记忆桶；缺省 = 宠物 id（本机聊天）。
+	*  opts.writeSay：消息接入默认不写桌面气泡，避免多人聊天时桌面频繁弹话；缺省 true。
+	*  opts.speaker：给模型与记忆加一个说话人前缀（如「wechat·张三」），仅消息接入使用。 */
+	const chatWithPet = async (petId, text$3, opts) => {
+		const memoryKey$1 = opts?.memoryKey?.trim() || petId;
+		const speaker = opts?.speaker?.trim() ?? "";
+		const userText = speaker ? `[${speaker}] ${text$3}` : text$3;
 		let reflectionJob = null;
 		const result = await withMemoryLock(async () => {
 			const cfg = readAllConfig(configPaths);
@@ -5956,23 +6412,23 @@ function apply(ctx) {
 			if (soulCard && soulState) {
 				const soulNow = new Date();
 				decaySoulState(soulState, soulCard, soulNow);
-				observeUserText(soulState, text$3, soulNow);
+				observeUserText(soulState, userText, soulNow);
 			}
 			const system = petSystemPrompt(found, soulCard, soulState);
 			const pool = found.conf.chatImageEnabled === true ? limitPool(readMemePool(found.conf.memes, memeDirsFor(found.entry)), Number(found.conf.chatImageLimit)) : [];
 			const mem = await readMemory();
 			const bucket = mem[found.entry] && typeof mem[found.entry] === "object" && !Array.isArray(mem[found.entry]) ? mem[found.entry] : mem[found.entry] = {};
-			const existing = bucket[petId];
-			if (existing !== void 0 && (!existing || !Array.isArray(existing.messages))) log$1.error(`[dsh-pet] 记忆结构异常（messages 不是数组）pet=${petId}，按新会话处理：${memoryPath}`);
-			const entry = existing && Array.isArray(existing.messages) ? existing : bucket[petId] = { messages: [] };
+			const existing = bucket[memoryKey$1];
+			if (existing !== void 0 && (!existing || !Array.isArray(existing.messages))) log$1.error(`[dsh-pet] 记忆结构异常（messages 不是数组）pet=${petId} key=${memoryKey$1}，按新会话处理：${memoryPath}`);
+			const entry = existing && Array.isArray(existing.messages) ? existing : bucket[memoryKey$1] = { messages: [] };
 			const list = sliceMemoryRounds(entry.messages, rounds);
 			const preferred = configuredModel(found.conf, "chatModel");
-			const generated = await generateChat(ctx, system, list, text$3, pool, preferred);
+			const generated = await generateChat(ctx, system, list, userText, pool, preferred);
 			if (!generated.ok) return generated;
 			const now = Date.now();
 			entry.messages.push({
 				role: "user",
-				content: text$3,
+				content: userText,
 				ts: now
 			});
 			entry.messages.push({
@@ -5983,7 +6439,7 @@ function apply(ctx) {
 			await writeMemory(mem);
 			let soulStateSaved = false;
 			if (soulCard && soulState) {
-				recordExchange(soulState, text$3, generated.text, new Date());
+				recordExchange(soulState, userText, generated.text, new Date());
 				soulStates[petId] = soulState;
 				try {
 					await writeSoulStates(soulStates);
@@ -5998,7 +6454,7 @@ function apply(ctx) {
 				messages: entry.messages.slice(-12).map((m) => ({ ...m })),
 				preferred
 			};
-			state$1.writePet(petId, "say", generated.image ? {
+			if (opts?.writeSay !== false) state$1.writePet(petId, "say", generated.image ? {
 				text: generated.text,
 				image: generated.image
 			} : { text: generated.text });
@@ -6315,10 +6771,10 @@ function apply(ctx) {
 	/** 单次业务路由（HTTP 落盘与桌面 Helper 管道共用同一份实现）：输入 rawUrl + method + body 文本，
 	*  返回 RouteResult，消费方各自落盘——业务逻辑只有一份，两端天然一致。
 	*  signal 可选：调用方断开时中止挂起等待（只有 /playback 的 wait 分支会用到；管道侧不传）。 */
-	const handlePetRoute = async (rawUrl, method, body, signal) => {
+	const handlePetRoute = async (rawUrl, method, body, signal, headers) => {
 		const url = new URL(rawUrl, "http://localhost");
 		const rest = decodeURIComponent(url.pathname.slice(ROUTE_PREFIX.length + 1));
-		const run = () => dispatchPetRoute(url, rest, method, body, signal);
+		const run = () => dispatchPetRoute(url, rest, method, body, signal, headers);
 		if (rest === "config" || rest === "pet-display" && method === "POST") {
 			const pending = configQueue.then(run, run);
 			configQueue = pending.then(() => void 0, () => void 0);
@@ -6326,7 +6782,7 @@ function apply(ctx) {
 		}
 		return run();
 	};
-	const dispatchPetRoute = async (url, rest, method, body, signal) => {
+	const dispatchPetRoute = async (url, rest, method, body, signal, headers) => {
 		if (rest === "config") {
 			if (method === "GET") try {
 				return {
@@ -7008,7 +7464,7 @@ function apply(ctx) {
 				status: 405,
 				obj: { error: "method not allowed" }
 			};
-			const headers = { "cache-control": "no-cache, no-store" };
+			const headers$1 = { "cache-control": "no-cache, no-store" };
 			const parsed = parseStateWaitQuery(url.searchParams.get("since"), url.searchParams.get("timeout"));
 			if (parsed.kind === "error") return {
 				kind: "json",
@@ -7020,7 +7476,7 @@ function apply(ctx) {
 				kind: "json",
 				status: 200,
 				obj: current,
-				headers
+				headers: headers$1
 			};
 			const since = parsed.since;
 			return await new Promise((resolveWait) => {
@@ -7038,7 +7494,7 @@ function apply(ctx) {
 						kind: "json",
 						status: 200,
 						obj: state$1.read(),
-						headers
+						headers: headers$1
 					})
 				});
 				const onAbort = () => {
@@ -7748,6 +8204,46 @@ function apply(ctx) {
 				signal?.addEventListener("abort", onAbort, { once: true });
 			});
 		}
+		if (rest === "bridge/inbound") {
+			if (method !== "POST") return {
+				kind: "json",
+				status: 405,
+				obj: { error: "method not allowed" }
+			};
+			try {
+				const cfg = readAllConfig(configPaths);
+				const bridge = normalizeBridgeConfig(cfg.main?.bridge);
+				const result = await processBridgeInbound({
+					config: bridge,
+					headers: headers ?? {},
+					body,
+					runtime: bridgeRuntime,
+					chat: chatWithPet
+				});
+				if (result.obj.ok === true && result.obj.duplicate !== true) log$1.info(`[dsh-pet] 消息接入已回复 pet=${bridge.petId}`);
+				if (result.callback) {
+					const callback = result.callback;
+					postBridgeReply(callback).then((r) => {
+						if (!r.ok) log$1.warn(`[dsh-pet] 消息接入回复回调失败：${r.error}`);
+					});
+				}
+				return {
+					kind: "json",
+					status: result.status,
+					obj: result.obj
+				};
+			} catch (e) {
+				return {
+					kind: "json",
+					status: 500,
+					obj: {
+						ok: false,
+						reason: "error",
+						message: e instanceof Error ? e.message : String(e)
+					}
+				};
+			}
+		}
 		if (rest === "chat") {
 			if (method !== "GET" && method !== "POST") return {
 				kind: "json",
@@ -8289,7 +8785,7 @@ function apply(ctx) {
 			res.on("close", onClose);
 			try {
 				const body = req.method === "PUT" || req.method === "POST" ? await readBody(req) : void 0;
-				const result = await handlePetRoute(req.url ?? "/", req.method ?? "GET", body, abort.signal);
+				const result = await handlePetRoute(req.url ?? "/", req.method ?? "GET", body, abort.signal, req.headers);
 				res.off("close", onClose);
 				if (result.kind === "json") sendJson$1(res, result.status, result.obj, result.headers);
 				else if (result.kind === "text") sendText$1(res, result.status, result.body);
@@ -38722,7 +39218,7 @@ function redactSensitive(body) {
 }
 async function checkCredentialsFileSafety(path$2, onWarn = (m) => console.warn(`anthropic-sdk: ${m}`)) {
 	if (typeof process === "undefined" || process.platform === "win32") return;
-	const { fs } = await import("./node-DbKTBV3f.js");
+	const { fs } = await import("./node-Chvoc7JQ.js");
 	let resolved = path$2;
 	let st;
 	try {
@@ -38737,7 +39233,7 @@ async function checkCredentialsFileSafety(path$2, onWarn = (m) => console.warn(`
 	if (typeof process.getuid === "function" && st.uid !== process.getuid()) onWarn(`credentials file at ${resolved} is owned by uid ${st.uid} (current process uid ${process.getuid()}); verify this is intentional.`);
 }
 async function writeCredentialsFileAtomic(targetPath, data) {
-	const { fs, path: path$2 } = await import("./node-DbKTBV3f.js");
+	const { fs, path: path$2 } = await import("./node-Chvoc7JQ.js");
 	const dir = path$2.dirname(targetPath);
 	await fs.promises.mkdir(dir, {
 		recursive: true,
@@ -39651,7 +40147,7 @@ const loadConfigWithSource = async (profile) => {
 	const profileName = profile ?? await getActiveProfileName();
 	if (profileName === null) return null;
 	validateProfileName(profileName);
-	const { fs, path: path$2 } = await import("./node-DbKTBV3f.js");
+	const { fs, path: path$2 } = await import("./node-Chvoc7JQ.js");
 	const configPath$1 = path$2.join(rootConfigPath, "configs", `${profileName}.json`);
 	let configRaw;
 	try {
@@ -39720,12 +40216,12 @@ const getCredentialsPath = async (config$1, profile) => {
 	const profileName = profile ?? await getActiveProfileName();
 	if (!profileName) return null;
 	validateProfileName(profileName);
-	const { path: path$2 } = await import("./node-DbKTBV3f.js");
+	const { path: path$2 } = await import("./node-Chvoc7JQ.js");
 	return path$2.join(rootConfigPath, "credentials", `${profileName}.json`);
 };
 const getRootConfigPath = async () => {
 	if (!supportsLocalConfigFiles()) return null;
-	const { path: path$2 } = await import("./node-DbKTBV3f.js");
+	const { path: path$2 } = await import("./node-Chvoc7JQ.js");
 	const configDir = readEnv("ANTHROPIC_CONFIG_DIR");
 	if (configDir) return configDir;
 	const os = getPlatformHeaders()["X-Stainless-OS"];
@@ -39751,7 +40247,7 @@ const getActiveProfileName = async () => {
 	if (!rootConfigPath) return null;
 	const profileName = readEnv("ANTHROPIC_PROFILE");
 	if (profileName) return profileName;
-	const { fs, path: path$2 } = await import("./node-DbKTBV3f.js");
+	const { fs, path: path$2 } = await import("./node-Chvoc7JQ.js");
 	const filePath = path$2.join(rootConfigPath, "active_config");
 	try {
 		return (await fs.promises.readFile(filePath, "utf-8")).trim() || "default";
@@ -39766,7 +40262,7 @@ const getActiveProfileName = async () => {
 function identityTokenFromFile(path$2) {
 	if (!path$2) throw new AnthropicError("Identity token file path is empty");
 	return async () => {
-		const { fs } = await import("./node-DbKTBV3f.js");
+		const { fs } = await import("./node-Chvoc7JQ.js");
 		let content;
 		try {
 			content = await fs.promises.readFile(path$2, "utf-8");
@@ -39839,7 +40335,7 @@ function oidcFederationProvider(config$1) {
 //#region node_modules/.pnpm/@anthropic-ai+sdk@0.135.0_zod@4.6.7/node_modules/@anthropic-ai/sdk/lib/credentials/user-oauth.mjs
 function userOAuthProvider(config$1) {
 	return async (opts) => {
-		const { fs } = await import("./node-DbKTBV3f.js");
+		const { fs } = await import("./node-Chvoc7JQ.js");
 		await checkCredentialsFileSafety(config$1.credentialsPath, config$1.onSafetyWarning);
 		let raw;
 		try {
@@ -40007,7 +40503,7 @@ function resolveIdentityTokenProvider(auth) {
 */
 function cachedExchangeProvider(exchange, credentialsPath, onCacheWriteError, onSafetyWarning) {
 	return async (opts) => {
-		const { fs } = await import("./node-DbKTBV3f.js");
+		const { fs } = await import("./node-Chvoc7JQ.js");
 		await checkCredentialsFileSafety(credentialsPath, onSafetyWarning);
 		let existing;
 		try {
@@ -44738,7 +45234,7 @@ var EnvironmentWorker = /* @__PURE__ */ (() => {
 		const ctrl = new AbortController();
 		const detachExternal = linkAbort(externalSignal, ctrl);
 		const lease = new Lease(ctrl);
-		const agentToolset = await import("./node-CKdwitJ-.js");
+		const agentToolset = await import("./node-DV2ksEzH.js");
 		let leaseTtlMs;
 		let runner;
 		const heartbeatPromise = heartbeatLoop(sessionClient, work, lease, log$1, this.requestOptions, (ttlMs) => {

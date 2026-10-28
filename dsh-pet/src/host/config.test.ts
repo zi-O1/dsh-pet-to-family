@@ -1239,3 +1239,89 @@ describe('sliceMemoryRounds —— chatMemoryRounds=0 必须真正不带历史�
     assert.deepEqual(sliceMemoryRounds([], 0), []);
   });
 });
+
+describe('saveUserConfig —— 消息接入 bridge（白名单 + 归一化 + 透传）', () => {
+  const validBridge = {
+    enabled: true,
+    petId: 'main',
+    token: '0123456789abcdef',
+    whitelist: [{ platform: 'WeChat', id: ' wxid_1 ', name: ' 张三 ' }, 'qq:123456'],
+    replyUrl: 'http://127.0.0.1:8080/reply',
+    dedupeTtlSec: 60,
+    rateLimitPerMin: 0,
+    writeSay: true,
+    allowGroups: false,
+  };
+
+  test('合法 bridge 落盘时归一化白名单与字段', () => {
+    const out = saveOnce({ pets: PETS, bridge: validBridge });
+    assert.ok(out);
+    assert.deepEqual(out.bridge, {
+      enabled: true,
+      petId: 'main',
+      token: '0123456789abcdef',
+      whitelist: [
+        { platform: 'wechat', id: 'wxid_1', name: '张三' },
+        { platform: 'qq', id: '123456' },
+      ],
+      replyUrl: 'http://127.0.0.1:8080/reply',
+      dedupeTtlSec: 60,
+      rateLimitPerMin: 0,
+      writeSay: true,
+      allowGroups: false,
+    });
+  });
+
+  test('非法 bridge 整包拒绝（不静默降级）', () => {
+    assert.equal(saveOnce({ pets: PETS, bridge: { enabled: true, petId: 'main', token: 'short' } }), null);
+    assert.equal(
+      saveOnce({
+        pets: PETS,
+        bridge: { enabled: true, petId: 'main', token: '0123456789abcdef', replyUrl: 'file:///x' },
+      }),
+      null,
+    );
+    assert.equal(saveOnce({ pets: PETS, bridge: 'on' }), null);
+  });
+
+  test('请求体没带 bridge → 透传磁盘旧值', () => {
+    const out = saveOnce({ pets: PETS }, { bridge: validBridge });
+    assert.ok(out);
+    assert.deepEqual(out.bridge, validBridge);
+  });
+
+  test('readAllConfig 会把用户层 bridge 归一化后交给消费端', () => {
+    const paths = withBase(
+      {
+        bridge: {
+          enabled: false,
+          petId: '',
+          token: '',
+          whitelist: [],
+          replyUrl: '',
+          dedupeTtlSec: 600,
+          rateLimitPerMin: 20,
+          writeSay: false,
+          allowGroups: false,
+        },
+      },
+      { bridge: { enabled: true, petId: 'main', token: '0123456789abcdef', whitelist: ['wechat:wxid_1'] } },
+    );
+    try {
+      const merged = readAllConfig(paths);
+      assert.deepEqual(merged.main.bridge, {
+        enabled: true,
+        petId: 'main',
+        token: '0123456789abcdef',
+        whitelist: [{ platform: 'wechat', id: 'wxid_1' }],
+        replyUrl: '',
+        dedupeTtlSec: 600,
+        rateLimitPerMin: 20,
+        writeSay: false,
+        allowGroups: false,
+      });
+    } finally {
+      rmSync(dirname(paths.defaultFile), { recursive: true, force: true });
+    }
+  });
+});

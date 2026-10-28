@@ -11,6 +11,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
+import { bridgeValid, normalizeBridgeConfig } from './bridge';
 import { defaultLog } from './log-file';
 
 /** 位置角落白名单 */
@@ -344,6 +345,9 @@ function topFieldValid(key: string, value: unknown): boolean {
     case 'chatSoulEnabled':
       // 灵魂注入总开关（全局默认，所有宠物共用）：关掉后不读卡、不写状态、不追加任何灵魂段
       return typeof value === 'boolean';
+    case 'bridge':
+      // 通用消息接入（全局，仅 main 条目消费）：形状/范围校验；enabled=true 时强制要求宠物与 token
+      return bridgeValid(value);
     case 'soul':
       // 条目级灵魂卡：只认对象；{} = 显式关闭该条目的灵魂卡（覆盖内置默认），数组/标量/null 非法。
       return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -423,15 +427,15 @@ function mergeEntry(
     // 结构性常态：覆盖层（尤其是设置页写的用户层）本来就不写顶层字段 → 缺失静默取默认，不告警；
     // 只有「显式写了但非法」才告警（真异常，默认值兜底）
     if (own === undefined) {
-      out[key] = base[key];
+      out[key] = key === 'bridge' ? normalizeBridgeConfig(base[key]) : base[key];
       continue;
     }
     if (!topFieldValid(key, own)) {
       warnOnce(`${label}:${key}`, `「${label}」的 ${key} 非法，已取默认值`);
-      out[key] = base[key];
+      out[key] = key === 'bridge' ? normalizeBridgeConfig(base[key]) : base[key];
       continue;
     }
-    out[key] = own;
+    out[key] = key === 'bridge' ? normalizeBridgeConfig(own) : own;
   }
   return out;
 }
@@ -752,6 +756,10 @@ export function saveUserConfig(
   // 与 chatMemoryRounds 同一套语义——传了就校验后进白名单，没传则走下面的透传保留。
   const cil = o.chatImageLimit;
   if (cil !== undefined && !topFieldValid('chatImageLimit', cil)) return null;
+  // 消息接入（全局，仅 main 条目消费）：整段校验后归一化落盘；没传则走下面的透传保留。
+  // enabled=true 时 bridgeValid 会强制要求 petId 与非空 token（≥16 字符），避免“开了但没锁”的配置。
+  const br = o.bridge;
+  if (br !== undefined && !bridgeValid(br)) return null;
   const cleanModel = (v: Record<string, unknown>): { provider: string; model: string } => ({
     provider: String(v.provider).trim(),
     model: String(v.model).trim(),
@@ -773,6 +781,7 @@ export function saveUserConfig(
   // 数值归一化落盘：请求体传 "9" 也存成 9（与读取侧 topFieldValid 的 Number() 口径一致）
   if (cmr !== undefined) outConfig.chatMemoryRounds = Number(cmr);
   if (cil !== undefined) outConfig.chatImageLimit = Number(cil);
+  if (br !== undefined) outConfig.bridge = normalizeBridgeConfig(br);
   // 透传保留：请求体未携带的顶层字段，从 existing（磁盘现有用户文件）原样带回——
   // 设置页只提交 pets(+全局开关+physics+模型+对话历史条数)，手改的 whisperPrompt/memes/... 借此保住。
   // 白名单字段只在「请求体传了」时才算白名单（已由上方写入）；未传时走这里透传磁盘旧值——
@@ -791,6 +800,7 @@ export function saveUserConfig(
   if (cm !== undefined) bodyOwned.add('chatModel');
   if (cmr !== undefined) bodyOwned.add('chatMemoryRounds');
   if (cil !== undefined) bodyOwned.add('chatImageLimit');
+  if (br !== undefined) bodyOwned.add('bridge');
   if (existing && typeof existing === 'object') {
     for (const key of Object.keys(existing)) {
       if (bodyOwned.has(key)) continue; // 白名单字段由请求体决定

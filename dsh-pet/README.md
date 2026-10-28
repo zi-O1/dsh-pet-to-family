@@ -11,8 +11,9 @@
 - **纪念日提醒**：`kind: "date"` 的关系事件按每年同月同日主动提醒
 - **独立设置小窗**：右键宠物 →「桌宠设置」，不打开 DSH 主设置页；支持手风琴、灵魂卡 JSON、记忆/事件管理与预览
 - **一键搬家**：「打包搬家啦」导出配置/记忆/灵魂状态/关系事件，「我住进来喽」在新环境导入恢复
+- **消息接入（通用 Webhook）**：白名单里的微信 / QQ / 其他桥接器联系人发消息时，桌宠自动回复并持续聊天；token 鉴权、白名单、去重与限流默认开启，个人微信 / QQ 账号不直接接管
 
-参数、字段、默认值和操作说明见本仓库根目录的 **[README（人格灵魂、长期记忆与关系事件）](https://github.com/zi-O1/dsh-pet-to-family#-人格灵魂长期记忆与关系事件)** 与 **[CONFIG.md](https://github.com/zi-O1/dsh-pet-to-family/blob/main/CONFIG.md)**。
+参数、字段、默认值和操作说明见本仓库根目录的 **[README（人格灵魂、长期记忆与关系事件）](https://github.com/zi-O1/dsh-pet-to-family#-人格灵魂长期记忆与关系事件)**、**[消息接入（通用 Webhook）](https://github.com/zi-O1/dsh-pet-to-family#-消息接入通用-webhook)** 与 **[CONFIG.md](https://github.com/zi-O1/dsh-pet-to-family/blob/main/CONFIG.md)**。
 
 安装：npm 包名 `dsh-pet-to-family`（当前 npm 正式版 `0.4.1`，安装源选官方源 `https://registry.npmjs.org/`）；GitHub 地址 `https://github.com/zi-O1/dsh-pet-to-family`（根兼容包）或 `https://github.com/zi-O1/dsh-pet-to-family#path:/dsh-pet`（插件子目录）。
 

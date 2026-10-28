@@ -17,6 +17,7 @@ DSH 设置 → 「桌宠配置」：
 - **多开**：添加/删除宠物，每只宠物独立 id、大小、位置
 - **物理参数**：拖拽抛掷手感（重力 / 弹性 / 地面摩擦 / 总力度 / 顶部反弹 / 宠物互撞）也能在设置页图形化改，不用去手改配置文件
 - **AI 模型**：碎碎念与对话可以**各自指定模型**——设置页「AI 模型」每项一个下拉框（与 DSH 对话框右下角的模型选择器同款：搜索框 + 按服务商分组的清单，选项同源）；选「跟随当前对话」= 用当前对话的模型，指定了但调用失败会自动回落到当前对话的模型重试一次
+- **消息接入**：设置页「消息接入（微信 / QQ）」可启用通用 Webhook 桥接，选择回复宠物、生成/复制 token、逐行编辑白名单、设置可选回复回调与去重/限流参数
 - 点「保存」**即时生效**（无需刷新）；「同步」把包内 `config.jsonc` 的**原文**（含注释与全部高级字段）整份写入用户配置——既回到默认，又留下一份可直接编辑的完整配置
 
 ## 方式二：config.jsonc（单一来源）
@@ -46,8 +47,52 @@ DSH 设置 → 「桌宠配置」：
 | `notificationsEnabled` | 系统通知总开关（布尔）                                                                  | 同 `notificationsEnabled`  |
 | `soul`                 | 条目级灵魂卡（可选，见下）                                                              | 对象，字段全部可选         |
 | `chatSoulEnabled`      | 灵魂注入总开关（全局默认，布尔，默认 `true`）                                           | 布尔                       |
+| `bridge`               | 消息接入（通用 Webhook）：开关 / 回复宠物 / token / 白名单 / 回调 / 去重 / 限流 / 群聊（见下） | 对象，字段全部可选         |
 
 > 覆盖语义：用户层给出即**整体替换**该字段（如写了 `animations` 就用你的整份动画池，替代默认），没写的字段回落包内默认。校验在插件加载时执行——格式错误会在 DSH 控制台显式报错，不会静默运行残缺配置。
+
+## 消息接入（bridge）
+
+通用 Webhook 桥接：外部桥接器把白名单联系人的消息 POST 到本机，桌宠用当前对话模型回复。个人微信 / QQ 没有稳定的官方 API；插件不接管账号，只提供本机 HTTP 入口，平台连接由企业微信 / 公众号 / QQ 官方机器人或你自己的桥接器负责。
+
+配置位于用户层顶层 `bridge`（只读 `main` 条目；pet pack 不使用）：
+
+```jsonc
+"bridge": {
+  "enabled": false,
+  "petId": "",
+  "token": "",
+  "whitelist": [
+    { "platform": "wechat", "id": "wxid_abc123", "name": "张三" },
+    { "platform": "qq", "id": "123456789", "name": "李四" }
+  ],
+  "replyUrl": "",
+  "dedupeTtlSec": 600,
+  "rateLimitPerMin": 20,
+  "writeSay": false,
+  "allowGroups": false
+}
+```
+
+| 字段 | 作用 | 规则 / 默认 |
+| --- | --- | --- |
+| `enabled` | 总开关 | 布尔，默认 `false`；关闭时入站端点直接拒绝 |
+| `petId` | 用哪只桌宠回复 | 开启时必须填真实存在的宠物 id |
+| `token` | 入站鉴权 token | 开启时 16–256 字符；支持 `Authorization: Bearer <token>` 与 `X-DSH-Pet-Bridge-Token` |
+| `whitelist` | 权限白名单 | 数组；每项 `{ platform, id, name? }` 或 `"platform:id"` 字符串；`platform + id` 精确匹配才放行；上限 200 条 |
+| `replyUrl` | 可选出站回调 | 空 = 只把 `reply` 放在入站响应里；非空必须是 http/https，且不能带用户名密码 |
+| `dedupeTtlSec` | 同一 `messageId` 去重窗口 | 0–86400 秒，默认 `600`；0 = 不去重；窗口在进程内，DSH 重启后清空 |
+| `rateLimitPerMin` | 每个发送者每分钟上限 | 0–120，默认 `20`；0 = 不限制 |
+| `writeSay` | 回复是否同时写桌面气泡 | 布尔，默认 `false`；多人聊天建议保持关闭 |
+| `allowGroups` | 是否允许群聊触发 | 布尔，默认 `false`；消息还必须显式带 `isGroup: true` |
+
+- **白名单 id 必须稳定**：用平台内稳定 id（如 `wxid_...`、QQ 号、机器人用户 id），不要用会改的昵称。设置页按「平台 | id | 名字」逐行编辑。
+- **空白名单 = 谁都不回**；未授权 / 非白名单 / 群聊未开启 / 重复 `messageId` / 超频都会被拒绝。
+- **记忆隔离**：每个 `platform + senderId` 使用 `bridge:<platform>:<senderId>` 记忆桶；灵魂状态仍按宠物 id 共享。消息正文写入 `memory.json`，长期记忆进入 `soul-state.json`。
+- **日志**：只记录接入成功 / 回调失败等事件，不记录消息正文与 token。
+- **入站地址**：`POST /dsh-pet-7340/bridge/inbound`，只监听 `127.0.0.1`；外部平台 webhook 需要自己的内网穿透 / 反向代理，不要把无鉴权端口暴露到公网。
+
+完整请求体、响应与 curl 示例见根目录 [`README.md`](README.md#-消息接入通用-webhook) 与 [`API.md`](API.md)。
 
 ## 人格灵魂色彩（soul）
 

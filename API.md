@@ -5,7 +5,7 @@ dsh-pet 的宿主半侧向 DSH 自己的 Web 服务注册了**一条前缀路由
 完整契约——参数、响应体、字段含义、错误码与示例——见根目录的 [`openapi.yaml`](openapi.yaml)。
 
 - **基址**：`http://127.0.0.1:<port>/dsh-pet-7340`，`<port>` 是 DSH Web 服务实际监听的端口
-- **只监听 127.0.0.1，且没有鉴权**：任何能访问本机该端口的进程都能调用，请勿转发到公网
+- **只监听 127.0.0.1**：任何能访问本机该端口的进程都能调用；除 `POST /bridge/inbound` 需要消息接入 token 外，其余端点没有鉴权。请勿转发到公网
 
 ---
 
@@ -53,7 +53,82 @@ dsh-pet 的宿主半侧向 DSH 自己的 Web 服务注册了**一条前缀路由
 | `POST /dsh-pet-7340/broadcast?pet=` | **第三方投喂**（需锁）：把外部给定的文本写进气泡（不生成，只搬运）；配图（`image` 池内名 / `url` 自带地址）、时长、动画联动可选 |
 | `POST /dsh-pet-7340/bubble/clear?pet=` | **清空气泡**（需锁）：提前收起说话气泡（只动气泡，不动动画） |
 | `POST /dsh-pet-7340/chat?pet=` | 对桌宠说一句话并生成回复，同时写入对话记忆；响应带 `text`（配图时另有 `image`），同时照旧写进气泡 |
+| `POST /dsh-pet-7340/bridge/inbound` | **通用消息接入**：白名单联系人消息 → 桌宠自动回复；需要 `bridge` token，按平台 + 发送者隔离记忆；详见下 |
 | `POST /dsh-pet-7340/balance` | 立即刷新一次余额（可见效果同样是弹气泡 + 档位动画） |
+
+### 消息接入（bridge）
+
+`POST /dsh-pet-7340/bridge/inbound` 由外部桥接器调用，把微信 / QQ / 其他平台的消息转成统一 JSON。它**不是**给第三方插件直接操作桌宠的通用动作端点：必须先在设置页「消息接入（微信 / QQ）」启用并配置白名单。
+
+请求头（二选一）：
+
+```http
+Authorization: Bearer <bridge.token>
+```
+
+```http
+X-DSH-Pet-Bridge-Token: <bridge.token>
+```
+
+请求体：
+
+```jsonc
+{
+  "platform": "wechat",          // 1–32 位小写字母/数字/._-，会转小写
+  "senderId": "wxid_abc123",    // 平台内稳定 id，必填
+  "senderName": "张三",          // 可选，仅用于提示/模型上下文
+  "messageId": "msg-001",       // 必填，用于去重；桥接器应保证稳定
+  "text": "在吗",                // 必填，trim 后 1–2000 字
+  "isGroup": false              // 可选，默认 false；群聊需 bridge.allowGroups=true
+}
+```
+
+成功响应（HTTP 200）：
+
+```jsonc
+{
+  "ok": true,
+  "reply": "在呢。",
+  "petId": "main",
+  "messageId": "msg-001",
+  "conversation": "bridge:wechat:wxid_abc123"
+}
+```
+
+生成端选了配图时另有 `image`。默认**不**写桌面气泡（`bridge.writeSay: false`）；打开后回复也会写进 `pets.<petId>.say`。
+
+失败：
+
+| HTTP | `reason` | 说明 |
+| --- | --- | --- |
+| 400 | `bad-request` | JSON 非法 / 缺字段 / 文本为空或超过 2000 字 |
+| 401 | `unauthorized` | token 缺失或错误 |
+| 403 | `not-whitelisted` | `platform + senderId` 不在白名单 |
+| 403 | `group-not-allowed` | `isGroup: true` 但 `allowGroups: false` |
+| 413 | `too-large` | 请求体超过 64 KiB |
+| 429 | `rate-limited` | 该发送者超过 `rateLimitPerMin` |
+| 200 | `bridge-disabled` | 消息接入未启用（业务失败，不是 HTTP 错误） |
+| 200 | `unknown-pet` / `provider-missing` / `generate-error` | 配置的宠物不存在 / 没有可用的对话服务商 / 生成失败（后两者可重试；去重键会撤销） |
+
+重复消息返回 HTTP 200 + `{ "ok": true, "duplicate": true, "messageId": "..." }`，桥接器应停止重试。
+
+配置了 `bridge.replyUrl` 时，插件还会异步 POST 回复回调（同样带 token）：
+
+```jsonc
+{
+  "platform": "wechat",
+  "senderId": "wxid_abc123",
+  "senderName": "张三",
+  "messageId": "msg-001",
+  "isGroup": false,
+  "petId": "main",
+  "conversation": "bridge:wechat:wxid_abc123",
+  "reply": "在呢。",
+  "image": "可选：表情包名"
+}
+```
+
+回调失败只记日志，不影响入站响应。字段与安全说明见 [`CONFIG.md`](CONFIG.md#消息接入bridge) 与根目录 [`README.md`](README.md#-消息接入通用-webhook)。
 
 ## 四、让它做动作
 

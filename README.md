@@ -122,6 +122,7 @@ dsh plugin --profile web add file:D:/path/to/dsh-pet-to-family/dsh-pet
 - **余额展示**：按已用百分比分档播余额动画 + 头顶联想气泡（10 秒自动消失）；DeepSeek 显示账户余额，OpenCode Zen Go 与 Command Code 显示最紧迫的一个额度窗口；**未登记余额接口的服务商改为弹文字说明**（不静默）；按宠物独立开关
 - **碎碎念与对话**：碎碎念按周期自动生成一句（说话动画 + 气泡，也可手动触发）；对话在右键弹输入框与宠物聊天，记忆持久化（浏览器 / 桌面共享同一份）
 - **人格灵魂与长期连续性**：灵魂卡定义“它是谁”，动态状态记录情绪/关系，反思层把成功对话整理成长期记忆与关系事件；纪念日会在当天主动提醒（详见下方「人格灵魂、长期记忆与关系事件」）
+- **消息接入（通用 Webhook）**：白名单里的微信 / QQ / 其他桥接器联系人发来消息时，由桌宠自动回复并持续聊天；token 鉴权、白名单、去重与限流默认开启，个人微信 / QQ 账号不直接接管（详见下方「消息接入」）
 - **一键搬家**：设置页「打包搬家啦」把配置、聊天记忆、灵魂状态、关系事件和 pet 配置打成 `.dshpet`；新电脑「我住进来喽」导入恢复
 - **工作状态联动**：监听 DSH 会话事件，切「思考 / 工作 / 整理 / 等待 / 成功 / 出错」档位动画 + 常驻气泡；目标多轮任务只在真正收尾轮庆祝
 - **系统通知**：窗口失焦时弹系统 toast（对话完成 / 生成失败 / 输出截断 / 权限申请 / 用户选择）
@@ -200,6 +201,103 @@ npm run standalone   # 仓库里；已提交的 lib 可直接跑，改过源码�
 - **碎碎念**：`pets[i].whisperEnabled` 开启后，按 `eventsRefreshSec.whisper`（秒，默认 300）周期自动生成一句——每只宠物独立周期、独立文案；触发时随机抽 `events.whisper` 动画 + 头顶说话气泡（10 秒消失）。默认开启
 - **手动触发**：右键菜单「碎碎念」随时来一句——不受 `whisperEnabled` 门控（该字段只关自动周期轮询）
 - **对话**：右键菜单「对话」或 `/chat` 命令打开输入框，与宠物聊天——回复走碎碎念同款展示（说话动画 + 气泡）；记忆持久化在 `$DSH_HOME/dsh-pet/memory.json`，浏览器与桌面共享同一份；多宠物时先用 `/pet` 选择对话目标
+
+## 📨 消息接入（通用 Webhook）
+
+让白名单里的外部联系人通过微信 / QQ / 其他桥接器给桌宠发消息，桌宠用当前对话模型回复，并按平台 + 发送者隔离聊天记忆。设置入口：右键宠物 →「桌宠设置」→「消息接入（微信 / QQ）」。
+
+> **平台边界**：个人微信 / QQ 没有稳定的官方 API。本插件**不内置协议库、不接管账号**，只提供一个本机 HTTP 入口；真正连微信 / QQ 的是你自己选择并负责的外部桥接器。优先使用企业微信、公众号、QQ 官方机器人等官方通道；第三方个人号协议桥接有封号与安全风险。
+
+### 配置
+
+设置页可完成全部配置，也可以手写 `$DSH_HOME/dsh-pet/main-config.jsonc` 的顶层 `bridge`：
+
+| 字段 | 作用 | 默认 / 规则 |
+| --- | --- | --- |
+| `enabled` | 总开关 | `false`；关闭时入站端点直接拒绝 |
+| `petId` | 用哪只桌宠回复 | 空；开启时必须填真实存在的宠物 id |
+| `token` | 入站鉴权 token | 空；开启时 16–256 字符，设置页可一键生成 / 复制 |
+| `whitelist` | 权限白名单 | `[]`；最多 200 条，每项 `{ platform, id, name? }`，只有 `platform + id` 完全匹配才放行 |
+| `replyUrl` | 可选出站回调 | 空；填了之后插件会把回复 POST 过去，留空则只放在入站响应里 |
+| `dedupeTtlSec` | 同一 `messageId` 去重窗口 | `600` 秒；`0` = 不去重 |
+| `rateLimitPerMin` | 每个发送者每分钟上限 | `20`；`0` = 不限制 |
+| `writeSay` | 回复是否同时写桌面气泡 | `false`，避免多人聊天时桌面频繁弹话 |
+| `allowGroups` | 是否允许群聊触发 | `false`；群聊消息还必须显式带 `isGroup: true` |
+
+白名单里的 `id` 必须是平台内**稳定 id**（例如微信 `wxid_...`、QQ 号、机器人用户 id），不要用会改的昵称。设置页按「平台 | id | 名字」逐行编辑，例如：
+
+```text
+wechat | wxid_abc123 | 张三
+qq | 123456789 | 李四
+```
+
+### 入站请求
+
+端点：`POST /dsh-pet-7340/bridge/inbound`，只监听 `127.0.0.1`。桥接器必须带 token：
+
+```bash
+curl -s -X POST http://127.0.0.1:3080/dsh-pet-7340/bridge/inbound \
+  -H 'Authorization: Bearer <token>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "platform": "wechat",
+    "senderId": "wxid_abc123",
+    "senderName": "张三",
+    "messageId": "msg-20261028-001",
+    "text": "在吗？今天过得怎么样",
+    "isGroup": false
+  }'
+```
+
+也可以把 token 放在 `X-DSH-Pet-Bridge-Token` 头里。成功响应直接带回回复：
+
+```json
+{
+  "ok": true,
+  "reply": "在呢，今天还行，你呢？",
+  "petId": "main",
+  "messageId": "msg-20261028-001",
+  "conversation": "bridge:wechat:wxid_abc123"
+}
+```
+
+生成端选了配图时会另有 `image`。回复默认**不**写桌面气泡（`writeSay: false`），由桥接器把 `reply` 发回微信 / QQ；想让桌宠同时开口就把 `writeSay` 打开。
+
+### 回调（可选）
+
+配置了 `replyUrl` 后，插件会在生成成功后异步 POST：
+
+```json
+{
+  "platform": "wechat",
+  "senderId": "wxid_abc123",
+  "senderName": "张三",
+  "messageId": "msg-20261028-001",
+  "isGroup": false,
+  "petId": "main",
+  "conversation": "bridge:wechat:wxid_abc123",
+  "reply": "在呢，今天还行，你呢？",
+  "image": "可选：表情包名"
+}
+```
+
+回调同样带 `Authorization: Bearer <token>` 与 `X-DSH-Pet-Bridge-Token`。回调失败只记日志，不影响已经返回给入站请求的回复。
+
+### 安全与隐私
+
+- **token 等于回复权限**：不要发到群里、截图里或公网；怀疑泄露就在设置页重新生成并保存。
+- **白名单为空 = 谁都不回**；未授权 / 非白名单 / 群聊未开启 / 重复 `messageId` / 超频都会被拒绝（HTTP 401 / 403 / 429，重复消息回 200 + `duplicate: true` 让桥接器停止重试）；没有可用对话服务商或生成失败时同样不写记忆，去重键会撤销以便重试。
+- **只监听本机**：外部平台 webhook 需要你自己做内网穿透或反向代理，不要把无鉴权的本机端口直接暴露到公网。
+- **记忆隔离**：每个 `platform + senderId` 使用独立的 `bridge:<platform>:<senderId>` 记忆桶；灵魂状态仍按宠物 id 共享。消息正文会写入 `memory.json`，长期记忆会进入 `soul-state.json`；不想保留时按「搬家 / 卸载与存储」里的说明删除对应文件。
+- **日志**：只记录接入成功 / 回调失败等事件，不记录消息正文与 token。
+- **去重窗口是进程内的**：DSH 重启后清空；桥接器仍应使用稳定的 `messageId`，以便重启后继续去重。
+
+### 接入顺序建议
+
+1. 在设置页启用消息接入，选桌宠，生成 token。
+2. 先加一条自己的测试白名单（平台填 `test`，id 随便稳定字符串），用上面的 `curl` 打通回复。
+3. 再接企业微信 / 公众号 / QQ 官方机器人或本地桥接器：把平台 webhook 转成上面的 JSON，把 `reply` 发回对应会话。
+4. 需要异步发送时再填 `replyUrl`；群聊场景先确认 `allowGroups` 与群 id 白名单，避免刷屏。
 
 ## 🧠 人格灵魂、长期记忆与关系事件
 

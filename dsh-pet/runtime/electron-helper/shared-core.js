@@ -1023,6 +1023,7 @@ const SETTINGS_SECTIONS = [
 	"global",
 	"font",
 	"model",
+	"bridge",
 	"physics",
 	"config",
 	"storage",
@@ -1080,6 +1081,11 @@ const settingsMenuBranch = () => ({
 			label: "AI 模型与对话上下文",
 			action: "settings",
 			section: "model"
+		},
+		{
+			label: "消息接入（微信 / QQ）",
+			action: "settings",
+			section: "bridge"
 		},
 		{
 			label: "物理（拖拽抛掷手感）",

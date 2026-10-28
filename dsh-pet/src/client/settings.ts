@@ -6,6 +6,14 @@
  * @module dsh-pet/src/client/settings
  */
 import { PET_DISPLAYS } from '../shared/config';
+import {
+  DEFAULT_BRIDGE,
+  formatBridgeWhitelist,
+  normalizeBridgeConfig,
+  normalizeBridgeReplyUrl,
+  parseBridgeWhitelistText,
+  type BridgeConfig,
+} from '../shared/bridge';
 import { DEFAULT_FONT, FONT_PRESETS, FONT_SIZE_MAX, FONT_SIZE_MIN } from '../shared/fonts';
 import { DEFAULT_PHYSICS } from '../shared/physics';
 import { soulAccentColor, type SoulCard } from '../shared/soul';
@@ -34,6 +42,13 @@ export const NS = 'pet.config';
 /** 一处「服务商 + 模型」是否合法：要么都留空（跟随当前对话），要么都非空。
  * 与宿主 `modelSelectionValid` 同一套规则（非法时宿主回 400，这里先就地给红字提示）。 */
 const modelPairValid = (m: ModelSelection): boolean => (m.provider.trim() === '') === (m.model.trim() === '');
+
+/** 生成 48 位十六进制 token（24 字节 CSPRNG）；只在浏览器设置页用。 */
+const randomBridgeToken = (): string => {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+};
 
 /** 候选清单里的一组：一个服务商及它名下的模型（`GET /models` 的响应形态）。 */
 interface ModelCatalogGroup {
@@ -353,6 +368,53 @@ export const zh = {
   chatImageLimitHint:
     '对话时发给模型的表情包清单最多几张（「前 N 张」= 配置里写在前面的那 N 条，想让哪几张优先被发出去就把顺序往前挪）。整张清单是每条消息都要附的，token 随张数线性增长——张数一多就是纯烧钱，限制成前 N 张，模型只从这几张里挑。0 = 不限制（全部发）。内置默认 10。全局默认，所有宠物共用（pet pack 可在自己种类文件里覆盖）。只影响对话选图：碎碎念只带抽中的那一张。',
   invalidChatImageLimit: '请检查对话配图张数上限：需为 ≥ 0 的数字（0 = 不限制）。',
+  bridgeTitle: '消息接入（微信 / QQ）',
+  bridgeHint:
+    '通用 Webhook 桥接：外部桥接器把白名单联系人的消息 POST 进来，桌宠用当前对话模型回复。个人微信 / QQ 没有稳定的官方 API，本插件不直接接管账号；平台连接由你选择的企业微信 / 公众号 / QQ 官方机器人或本地桥接器负责。入站端点只监听本机，必须带 token，且只处理白名单里 platform + id 完全匹配的发送者。',
+  bridgePersonalNote:
+    '安全提醒：token 等于回复权限，不要发到群里或公网；个人微信 / QQ 的第三方协议桥接有封号风险，请优先使用官方机器人通道。',
+  bridgeEnabledToggle: '启用消息接入',
+  bridgeEnabledToggleHint: '关闭时 /bridge/inbound 直接返回 bridge-disabled，不解析消息、不调用模型。',
+  bridgePetLabel: '用哪只桌宠回复',
+  bridgePetHint: '必须选一只真实存在的宠物；回复会写进它的对话记忆（按平台 + 发送者隔离）。',
+  bridgePetNone: '（未选择）',
+  bridgeTokenLabel: '入站 token',
+  bridgeTokenHint:
+    '桥接器请求时放在 Authorization: Bearer <token> 或 X-DSH-Pet-Bridge-Token 头里。启用时需要 16–256 个字符；点「生成」用浏览器加密随机数创建。',
+  bridgeTokenGenerate: '生成',
+  bridgeTokenCopy: '复制',
+  bridgeTokenCopied: 'token 已复制',
+  bridgeTokenCopyFailed: '复制失败，请手动选中复制',
+  bridgeTokenGenerated: '已生成新 token；保存后生效',
+  bridgeWhitelistLabel: '权限白名单',
+  bridgeWhitelistHint:
+    '每行一个联系人，格式「平台 | 稳定 id | 名字（可选）」，例如 wechat | wxid_abc | 张三。id 必须是平台内稳定 id，不要用会改的昵称；只有完全匹配的发送者才会触发回复。空列表 = 谁都不回。',
+  bridgeWhitelistPlaceholder: 'wechat | wxid_abc | 张三\nqq | 123456 | 李四',
+  bridgeReplyUrlLabel: '回复回调地址（可选）',
+  bridgeReplyUrlHint:
+    '填了之后，插件生成回复会异步 POST 到这个 http/https 地址；不填则只把 reply 放在入站 HTTP 响应里，由桥接器自己发送。回调请求同样带 token。',
+  bridgeReplyUrlPlaceholder: 'http://127.0.0.1:8080/reply',
+  bridgeDedupe: '去重窗口（秒）',
+  bridgeDedupeHint: '同一个 messageId 在窗口内只处理一次；0 = 不去重。默认 600。',
+  bridgeRateLimit: '每人每分钟上限',
+  bridgeRateLimitHint: '每个发送者每分钟最多处理几条；0 = 不限制。默认 20。',
+  bridgeWriteSayToggle: '回复同时显示在桌面气泡',
+  bridgeWriteSayToggleHint:
+    '默认关闭：回复只回到桥接器，避免多人聊天时桌面频繁弹话。开启后桌宠也会在桌面气泡里说同一句。',
+  bridgeAllowGroupsToggle: '允许群聊触发',
+  bridgeAllowGroupsToggleHint:
+    '默认关闭。群聊消息必须显式带 isGroup=true；即使白名单里有群 id，也要打开这个开关才会回复。',
+  bridgeEndpointLabel: '入站地址',
+  bridgeEndpointHint:
+    '只监听 127.0.0.1；外部平台 webhook 需要自己用内网穿透/反向代理接到这台机器，并注意不要把无鉴权路由暴露到公网。',
+  bridgeMetaOn: '接入开',
+  bridgeMetaOff: '接入关',
+  bridgeInvalidWhitelist: '白名单第 {line} 行格式不对，请用「平台 | id | 名字」。',
+  bridgeWhitelistTooMany: '白名单最多 200 条；第 {line} 行超出了上限。',
+  bridgeInvalidPet: '启用消息接入时必须选择一只真实存在的桌宠。',
+  bridgeInvalidToken: 'token 需要 16–256 个字符（启用消息接入时不能为空）。',
+  bridgeInvalidReplyUrl: '回复回调地址必须是合法的 http/https URL（不能带用户名密码）。',
+  bridgeInvalidNumbers: '请检查去重窗口（0~86400 秒）和每人每分钟上限（0~120）。',
   soulTitle: '人格灵魂色彩',
   soulHint:
     '灵魂卡是比人设更稳定的「内在设定」：身份、在意的东西、说话方式、渴望、害怕、边界、关系起点与灵魂色彩。配置后，宿主会在碎碎念与对话的 system 里追加「稳定灵魂卡 + 此刻的灵魂状态」；状态（情绪 / 关系 / 上次聊天 / 长期记忆 / 关系事件）由 soul-state.json 跨会话延续；成功对话后还会定期反思，整理偏好、约定、事件与自我叙事。没有卡 / 空卡 = 完全走旧人设。',
@@ -642,6 +704,54 @@ export const en = {
   chatImageLimitHint:
     'How many memes at most are listed to the model during chat ("first N" = the first N you wrote in the config, so move the ones you want sent to the front). That whole list is attached to every message and tokens grow linearly with the count, so a long list is pure burn; capping it to the first N makes the model pick only among those. 0 = no limit (send everything). Built-in default 10. Global default, shared by every pet (a pet pack may override it in its own kind file). Chat only — a whisper carries just the one meme it drew.',
   invalidChatImageLimit: 'Check the chat image limit: it must be a number ≥ 0 (0 = no limit).',
+  bridgeTitle: 'Message bridge (WeChat / QQ)',
+  bridgeHint:
+    'Generic webhook bridge: an external adapter POSTs whitelisted contacts’ messages here and the pet replies with the current chat model. Personal WeChat / QQ have no stable official API, so this plugin never takes over an account directly; connect it through an official enterprise WeChat / official-account / QQ bot channel or your own local adapter. The inbound endpoint listens on localhost only, requires a token, and only accepts senders whose platform + id exactly match the whitelist.',
+  bridgePersonalNote:
+    'Security: the token is reply permission — never post it in a group or on the public internet. Third-party protocol adapters for personal WeChat / QQ can get accounts banned; prefer official bot channels.',
+  bridgeEnabledToggle: 'Enable message bridge',
+  bridgeEnabledToggleHint:
+    'When off, /bridge/inbound returns bridge-disabled immediately without parsing the message or calling the model.',
+  bridgePetLabel: 'Pet that replies',
+  bridgePetHint: 'Must be an existing pet. Replies go into its chat memory, isolated per platform + sender.',
+  bridgePetNone: '(not selected)',
+  bridgeTokenLabel: 'Inbound token',
+  bridgeTokenHint:
+    'The adapter sends it as Authorization: Bearer <token> or X-DSH-Pet-Bridge-Token. 16–256 characters when enabled; “Generate” uses the browser CSPRNG.',
+  bridgeTokenGenerate: 'Generate',
+  bridgeTokenCopy: 'Copy',
+  bridgeTokenCopied: 'Token copied',
+  bridgeTokenCopyFailed: 'Copy failed — select and copy it manually',
+  bridgeTokenGenerated: 'New token generated; save to apply',
+  bridgeWhitelistLabel: 'Permission whitelist',
+  bridgeWhitelistHint:
+    'One contact per line: “platform | stable id | name (optional)”, e.g. wechat | wxid_abc | Alice. The id must be stable inside the platform — never a nickname that can change; only exact matches trigger a reply. Empty list = nobody.',
+  bridgeWhitelistPlaceholder: 'wechat | wxid_abc | Alice\nqq | 123456 | Bob',
+  bridgeReplyUrlLabel: 'Reply callback URL (optional)',
+  bridgeReplyUrlHint:
+    'When set, the plugin asynchronously POSTs each generated reply to this http/https URL. When empty, the reply is only returned in the inbound HTTP response and the adapter sends it. The callback carries the same token.',
+  bridgeReplyUrlPlaceholder: 'http://127.0.0.1:8080/reply',
+  bridgeDedupe: 'Dedupe window (sec)',
+  bridgeDedupeHint: 'The same messageId is processed once inside this window; 0 = no dedupe. Default 600.',
+  bridgeRateLimit: 'Per-sender limit / min',
+  bridgeRateLimitHint: 'Maximum messages processed per sender per minute; 0 = unlimited. Default 20.',
+  bridgeWriteSayToggle: 'Also show replies in the desktop bubble',
+  bridgeWriteSayToggleHint:
+    'Off by default: replies only go back to the adapter, so a busy group chat does not spam the desktop. On: the pet also says the same line in its bubble.',
+  bridgeAllowGroupsToggle: 'Allow group messages',
+  bridgeAllowGroupsToggleHint:
+    'Off by default. Group messages must explicitly send isGroup=true; even if a group id is whitelisted, this switch must be on before it replies.',
+  bridgeEndpointLabel: 'Inbound endpoint',
+  bridgeEndpointHint:
+    'Listens on 127.0.0.1 only. External platform webhooks need your own tunnel/reverse proxy to this machine; never expose an unauthenticated route to the public internet.',
+  bridgeMetaOn: 'Bridge on',
+  bridgeMetaOff: 'Bridge off',
+  bridgeInvalidWhitelist: 'Whitelist line {line} is malformed; use “platform | id | name”.',
+  bridgeWhitelistTooMany: 'The whitelist holds at most 200 entries; line {line} exceeds the limit.',
+  bridgeInvalidPet: 'Select an existing pet before enabling the message bridge.',
+  bridgeInvalidToken: 'The token must be 16–256 characters when the message bridge is enabled.',
+  bridgeInvalidReplyUrl: 'The reply callback must be a valid http/https URL without credentials.',
+  bridgeInvalidNumbers: 'Check the dedupe window (0–86400 sec) and per-sender limit (0–120).',
   soulTitle: 'Soul & personality color',
   soulHint:
     'A soul card is a more stable inner layer than the persona: identity, what it cares about, voice, desires, fears, boundaries, relationship seed and soul color. When configured, the host appends a stable soul card plus the current soul state to every whisper / chat system prompt; the state (mood / relationship / last exchange / long-term memories / relationship events) persists across sessions in soul-state.json; after successful chats it also reflects periodically to distill preferences, promises, events and a self-narrative. No card / empty card = the legacy persona only.',
@@ -1184,6 +1294,12 @@ export function makePetConfigSection(rt: {
     const [chatMemory, setChatMemory] = useState(5);
     // 对话配图张数上限（全局默认）：初值 10 是内置默认（砍掉整张清单约 2/3 开销），加载后由成品值覆盖。
     const [chatImageLimit, setChatImageLimit] = useState(10);
+    // 消息接入（全局，仅 main 条目消费）：只改本地状态，随「保存」整包写入；初值占位，加载后覆盖。
+    const [bridge, setBridge] = useState<BridgeConfig>({ ...DEFAULT_BRIDGE, whitelist: [] });
+    // 白名单用 textarea 编辑：先存文本，保存时解析成 { platform, id, name? } 数组。
+    const [bridgeWhitelistText, setBridgeWhitelistText] = useState('');
+    // token 生成/复制等就地反馈，不污染页面级保存提示。
+    const [bridgeMsg, setBridgeMsg] = useState<{ kind: 'ok' | 'err' | ''; text: string }>({ kind: '', text: '' });
     // 条目级人设：设置页只编辑实例级覆盖（pets[].whisperPrompt）；这个值只用于「留空时跟随什么」的预览，不参与提交。
     const [entryPrompt, setEntryPrompt] = useState('');
     // 条目级灵魂卡：同 entryPrompt，只用于「留空时跟随什么」的预览与占位；不参与提交。
@@ -1274,6 +1390,11 @@ export function makePetConfigSection(rt: {
       // 对话配图张数上限：同上（内置默认 0 = 不限制）
       const cil = Number(m.chatImageLimit);
       if (Number.isFinite(cil) && cil >= 0) setChatImageLimit(cil);
+      // 消息接入：成品已归一化（缺失字段填默认）；白名单同时转成 textarea 文本。
+      const loadedBridge = normalizeBridgeConfig(m.bridge);
+      setBridge(loadedBridge);
+      setBridgeWhitelistText(formatBridgeWhitelist(loadedBridge.whitelist));
+      setBridgeMsg({ kind: '', text: '' });
     }, []);
 
     useEffect(() => {
@@ -1699,6 +1820,46 @@ export function makePetConfigSection(rt: {
         setMsg({ kind: 'err', text: t('invalidChatImageLimit') });
         return false;
       }
+      // 消息接入：白名单文本先解析；启用时宠物必须存在、token 需 16–256 字符；
+      // 回调地址与两个数字与宿主 bridgeValid 同一套边界，避免整包请求被 400。
+      const parsedWhitelist = parseBridgeWhitelistText(bridgeWhitelistText);
+      if (!parsedWhitelist.ok) {
+        setMsg({
+          kind: 'err',
+          text:
+            parsedWhitelist.reason === 'limit'
+              ? t('bridgeWhitelistTooMany').replace('{line}', String(parsedWhitelist.line))
+              : t('bridgeInvalidWhitelist').replace('{line}', String(parsedWhitelist.line)),
+        });
+        return false;
+      }
+      if (bridge.enabled && !pets.some((p) => p.id === bridge.petId.trim())) {
+        setMsg({ kind: 'err', text: t('bridgeInvalidPet') });
+        return false;
+      }
+      if (bridge.enabled && bridge.token.trim().length < 16) {
+        setMsg({ kind: 'err', text: t('bridgeInvalidToken') });
+        return false;
+      }
+      if (bridge.token.trim().length > 256) {
+        setMsg({ kind: 'err', text: t('bridgeInvalidToken') });
+        return false;
+      }
+      if (bridge.replyUrl.trim() && !normalizeBridgeReplyUrl(bridge.replyUrl)) {
+        setMsg({ kind: 'err', text: t('bridgeInvalidReplyUrl') });
+        return false;
+      }
+      if (
+        !Number.isFinite(bridge.dedupeTtlSec) ||
+        bridge.dedupeTtlSec < 0 ||
+        bridge.dedupeTtlSec > 86_400 ||
+        !Number.isFinite(bridge.rateLimitPerMin) ||
+        bridge.rateLimitPerMin < 0 ||
+        bridge.rateLimitPerMin > 120
+      ) {
+        setMsg({ kind: 'err', text: t('bridgeInvalidNumbers') });
+        return false;
+      }
       // 灵魂卡：草稿必须是合法 JSON 对象（留空 / {} = 删除实例覆盖，跟随条目）；
       // 宿主也会校验，但这里先就地给红字，避免整包请求被 400 后用户还要自己找是哪只宠物。
       for (const p of pets) {
@@ -1742,6 +1903,27 @@ export function makePetConfigSection(rt: {
           if (parsed.ok && parsed.card) next.soul = parsed.card;
           return next;
         });
+        // 白名单 textarea → 数组；validated 已解析过一次，这里再取一次作为提交值（防状态竞态）。
+        const parsedWhitelist = parseBridgeWhitelistText(bridgeWhitelistText);
+        if (!parsedWhitelist.ok) {
+          setMsg({
+            kind: 'err',
+            text:
+              parsedWhitelist.reason === 'limit'
+                ? t('bridgeWhitelistTooMany').replace('{line}', String(parsedWhitelist.line))
+                : t('bridgeInvalidWhitelist').replace('{line}', String(parsedWhitelist.line)),
+          });
+          return false;
+        }
+        const bridgePayload: BridgeConfig = {
+          ...bridge,
+          petId: bridge.petId.trim(),
+          token: bridge.token.trim(),
+          whitelist: parsedWhitelist.list,
+          replyUrl: bridge.replyUrl.trim(),
+          dedupeTtlSec: Number(bridge.dedupeTtlSec),
+          rateLimitPerMin: Number(bridge.rateLimitPerMin),
+        };
         // 通知总开关随保存一起写；初值来自成品 main 条目，不会静默覆盖用户手写值。
         const body: Record<string, unknown> = {
           pets: petsPayload,
@@ -1758,6 +1940,7 @@ export function makePetConfigSection(rt: {
           chatMemoryRounds: chatMemory,
           chatImageLimit: chatImageLimit,
           font: font,
+          bridge: bridgePayload,
         };
         // 用户在损坏弹窗里点了确认：带 ?force=1 才允许按白名单重建损坏文件。
         const res = await fetch('/dsh-pet-7340/config' + (force === true ? '?force=1' : ''), {
@@ -1782,6 +1965,9 @@ export function makePetConfigSection(rt: {
         }
         // 同上：PUT 响应即成品聚合，容器据此重新拍平（新增/删除宠物、改大小位置都走这条路）
         petBridge.reload((await res.json()) as Record<string, Record<string, unknown>>);
+        // 保存后的归一化结果回填：用户手写的空白/重复白名单在界面上也变成实际落盘值。
+        setBridge(normalizeBridgeConfig(bridgePayload));
+        setBridgeWhitelistText(formatBridgeWhitelist(bridgePayload.whitelist));
         void reloadNotifications(); // 保存后即时生效，无需刷新。
         setSoulPreview(null); // 旧预览可能对应保存前的卡，清掉避免误读。
         setMsg({ kind: 'ok', text: t('saved') });
@@ -2001,6 +2187,33 @@ export function makePetConfigSection(rt: {
         t('modelFieldHint'),
         end,
       );
+    };
+
+    /** 消息接入的入站地址：设置页所在 origin + 固定前缀；外部桥接器直接填这个。 */
+    const bridgeEndpoint = (() => {
+      try {
+        return new URL('/dsh-pet-7340/bridge/inbound', window.location.origin).toString();
+      } catch {
+        return '/dsh-pet-7340/bridge/inbound';
+      }
+    })();
+
+    /** 生成 token 并就地提示；只在浏览器设置页调用。 */
+    const generateBridgeToken = (): void => {
+      setBridge((b) => ({ ...b, token: randomBridgeToken() }));
+      setBridgeMsg({ kind: 'ok', text: t('bridgeTokenGenerated') });
+    };
+
+    /** 复制 token；Clipboard API 不可用（非安全上下文等）时给失败提示，不静默。 */
+    const copyBridgeToken = async (): Promise<void> => {
+      const token = bridge.token.trim();
+      if (!token) return;
+      try {
+        await navigator.clipboard.writeText(token);
+        setBridgeMsg({ kind: 'ok', text: t('bridgeTokenCopied') });
+      } catch {
+        setBridgeMsg({ kind: 'err', text: t('bridgeTokenCopyFailed') });
+      }
     };
 
     // 当前编辑中的灵魂色（用于色块）：草稿非法时 editedSoulCard 已回落到当前生效卡。
@@ -2673,6 +2886,164 @@ export function makePetConfigSection(rt: {
               whisperModel.model === '' && chatModel.model === ''
                 ? t('modelFollow')
                 : chatModel.model || whisperModel.model,
+            ),
+
+            // 消息接入项：白名单 + token + 可选回复回调；只改本地状态，随「保存」整包写入。
+            // 宿主侧 /bridge/inbound 只在 enabled=true 且 token/白名单都匹配时调用模型。
+            accItem(
+              'bridge',
+              t('bridgeTitle'),
+              t('bridgeHint'),
+              [
+                h('div', { className: 'dsh-pet-cfg__note', children: t('bridgePersonalNote') }),
+                h('div', {
+                  className: 'dsh-pet-cfg__grid2',
+                  children: [
+                    toggleCell('bridgeEnabledToggle', bridge.enabled, busy, (v) =>
+                      setBridge((b) => ({
+                        ...b,
+                        enabled: v,
+                        // 打开时若还没有 token，自动生成一个，避免“开了但没锁”的空配置。
+                        token: v && !b.token.trim() ? randomBridgeToken() : b.token,
+                      })),
+                    ),
+                    field(
+                      t('bridgePetLabel'),
+                      h('select', {
+                        className: inputClass,
+                        value: bridge.petId,
+                        disabled: busy,
+                        onChange: (e: ChangeEvent<HTMLSelectElement>) =>
+                          setBridge((b) => ({ ...b, petId: e.target.value })),
+                        children: [
+                          h('option', { key: 'none', value: '', children: t('bridgePetNone') }),
+                          ...pets.map((p) =>
+                            h('option', {
+                              key: p.id,
+                              value: p.id,
+                              children: (p.name || p.id) + ' (' + p.id + ')',
+                            }),
+                          ),
+                        ],
+                      }),
+                      t('bridgePetHint'),
+                      true,
+                    ),
+                  ],
+                }),
+                field(
+                  t('bridgeTokenLabel'),
+                  h('div', {
+                    className: 'dsh-pet-cfg__soulRow',
+                    children: [
+                      h('input', {
+                        className: inputClass,
+                        style: { flex: '1 1 auto', minWidth: '0', fontFamily: MONO },
+                        type: 'text',
+                        autoComplete: 'off',
+                        spellCheck: false,
+                        maxLength: 256,
+                        value: bridge.token,
+                        disabled: busy,
+                        onChange: (e: ChangeEvent<HTMLInputElement>) => {
+                          setBridge((b) => ({ ...b, token: e.target.value }));
+                          setBridgeMsg({ kind: '', text: '' });
+                        },
+                      }),
+                      h('button', {
+                        type: 'button',
+                        className: 'dsh-pet-cfg__btn is-sm',
+                        disabled: busy,
+                        onClick: generateBridgeToken,
+                        children: t('bridgeTokenGenerate'),
+                      }),
+                      h('button', {
+                        type: 'button',
+                        className: 'dsh-pet-cfg__btn is-sm',
+                        disabled: busy || !bridge.token.trim(),
+                        onClick: () => void copyBridgeToken(),
+                        children: t('bridgeTokenCopy'),
+                      }),
+                    ],
+                  }),
+                  t('bridgeTokenHint'),
+                ),
+                field(
+                  t('bridgeWhitelistLabel'),
+                  h('textarea', {
+                    className: inputClass,
+                    style: { minHeight: '86px', resize: 'vertical', fontFamily: MONO, lineHeight: '1.5' },
+                    rows: 4,
+                    spellCheck: false,
+                    placeholder: t('bridgeWhitelistPlaceholder'),
+                    value: bridgeWhitelistText,
+                    disabled: busy,
+                    onChange: (e: ChangeEvent<HTMLTextAreaElement>) => {
+                      setBridgeWhitelistText(e.target.value);
+                      setBridgeMsg({ kind: '', text: '' });
+                    },
+                  }),
+                  t('bridgeWhitelistHint'),
+                ),
+                field(
+                  t('bridgeReplyUrlLabel'),
+                  h('input', {
+                    className: inputClass,
+                    type: 'url',
+                    spellCheck: false,
+                    placeholder: t('bridgeReplyUrlPlaceholder'),
+                    value: bridge.replyUrl,
+                    disabled: busy,
+                    onChange: (e: ChangeEvent<HTMLInputElement>) => {
+                      setBridge((b) => ({ ...b, replyUrl: e.target.value }));
+                      setBridgeMsg({ kind: '', text: '' });
+                    },
+                  }),
+                  t('bridgeReplyUrlHint'),
+                ),
+                h('div', {
+                  className: 'dsh-pet-cfg__grid2',
+                  children: [
+                    globalNumField('bridgeDedupe', bridge.dedupeTtlSec, (v) =>
+                      setBridge((b) => ({ ...b, dedupeTtlSec: v })),
+                    ),
+                    globalNumField('bridgeRateLimit', bridge.rateLimitPerMin, (v) =>
+                      setBridge((b) => ({ ...b, rateLimitPerMin: v })),
+                    ),
+                  ],
+                }),
+                h('div', {
+                  className: 'dsh-pet-cfg__grid2',
+                  children: [
+                    toggleCell('bridgeWriteSayToggle', bridge.writeSay, busy, (v) =>
+                      setBridge((b) => ({ ...b, writeSay: v })),
+                    ),
+                    toggleCell(
+                      'bridgeAllowGroupsToggle',
+                      bridge.allowGroups,
+                      busy,
+                      (v) => setBridge((b) => ({ ...b, allowGroups: v })),
+                      true,
+                    ),
+                  ],
+                }),
+                h('div', {
+                  className: 'dsh-pet-cfg__path',
+                  children: t('bridgeEndpointLabel') + ': ' + bridgeEndpoint,
+                }),
+                h('div', { className: 'dsh-pet-cfg__note', children: t('bridgeEndpointHint') }),
+                bridgeMsg.text
+                  ? h('p', {
+                      className: 'dsh-pet-cfg__note',
+                      style:
+                        bridgeMsg.kind === 'err'
+                          ? { color: 'var(--dsw-alias-state-error-primary)' }
+                          : { color: 'var(--dsw-alias-state-success-primary)' },
+                      children: bridgeMsg.text,
+                    })
+                  : null,
+              ],
+              bridge.enabled ? t('bridgeMetaOn') + ' · ' + (bridge.petId || '—') : t('bridgeMetaOff'),
             ),
 
             // 物理项：四个数字输入一行、两个开关一行；只改本地状态，随「保存」整包写入。
