@@ -32,13 +32,13 @@ AI 生成动画的配方     源视频 → 透明动画的管线    运行在 DS
 
 ### 🪟 桌面应用（Electron 版）
 
-直接在应用内「插件管理」页的安装框里填 `dsh-pet-to-family`（npm 已发布后），不用开终端；需要在终端里操作插件时，用桌面应用自带的那份 CLI。
+直接在应用内「插件管理」页的安装框里填 `dsh-pet-to-family`（当前 npm 正式版 `0.4.1`），不用开终端；需要在终端里操作插件时，用桌面应用自带的那份 CLI。
 
-也可以直接填 GitHub 仓库地址 `https://github.com/zi-O1/dsh-pet-to-family`（仓库根的兼容包会指向 `dsh-pet/` 里的插件构建产物）；如果安装器只认子目录，用 `https://github.com/zi-O1/dsh-pet-to-family#path:/dsh-pet`。安装源选 **npm 官方源**（`https://registry.npmjs.org/`）。
+也可以直接填 GitHub 仓库地址 `https://github.com/zi-O1/dsh-pet-to-family`（仓库根的兼容包指向 `dsh-pet/` 里已入库的构建产物，安装时不需要再构建）；如果安装器只认子目录，用 `https://github.com/zi-O1/dsh-pet-to-family#path:/dsh-pet`。安装源选 **npm 官方源**（`https://registry.npmjs.org/`）。
 
 > 已安装旧包 `dsh-pet` 的 profile，请先在插件管理里卸载旧包，再安装 `dsh-pet-to-family`；用户数据仍在 `$DSH_HOME/dsh-pet/`，不会被清空。
 >
-> npm 包首次发布：`cd dsh-pet && npm publish --access public`（`publishConfig` 已固定为 npm 官方源）。
+> 当前 npm 正式版：`0.4.1`（`latest`）。维护者发新版本：`cd dsh-pet && npm publish --access public`（`publishConfig` 已固定为 npm 官方源）。
 
 ### 🌐 `dsh web`
 
@@ -62,7 +62,7 @@ dsh plugin --profile web add dsh-pet-to-family
 
 ### 从源码安装（clone 本仓库后）
 
-`lib/` 构建产物不入库，clone 后需要先构建再安装：
+本仓库已跟踪 `lib/` 与 `runtime/electron-helper/shared-core.js` 构建产物，clone 后可以直接安装，不需要先构建；只有修改源码后才需要重新构建：
 
 ```sh
 # ① clone 本仓库，进入插件目录
@@ -72,8 +72,8 @@ cd dsh-pet-to-family/dsh-pet
 # ② 安装依赖
 npm install
 
-# ③ 构建（完整 lib：tsdown → lib + 桌面共享核心 + 类型声明）
-npm run build       # 必须手动跑一次（克隆后 npm install 不再自动构建）
+# ③ 构建（仅在修改源码后需要；完整 lib：tsdown → lib + 桌面共享核心 + 类型声明）
+npm run build       # 已提交的 lib 可直接安装；改过 src/ 后再跑
 
 # ④ 安装到 DSH（file: 指向**插件目录**——上面 cd 进去的那一层，用构建好的 lib）
 #    --profile 填实际在用的那个：dsh web → web；
@@ -81,7 +81,7 @@ npm run build       # 必须手动跑一次（克隆后 npm install 不再自动
 dsh plugin --profile web add file:D:/path/to/dsh-pet-to-family/dsh-pet
 ```
 
-> 注：`npm run build`（即 `scripts/prepare.js`）才产出**完整可安装**的 lib——除 tsdown 构建外还构建桌面共享核心（`shared-core.js`）、生成类型声明并收敛发布 `files` 清单；裸 `tsdown` 构建会缺桌面运行时与类型。发布与打包（`npm publish` / `npm pack`）时由 `prepack` 自动调用它，克隆仓库后需手动跑一次。
+> 注：`npm run build`（即 `scripts/prepare.js`）才产出**完整可安装**的 lib——除 tsdown 构建外还构建桌面共享核心（`shared-core.js`）、生成类型声明并收敛发布 `files` 清单；裸 `tsdown` 构建会缺桌面运行时与类型。发布与打包（`npm publish` / `npm pack`）时由 `prepack` 自动调用它。本仓库已提交构建产物；修改 `src/` 后请重跑 `npm run build`，并把 `dsh-pet/lib/` 与 `dsh-pet/runtime/electron-helper/shared-core.js` 一起提交。
 
 ### 安装后你会看到什么
 
@@ -170,12 +170,12 @@ dsh plugin --profile web add file:D:/path/to/dsh-pet-to-family/dsh-pet
 连 DSH 都不用开：插件的宿主半边跑在伪 ctx 上，由一个本机 HTTP 服务接管路由（**路由表仍是插件那一份**）。
 
 ```sh
-npm install -g dsh-pet-to-family        # 必须 npm 装；dsh plugin add 装进 profile，bin 不在 PATH 上
+npm install -g dsh-pet-to-family        # npm 官方源；dsh plugin add 装进 profile，bin 不在 PATH 上
 dsh-pet-standalone            # http://127.0.0.1:3080/dsh-pet-7340/（bin 名保持兼容）（占用则顺延）
 dsh-pet-standalone --check    # 只体检
 dsh-pet-standalone --port 3100
 
-npm run build && npm run standalone   # 仓库里（先构建）
+npm run standalone   # 仓库里；已提交的 lib 可直接跑，改过源码后先 npm run build
 ```
 
 - **能用**：动画链、点击/拖拽/甩抛、右键菜单、多开、自定义动画与表情包、pet pack。
@@ -551,7 +551,7 @@ AI 提示词 → 绿幕视频 → 透明动画 → 插件，换角色、换动�
 │   │   ├── settings-window/ # 独立设置小窗入口（React IIFE）
 │   │   ├── shared/     # 双端共用纯逻辑（物理 / 菜单 / 取数）
 │   │   └── standalone/ # 独立模式 CLI（不依赖 DSH 直接跑桌宠）
-│   ├── lib/            # 构建产物（npm run build 生成，不入库）
+│   ├── lib/            # 构建产物（已入库，支持 GitHub 直装；改源码后重建）
 │   ├── runtime/        # 桌面模式运行壳（Electron 透明窗 / 独立设置进程）
 │   ├── assets/         # webm 动画 / preview GIF / 字体 / 图标 / config.jsonc 默认配置
 │   └── scripts/        # 构建、发布与开发脚本
@@ -560,7 +560,7 @@ AI 提示词 → 绿幕视频 → 透明动画 → 插件，换角色、换动�
 
 ## 💬 反馈与发版节奏
 
-欢迎提 [issue](https://github.com/PC2005-cloud/dsh-pet/issues) 与 PR——bug、体验问题随时反馈。**新功能请先开 issue** 说明使用场景，由维护者判断是否实现、以及放在插件本体还是作为第三方扩展，不要在确认前直接提交实现 PR。与桌宠本身关系不大、或实现特别复杂的功能，通常不会进本体，而是通过现有接口由第三方扩展实现。动手前也请先翻一眼 [提交记录](https://github.com/PC2005-cloud/dsh-pet/commits/main)，确认不是已经修掉的同款问题（有些问题可能已经在 `main` 上修好了，只是还没发版）。
+欢迎提 [issue](https://github.com/zi-O1/dsh-pet-to-family/issues) 与 PR——bug、体验问题随时反馈。**新功能请先开 issue** 说明使用场景，由维护者判断是否实现、以及放在插件本体还是作为第三方扩展，不要在确认前直接提交实现 PR。与桌宠本身关系不大、或实现特别复杂的功能，通常不会进本体，而是通过现有接口由第三方扩展实现。动手前也请先翻一眼 [提交记录](https://github.com/zi-O1/dsh-pet-to-family/commits/main)，确认不是已经修掉的同款问题（有些问题可能已经在 `main` 上修好了，只是还没发版）。
 
 - **小修不单独发版**：不影响使用的小 bug 与优化会**累计**到下一个版本一起发，避免版本更迭过于频繁。所以「`main` 上已经修了」不等于「你装的这版已经包含」——`latest` 没更新时，以 `main` 的提交记录为准。
 - **想立刻用上未发布的修复**：按上面的「从源码安装」把插件指向本地仓库即可；注意**宿主半侧**的代码改动要**重开 DSH** 才生效（浏览器半侧刷新页面即可）。
