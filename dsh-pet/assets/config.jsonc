@@ -300,7 +300,7 @@
   // balanceEnabled（是否启用余额功能：true=触发余额动画+显示余额气泡；false=该宠物完全禁用。
   //   必填布尔值，缺失即配置错误）、display（显示位置，必填四值之一：
   //   web=仅浏览器 overlay / desktop=仅桌面模式（Electron 透明窗）/ both=两者/ none=都不显示。
-  //   缺失按默认 both 处理并告警（兼容 ≤0.2.0 旧配置），写了非法值即配置错误；桌面模式渲染
+  //   缺失按默认 desktop 处理并告警（兼容 ≤0.2.0 旧配置），写了非法值即配置错误；桌面模式渲染
   //   display 含 desktop/both 的全部宠物，每只一个局部小窗）、
   // position（corner: 四角之一；marginX/marginY: 距所属角落偏移 px）、
   // whisperPrompt（可选：这只宠物自己的人设，写了取代条目顶层那份；不写/留空 = 跟随条目）
@@ -324,7 +324,7 @@
       // 余额/碎碎念/工作状态事件动画、点击回应与拖拽一律照常——用户主动触发的不受此限制。
       // 设置页有同名勾选框。改动后刷新或重启生效。
       "fixedEnabled": false,
-      "display": "both",
+      "display": "desktop",
       "position": {
         "corner": "top-right",
         "marginX": 24,

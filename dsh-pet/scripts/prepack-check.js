@@ -111,6 +111,16 @@ else fail('package.json missing dsh.bundle.patch');
 if (pkg.dsh?.client?.platform === 'web') ok('dsh.client.web declared');
 else fail('package.json missing dsh.client platform web');
 
+// 平台运行时包名必须与 helper-process.ts 的 bundledElectronPackageName() 拼法一致；
+// 漏一个平台就退回在线下载，发布前显式点名，避免“以为内置了其实没有”。
+const electronTargets = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-arm64', 'win32-x64'];
+const missingElectron = electronTargets.filter(
+  (target) => typeof pkg.optionalDependencies?.[`dsh-pet-electron-${target}`] !== 'string',
+);
+if (missingElectron.length === 0) ok(`optional Electron runtimes declared (${electronTargets.length})`);
+else
+  fail(`package.json missing optionalDependencies: ${missingElectron.map((t) => `dsh-pet-electron-${t}`).join(', ')}`);
+
 // 配图功能只读包内 assets/memes，漏发即整体失效。
 // scripts/prepare.js 每次发布都用硬编码白名单覆盖 package.json 的 files，
 // 只在 package.json 里加一行是无效的，故这里显式断言，防止再次静默漏发。
@@ -147,7 +157,21 @@ const walk = (dir) => {
     const p = join(dir, entry.name);
     if (entry.isDirectory()) {
       // 跳过不会进 npm 包的目录
-      if (!['node_modules', '.git', 'scripts', 'step01', 'step02', 'step03', 'preview'].includes(entry.name)) walk(p);
+      if (
+        ![
+          'node_modules',
+          '.git',
+          'scripts',
+          'step01',
+          'step02',
+          'step03',
+          'preview',
+          'dist-app',
+          'dist-electron',
+          '.smoke-app',
+        ].includes(entry.name)
+      )
+        walk(p);
     } else if (!entry.name.endsWith('.map')) {
       // 打包产物 tarball（npm pack 遗留）不计入自查口径
       if (!entry.name.endsWith('.tgz')) total += statSync(p).size; // sourcemap 不计

@@ -17,9 +17,11 @@ import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import {
+  BUNDLED_ELECTRON_PREFIX,
   HELPER_STABLE_MS,
   HELPER_STOP_GRACE_MS,
   HelperProcess,
+  bundledElectronPackageName,
   dshHomeDir,
   defaultElectronExe,
   ensureElectronDownload,
@@ -97,6 +99,18 @@ describe('defaultElectronExe —— 落地可执行文件路径', () => {
             : 'electron';
       assert.equal(defaultElectronExe(), join(dir, 'custom', 'electron', rel));
     });
+  });
+});
+
+describe('bundledElectronPackageName —— 平台可选包名', () => {
+  test('按 process.platform / process.arch 拼出 npm 可选包名', () => {
+    assert.equal(bundledElectronPackageName('darwin', 'arm64'), `${BUNDLED_ELECTRON_PREFIX}-darwin-arm64`);
+    assert.equal(bundledElectronPackageName('win32', 'x64'), 'dsh-pet-electron-win32-x64');
+    assert.equal(bundledElectronPackageName('linux', 'arm64'), 'dsh-pet-electron-linux-arm64');
+  });
+
+  test('默认参数跟随当前运行时', () => {
+    assert.equal(bundledElectronPackageName(), `dsh-pet-electron-${process.platform}-${process.arch}`);
   });
 });
 

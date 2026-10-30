@@ -49,6 +49,7 @@ describe('flattenConfigPets —— 成品 → 渲染列表的唯一填充点', (
       });
       const pets = flattenConfigPets(merged);
       assert.ok(pets.length > 0, '内置默认配置应至少有一只宠物');
+      assert.equal(pets[0]?.display, 'desktop', '新安装默认只显示在桌面');
       for (const p of pets) {
         for (const field of ENTRY_FIELDS) {
           assert.ok(p[field] !== undefined, `宠物「${String(p.id)}」缺条目级字段 ${field}`);

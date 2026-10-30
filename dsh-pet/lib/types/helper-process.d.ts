@@ -83,6 +83,27 @@ export declare function dshHomeDir(): string;
 export declare function electronLandingDir(): string;
 /** Electron 落地路径：$DSH_HOME/electron/<按平台的可执行文件>。 */
 export declare function defaultElectronExe(): string;
+/** 平台可选运行时包名前缀；实际包名追加 `-<platform>-<arch>`。 */
+export declare const BUNDLED_ELECTRON_PREFIX = "dsh-pet-electron";
+/** 当前平台对应的内置 Electron 可选包名。 */
+export declare function bundledElectronPackageName(platform?: NodeJS.Platform, arch?: NodeJS.Architecture): string;
+/** 一个已安装的内置 Electron 包：包名、版本与包内 electron.zip。 */
+export interface BundledElectronInfo {
+    packageName: string;
+    /** 可选包版本（= Electron 版本）；读不到时为空，仍可解压。 */
+    version?: string;
+    zip: string;
+}
+/**
+ * 查找当前平台的可选依赖包（dsh-pet-electron-<platform>-<arch>）。
+ *
+ * npm 只安装与当前 os/cpu 匹配的那一份，所以这里不需要按平台猜目录：包存在就用。
+ * 包内只放官方 electron.zip，首次启动再解压到 $DSH_HOME/electron，避免 npm 包解包时
+ * 处理 Electron.app 的符号链接与权限（npm tar 对 symlink 的保留行为并不统一）。
+ */
+export declare function bundledElectronInfo(): BundledElectronInfo | undefined;
+/** 内置 Electron 的 zip 路径；未安装可选包时返回 undefined。 */
+export declare function bundledElectronZip(): string | undefined;
 /** 进程内下载 Electron 的选项。 */
 export interface EnsureElectronOptions {
     /** Electron 版本号（默认 43.3.0，可被 DSH_PET_ELECTRON_VERSION 覆盖）。 */
@@ -98,6 +119,13 @@ export interface EnsureElectronOptions {
     onLog?: (event: ElectronDownloadLog) => void;
     /** 落盘日志出口（宿主注入的统一日志器，见 ./log-file）；不传则退回 console。 */
     logger?: LoggerLike;
+    /**
+     * 覆盖内置 zip 路径：`undefined` = 自动查找可选包，`null` = 禁用内置包只走下载。
+     * 测试注入用；正常调用不需要传。
+     */
+    bundledZip?: string | null;
+    /** 只解压内置包，失败也不联网下载（设置小窗等「现在就要」的调用方用）。 */
+    bundledOnly?: boolean;
 }
 /** 一条下载日志：`text` 给用户看；`level='warn'` = 失败路径；`done` = 本次下载已收尾（成功或失败）。 */
 export interface ElectronDownloadLog {

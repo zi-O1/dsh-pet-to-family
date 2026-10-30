@@ -104,6 +104,7 @@ import type { SoulCard, SoulState } from '../shared/soul';
 import { SETTINGS_SECTIONS } from '../shared/menu';
 import {
   HelperProcess,
+  bundledElectronZip,
   defaultElectronExe,
   dshHomeDir,
   electronLandingDir,
@@ -1383,7 +1384,12 @@ export function apply(ctx: any): void {
       `[dsh-pet] 未找到 Electron 可执行文件：DSH_HOME=${dshHomeDir()}，查找路径=${defaultElectronExe()}` +
         `，DSH_PET_ELECTRON_PATH=${process.env.DSH_PET_ELECTRON_PATH ?? '(未设置)'}`,
     );
-    log.warn(`[dsh-pet] 开始下载 Electron 到 ${defaultElectronExe()} ...`);
+    const bundled = bundledElectronZip();
+    if (bundled) {
+      log.info(`[dsh-pet] 使用内置 Electron（${bundled}），首次启动解压到 ${defaultElectronExe()} ...`);
+    } else {
+      log.warn(`[dsh-pet] 开始下载 Electron 到 ${defaultElectronExe()} ...`);
+    }
     electronEnsure = ensureElectronDownload({
       // 下载全过程写进工作状态气泡（用户没有控制台，只能靠它看进度与失败原因）
       onLog: ({ text, level, done }) =>
@@ -1840,7 +1846,11 @@ export function apply(ctx: any): void {
       const lang = parsed.lang === 'en' ? 'en' : 'zh';
       const port = typeof ctx.webServer?.port === 'number' ? ctx.webServer.port : 0;
       if (!port) return { kind: 'json', status: 200, obj: { ok: false, reason: 'server-not-ready' } };
-      const electronPath = resolveElectronPath() ?? (inProcessHost ? process.execPath : undefined);
+      let electronPath = resolveElectronPath() ?? (inProcessHost ? process.execPath : undefined);
+      if (!electronPath && bundledElectronZip()) {
+        // 内置包已在本地：只解压，不联网下载。设置小窗是用户主动点的，值得等这一下解压。
+        electronPath = await ensureElectronDownload({ logger: log, bundledOnly: true });
+      }
       if (!electronPath) return { kind: 'json', status: 200, obj: { ok: false, reason: 'electron-missing' } };
       const script = join(PACKAGE_ROOT, 'runtime/electron-helper/settings-window-main.js');
       if (!existsSync(script)) {

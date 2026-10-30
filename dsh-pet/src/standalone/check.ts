@@ -11,6 +11,7 @@ import { join } from 'node:path';
 
 import { flattenPetList, readAllConfig } from '../host/config';
 import {
+  bundledElectronInfo,
   dshHomeDir,
   electronLandingDir,
   hasGraphicalDisplay,
@@ -39,6 +40,12 @@ export function runCheck(logger: StandaloneLogger): number {
   const home = dshHomeDir();
   const paths = configPathsFor(packageRoot, home);
   const electron = resolveElectronPath();
+  const bundled = bundledElectronInfo();
+  const electronLine =
+    electron ??
+    (bundled
+      ? `内置包已安装（${bundled.packageName}@${bundled.version ?? 'unknown'}），首次启动解压到 ${electronLandingDir()}`
+      : `未发现（首次运行会下载到 ${electronLandingDir()}）`);
   const lines: string[] = [
     `Node            ${process.version}（${process.platform}-${process.arch}）`,
     `插件            dsh-pet-to-family@${packageVersion(packageRoot)}  ${packageRoot}`,
@@ -46,7 +53,7 @@ export function runCheck(logger: StandaloneLogger): number {
     `用户配置        ${paths.userFile}${existsSync(paths.userFile) ? '' : '（不存在 → 用包内默认）'}`,
     `文件宠物目录    ${paths.petDir}${existsSync(paths.petDir) ? '' : '（不存在）'}`,
     `内置默认配置    ${paths.defaultFile}${existsSync(paths.defaultFile) ? '' : '  ✗ 缺失'}`,
-    `Electron        ${electron ?? `未发现（首次运行会下载到 ${electronLandingDir()}）`}`,
+    `Electron        ${electronLine}`,
     `图形显示环境    ${hasGraphicalDisplay() ? '有' : '无（桌面小窗会跳过；远程桌面/Xvfb 可设 DSH_PET_DESKTOP_FORCE=1）'}`,
   ];
 

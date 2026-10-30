@@ -32,13 +32,13 @@ AI 生成动画的配方     源视频 → 透明动画的管线    运行在 DS
 
 ### 🪟 桌面应用（Electron 版）
 
-直接在应用内「插件管理」页的安装框里填 `dsh-pet-to-family`（当前 npm 正式版 `0.5.1`），不用开终端；需要在终端里操作插件时，用桌面应用自带的那份 CLI。
+直接在应用内「插件管理」页的安装框里填 `dsh-pet-to-family`（当前 npm 正式版 `0.6.0`），不用开终端；需要在终端里操作插件时，用桌面应用自带的那份 CLI。
 
 也可以直接填 GitHub 仓库地址 `https://github.com/zi-O1/dsh-pet-to-family`（仓库根的兼容包指向 `dsh-pet/` 里已入库的构建产物，安装时不需要再构建）；如果安装器只认子目录，用 `https://github.com/zi-O1/dsh-pet-to-family#path:/dsh-pet`。安装源选 **npm 官方源**（`https://registry.npmjs.org/`）。
 
 > 已安装旧包 `dsh-pet` 的 profile，请先在插件管理里卸载旧包，再安装 `dsh-pet-to-family`；用户数据仍在 `$DSH_HOME/dsh-pet/`，不会被清空。
 >
-> 当前 npm 正式版：`0.5.1`（`latest`），包含原生微信 / QQ 接入、多机器人和 DSH session 模式。
+> 当前 npm 正式版：`0.6.0`（`latest`），包含内置 Electron 平台包、默认仅桌面、原生微信 / QQ 接入、多机器人和 DSH session 模式。
 >
 > 维护者发新版本：`cd dsh-pet && npm publish --access public`（`publishConfig` 已固定为 npm 官方源）。
 
@@ -87,27 +87,18 @@ dsh plugin --profile web add file:D:/path/to/dsh-pet-to-family/dsh-pet
 
 ### 安装后你会看到什么
 
-默认配置是 `display: "both"`（浏览器与桌面都显示），所以重开 DSH 之后会依次出现两处，不必手动开：
+新安装的默认配置是 `display: "desktop"`（只在桌面显示，浏览器里默认不出现），并保留 `confineToScreen: false`（可以跨屏活动）。已有用户配置不会被强制迁移：之前写过 `display: "both"` 的仍然是两边都显示。
 
-1. **浏览器端先出现。** 宠物落在界面右上角（默认角落，设置页可改），此时桌面上还是空的。
-2. **宿主自动补桌面运行时。** 本机没有 Electron 时，插件会自己下载一份（落在 `~/.dsh/electron`，同一版本只下一次；默认走 npmmirror 镜像）。进度直接打在 DSH 的控制台里，形如：
-
-   ```
-   [dsh-pet] Electron not found, downloading to <用户目录>/.dsh/electron/electron.exe ...
-   [dsh-pet] Electron not found, downloading v43.3.0 (win32-x64) ...
-   [dsh-pet] downloading 42.3MB / 104.1MB
-   [dsh-pet] download complete (37.5s), extracting to <用户目录>/.dsh/electron ...
-   ```
-
-   这一步在**后台**进行，浏览器里的宠物照常可用；要等多久取决于网速（几十秒到几分钟），期间不用管它。
-3. **桌面端随后出现。** 解压完自动拉起桌面 Helper，同一只宠物以透明窗形式落到桌面上——**此时屏幕上一共两只**：浏览器里一只、桌面上那只，共用同一份配置与同一套动画。
-4. **想只留一只。** 两条路都行，改完即时生效：
+1. **npm 安装时带上当前平台的 Electron。** 主包通过可选依赖 `dsh-pet-electron-<platform>-<arch>` 发布官方 Electron 运行时；npm / pnpm 只会安装与当前系统、架构匹配的那一份（压缩后约 120MB），不需要再去 GitHub 或镜像站下载。
+2. **首次启动只解压，不联网。** 插件把包内 `electron.zip` 解压到 `~/.dsh/electron`（约 350MB，之后复用），然后拉起桌面 Helper。桌面上会出现透明置顶小窗，浏览器里默认没有宠物。
+3. **平台没有内置包时才回退在线下载。** 例如可选依赖被安装器跳过、或系统/架构暂未覆盖时，才会走原来的 npmmirror 下载；`DSH_PET_ELECTRON_PATH`、`DSH_PET_ELECTRON_MIRROR`、`DSH_PET_ELECTRON_VERSION` 仍然可用。
+4. **想让浏览器也显示。** 两条路都行，改完即时生效：
    - **设置页**：选中该宠物 →「显示位置」下拉框 → 仅浏览器 / 仅桌面 / 两者都显示 / 都不显示；
    - **宠物右键**：菜单里的「显示位置」子菜单 → 仅网页 / 仅桌面 / 两者 / 都不（不用回设置页）。
 
 想改人格、长期记忆或关系事件：右键宠物 →「桌宠设置」→「人格灵魂色彩」。桌面端会打开独立设置小窗，不打断 DSH 主界面；设置分组也可以在右键菜单里直接选。
 
-> 已经装过 Electron（或设了 `DSH_PET_ELECTRON_PATH` 指向现成可执行文件）时，第 2 步会跳过，桌面端几乎立刻出现。下载失败**只影响桌面模式**：控制台会给出提示，浏览器里的宠物不受影响；网络受限时可以设 `DSH_PET_ELECTRON_MIRROR` 换镜像、`DSH_PET_ELECTRON_VERSION` 指定版本，重启后再试。
+> 桌面运行时缺失或解压失败**只影响桌面模式**：控制台会给出提示；此时可以设 `DSH_PET_ELECTRON_PATH` 指向现成可执行文件，或手动运行 `cd dsh-pet && npm run ensure:electron`。主包本身不携带 Electron 二进制，平台包由 `npm run electron:packages` 生成并单独发布。
 
 ## 插件功能
 
@@ -154,7 +145,7 @@ dsh plugin --profile web add file:D:/path/to/dsh-pet-to-family/dsh-pet
 
 ## 兼容性
 
-- **操作系统**：Windows / Linux / macOS 三端均可运行——浏览器 overlay 与桌面模式（Electron 透明置顶窗）行为完全一致；Electron 按平台自动探测/下载（`electron.exe` / `Electron.app` / linux 单文件），无需手动安装
+- **操作系统**：Windows / Linux / macOS 三端均可运行——浏览器 overlay 与桌面模式（Electron 透明置顶窗）行为完全一致；Electron 按平台内置为可选依赖（`electron.exe` / `Electron.app` / linux 单文件），缺失时自动回退下载，无需手动安装
 - **无头 / 无桌面环境**：支持 Linux headless 等无图形会话——桌面模式自动检测显示环境（Linux 无 `DISPLAY` / `WAYLAND_DISPLAY` 时判定无显示、跳过桌面窗口，仅日志告警），浏览器 overlay 不受影响
 - **浏览器**：浏览器 overlay 兼容 **Chromium 内核（Chrome / Edge 等）与 Firefox**——透明动画依赖 VP9-Alpha webm，三者均已实测透明确认；**不支持 Safari**（macOS 不认 webm alpha，透明渲染为黑底）——macOS 用 `.mov` 素材（GitHub Release `assets-mov`），下载放入即可（见「②.5 Safari/HEVC 兼容素材」）
 - **多显示器**：支持多屏环境——跨屏漫游/抛掷以各屏工作区为界，异构缩放（各屏 DPI 不同）、任务栏条带、屏幕之间空洞均正确判定（横屏 / 竖屏 / 上下叠放皆可）；设置页「锁定在当前屏幕」可让宠物（抛掷与漫游）只在当前所在那块屏内活动
@@ -163,8 +154,8 @@ dsh plugin --profile web add file:D:/path/to/dsh-pet-to-family/dsh-pet
 
 插件内建**双模式**：安装后默认会拉起**独立透明置顶小窗**——为每只桌面宠物各开一个局部窗口（跟随宠物移动，**不铺满屏幕**），与浏览器 overlay 严格同行为、功能完全对齐：
 
-- **依赖**：首次启动自动探测/下载 Electron（`~/.dsh/electron/`，也可 `cd dsh-pet && npm run ensure:electron` 手动触发）；缺失时仅日志告警，不影响浏览器形态
-- **开关 = 每只宠物的必填字段 `display`**：`web` = 仅浏览器 / `desktop` = 仅桌面 / `both` = 两者 / `none` = 都不显示；桌面模式渲染 display 含 desktop 的**全部**宠物（多开同屏，与浏览器一致），设置页「桌宠配置」编辑即时生效
+- **依赖**：npm 安装时按平台安装内置 Electron 可选包，首次启动解压到 `~/.dsh/electron/`；没有匹配的内置包时才在线下载（也可 `cd dsh-pet && npm run ensure:electron` 手动触发）；缺失时仅日志告警，不影响浏览器形态
+- **开关 = 每只宠物的必填字段 `display`**：`web` = 仅浏览器 / `desktop` = 仅桌面（新安装默认）/ `both` = 两者 / `none` = 都不显示；桌面模式渲染 display 含 desktop 的**全部**宠物（多开同屏，与浏览器一致），设置页「桌宠配置」编辑即时生效
 - 桌面端数据走独立进程管道，不依赖 DSH 的 HTTP 路由，不受 web 访问闸门影响
 - 本地调试：`cd dsh-pet && npm run start:desktop -- http://127.0.0.1:3080/dsh-pet-7340/config`（无宿主时自动回落 HTTP 路径）
 
@@ -208,7 +199,7 @@ npm run standalone   # 仓库里；已提交的 lib 可直接跑，改过源码�
 
 ### 原生微信 / QQ（推荐，不依赖 dsh-im）
 
-> 本节属于 **0.5.0**；如果插件管理里显示 0.4.1 或更旧，说明还是旧包，请在插件管理里升级到 0.5.1。
+> 本节属于 **0.5.0**；如果插件管理里显示 0.4.1 或更旧，说明还是旧包，请在插件管理里升级到 0.6.0。
 
 插件现在自带微信 iLink 与 QQ 官方机器人连接，不需要安装或启用 dsh-im。入口仍在「桌宠设置 → 消息接入（微信 / QQ）」。
 
@@ -449,7 +440,7 @@ if (data.ok && data.reply) {
 
 | 现象 | 原因 / 处理 |
 | --- | --- |
-| 设置页没有「消息接入」 | 装的是旧版（0.4.1 及以前）。升级到 0.5.1，完全重启 DSH |
+| 设置页没有「消息接入」 | 装的是旧版（0.4.1 及以前）。升级到 0.6.0，完全重启 DSH |
 | HTTP 401 `unauthorized` | token 没带、带错，或设置里重新生成后桥接器还在用旧 token |
 | HTTP 403 `not-whitelisted` | `platform + senderId` 与白名单不完全一致；注意 id 不是昵称 |
 | HTTP 403 `group-not-allowed` | 群聊消息带了 `isGroup: true`，但设置页没开「允许群聊触发」 |

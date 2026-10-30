@@ -12,7 +12,7 @@ DSH 设置 → 「桌宠配置」：
 
 - **大小**：宽度 px（高度自动 = 宽度 × 9/16）
 - **位置**：四角（corner）＋ 水平/垂直边距（marginX / marginY）
-- **显示位置**（display）：web=仅浏览器 / desktop=仅桌面 / both=两者都显示 / none=都不显示
+- **显示位置**（display）：web=仅浏览器 / desktop=仅桌面（新安装默认）/ both=两者都显示 / none=都不显示
 - **余额功能**：勾选后该宠物才会触发余额动画并显示余额气泡（服务商未登记余额接口时改为弹文字说明气泡）
 - **多开**：添加/删除宠物，每只宠物独立 id、大小、位置
 - **物理参数**：拖拽抛掷手感（重力 / 弹性 / 地面摩擦 / 总力度 / 顶部反弹 / 宠物互撞）也能在设置页图形化改，不用去手改配置文件
@@ -26,11 +26,12 @@ DSH 设置 → 「桌宠配置」：
 
 ```jsonc
 "pets": [
-  { "id": "main", "size": 462, "balanceEnabled": true, "display": "both", "position": { "corner": "top-right", "marginX": 24, "marginY": 100 } }
+  { "id": "main", "size": 462, "balanceEnabled": true, "display": "desktop", "position": { "corner": "top-right", "marginX": 24, "marginY": 100 } }
 ]
 ```
 
 - 每只宠物：`id`（标识）／`size`（宽度 px）／`balanceEnabled`（是否启用余额功能，必填布尔）／`display`（web/desktop/both/none，必填，见上）／`position`（corner 四角之一 + marginX/marginY 边距）
+- **新安装默认 `display: "desktop"`**（只在桌面显示，浏览器默认不出现）；已有用户配置文件不会被强制迁移，之前写的 `both` / `web` 原样生效。
 - 余额刷新周期：`eventsRefreshSec.balance`（秒）——余额数据刷新与余额动画触发的间隔，启动时立即触发一次，之后按此周期循环（默认 1800）
 - 设置页的修改保存到用户层 `$DSH_HOME/dsh-pet/main-config.jsonc`（**完整宠物列表**，覆盖包内默认）；「同步」把包内 `config.jsonc` 原文整份写入该文件（等价于回落默认，但文件保留下来、可直接编辑）
 
@@ -250,7 +251,7 @@ $DSH_HOME/dsh-pet/
       "id": "pig1",              // 实例 id（可多只；不必等于文件名前缀）
       "size": 420,
       "balanceEnabled": true,
-      "display": "both",        // web / desktop / both / none
+      "display": "desktop",     // web / desktop / both / none
       "position": { "corner": "top-right", "marginX": 24, "marginY": 100 }
     },
     { "id": "pig2", "size": 360, "balanceEnabled": false, "display": "web", "position": { "corner": "top-left", "marginX": 24, "marginY": 100 } }

@@ -11,7 +11,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
@@ -79,6 +79,15 @@ function isNonEmptyFile(path: string): boolean {
   try {
     const stat = statSync(path);
     return stat.isFile() && stat.size > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** 只删真正的目录：同名普通文件是用户/环境设置的障碍，删除它反而掩盖了权限/路径错误。 */
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
   } catch {
     return false;
   }
@@ -162,6 +171,76 @@ export function defaultElectronExe(): string {
   return join(electronLandingDir(), ELECTRON_REL);
 }
 
+/** 平台可选运行时包名前缀；实际包名追加 `-<platform>-<arch>`。 */
+export const BUNDLED_ELECTRON_PREFIX = 'dsh-pet-electron';
+
+/** 当前平台对应的内置 Electron 可选包名。 */
+export function bundledElectronPackageName(platform = process.platform, arch = process.arch): string {
+  return `${BUNDLED_ELECTRON_PREFIX}-${platform}-${arch}`;
+}
+
+/** 一个已安装的内置 Electron 包：包名、版本与包内 electron.zip。 */
+export interface BundledElectronInfo {
+  packageName: string;
+  /** 可选包版本（= Electron 版本）；读不到时为空，仍可解压。 */
+  version?: string;
+  zip: string;
+}
+
+/**
+ * 查找当前平台的可选依赖包（dsh-pet-electron-<platform>-<arch>）。
+ *
+ * npm 只安装与当前 os/cpu 匹配的那一份，所以这里不需要按平台猜目录：包存在就用。
+ * 包内只放官方 electron.zip，首次启动再解压到 $DSH_HOME/electron，避免 npm 包解包时
+ * 处理 Electron.app 的符号链接与权限（npm tar 对 symlink 的保留行为并不统一）。
+ */
+export function bundledElectronInfo(): BundledElectronInfo | undefined {
+  try {
+    const packageName = bundledElectronPackageName();
+    const packageJsonPath = require.resolve(`${packageName}/package.json`);
+    const zip = join(dirname(packageJsonPath), 'electron.zip');
+    if (!isNonEmptyFile(zip)) return undefined;
+    let version: string | undefined;
+    try {
+      const parsed = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as { version?: unknown };
+      if (typeof parsed.version === 'string') version = parsed.version;
+    } catch {
+      /* 版本只是日志与覆盖判断，读不到不影响解压 */
+    }
+    return { packageName, version, zip };
+  } catch {
+    // 可选依赖被 --no-optional / 平台不匹配跳过时走在线下载兜底。
+    return undefined;
+  }
+}
+
+/** 内置 Electron 的 zip 路径；未安装可选包时返回 undefined。 */
+export function bundledElectronZip(): string | undefined {
+  return bundledElectronInfo()?.zip;
+}
+
+/** 把内置 zip 解压到临时目录，校验可执行文件后再原子替换落地目录。 */
+async function extractBundledElectron(zipPath: string, targetDir: string): Promise<string> {
+  const tempDir = `${targetDir}.bundled-${process.pid}-${Date.now()}`;
+  try {
+    mkdirSync(tempDir, { recursive: true });
+    const { default: extract } = await import('@electron-internal/extract-zip');
+    await extract(zipPath, { dir: tempDir });
+    if (!isNonEmptyFile(join(tempDir, ELECTRON_REL))) {
+      throw new Error(`bundled Electron zip has no ${ELECTRON_REL}`);
+    }
+    // 旧目录可能来自一次失败的下载/解压；新运行时已完整解出后再替换，避免中途把可用目录删坏。
+    if (isDirectory(targetDir)) rmSync(targetDir, { recursive: true, force: true });
+    renameSync(tempDir, targetDir);
+    const exe = defaultElectronExe();
+    if (!isNonEmptyFile(exe)) throw new Error(`bundled Electron extracted, but ${ELECTRON_REL} is missing`);
+    return exe;
+  } catch (error) {
+    rmSync(tempDir, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 /** 进程内下载 Electron 的选项。 */
 export interface EnsureElectronOptions {
   /** Electron 版本号（默认 43.3.0，可被 DSH_PET_ELECTRON_VERSION 覆盖）。 */
@@ -177,6 +256,13 @@ export interface EnsureElectronOptions {
   onLog?: (event: ElectronDownloadLog) => void;
   /** 落盘日志出口（宿主注入的统一日志器，见 ./log-file）；不传则退回 console。 */
   logger?: LoggerLike;
+  /**
+   * 覆盖内置 zip 路径：`undefined` = 自动查找可选包，`null` = 禁用内置包只走下载。
+   * 测试注入用；正常调用不需要传。
+   */
+  bundledZip?: string | null;
+  /** 只解压内置包，失败也不联网下载（设置小窗等「现在就要」的调用方用）。 */
+  bundledOnly?: boolean;
 }
 
 /** 一条下载日志：`text` 给用户看；`level='warn'` = 失败路径；`done` = 本次下载已收尾（成功或失败）。 */
@@ -217,8 +303,46 @@ export async function ensureElectronDownload(options: EnsureElectronOptions = {}
   };
   const startedAt = Date.now();
 
+  const bundled =
+    options.bundledZip === null
+      ? undefined
+      : options.bundledZip
+        ? { packageName: 'injected', version: undefined, zip: options.bundledZip }
+        : bundledElectronInfo();
+  const useBundled = bundled && (!bundled.version || bundled.version === version) ? bundled : undefined;
+  if (bundled && !useBundled) {
+    log(`bundled Electron ${bundled.version} skipped: requested ${version}`);
+  }
+  if (useBundled) {
+    info(`Bundled Electron ${useBundled.version ?? ''} found: ${useBundled.zip}`, '发现内置 Electron，正在解压');
+    try {
+      const ready = await extractBundledElectron(useBundled.zip, targetDir);
+      const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
+      info(`bundled Electron ready in ${seconds}s: ${ready}`, `内置 Electron 就绪（${seconds}s），正在启动桌宠`, true);
+      return ready;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      warn(`bundled Electron extract failed: ${reason}`);
+      options.onLog?.({ text: '内置 Electron 解压失败，尝试在线下载', level: 'warn', done: false });
+      if (options.bundledOnly) {
+        fail(`bundled Electron unavailable: ${reason}`, `内置 Electron 不可用：${reason}`);
+        return undefined;
+      }
+    }
+  } else if (options.bundledOnly) {
+    fail('bundled Electron unavailable', '没有可用的内置 Electron');
+    return undefined;
+  }
+
   if (existsSync(exe)) {
     info(`Electron cache is empty or not a regular file: ${exe}`, 'Electron 缓存无效，准备重新下载');
+  } else if (isDirectory(targetDir)) {
+    // 上次下载/解压留下的半成品会让 extract-zip 撞到同名目录；可执行文件已判定不可用，清掉重来。
+    try {
+      rmSync(targetDir, { recursive: true, force: true });
+    } catch {
+      /* 清不掉就继续试，解压失败会进 catch 降级 */
+    }
   }
   info(`Electron not found, downloading v${version} (${PLAT}-${process.arch}) ...`, `正在下载 Electron ${version}`);
 

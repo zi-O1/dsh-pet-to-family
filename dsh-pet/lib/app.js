@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import * as fs$3 from "node:fs";
 import * as fs$2 from "node:fs";
 import * as fs$1 from "node:fs";
-import { appendFileSync, chmodSync, closeSync, constants, createReadStream, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, closeSync, constants, createReadStream, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import * as crypto$3 from "node:crypto";
 import * as crypto$2 from "node:crypto";
 import * as crypto$1 from "node:crypto";
@@ -1381,6 +1381,14 @@ function isNonEmptyFile(path$4) {
 		return false;
 	}
 }
+/** 只删真正的目录：同名普通文件是用户/环境设置的障碍，删除它反而掩盖了权限/路径错误。 */
+function isDirectory(path$4) {
+	try {
+		return statSync(path$4).isDirectory();
+	} catch {
+		return false;
+	}
+}
 function resolveElectronPath(candidates = []) {
 	const seen = new Set();
 	const list = [];
@@ -1417,6 +1425,57 @@ function electronLandingDir() {
 function defaultElectronExe() {
 	return join(electronLandingDir(), ELECTRON_REL);
 }
+const BUNDLED_ELECTRON_PREFIX = "dsh-pet-electron";
+function bundledElectronPackageName(platform = process.platform, arch = process.arch) {
+	return `${BUNDLED_ELECTRON_PREFIX}-${platform}-${arch}`;
+}
+function bundledElectronInfo() {
+	try {
+		const packageName = bundledElectronPackageName();
+		const packageJsonPath = require$1.resolve(`${packageName}/package.json`);
+		const zip = join(dirname(packageJsonPath), "electron.zip");
+		if (!isNonEmptyFile(zip)) return void 0;
+		let version$1;
+		try {
+			const parsed = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+			if (typeof parsed.version === "string") version$1 = parsed.version;
+		} catch {}
+		return {
+			packageName,
+			version: version$1,
+			zip
+		};
+	} catch {
+		return void 0;
+	}
+}
+function bundledElectronZip() {
+	return bundledElectronInfo()?.zip;
+}
+/** 把内置 zip 解压到临时目录，校验可执行文件后再原子替换落地目录。 */
+async function extractBundledElectron(zipPath, targetDir) {
+	const tempDir = `${targetDir}.bundled-${process.pid}-${Date.now()}`;
+	try {
+		mkdirSync(tempDir, { recursive: true });
+		const { default: extract } = await import("@electron-internal/extract-zip");
+		await extract(zipPath, { dir: tempDir });
+		if (!isNonEmptyFile(join(tempDir, ELECTRON_REL))) throw new Error(`bundled Electron zip has no ${ELECTRON_REL}`);
+		if (isDirectory(targetDir)) rmSync(targetDir, {
+			recursive: true,
+			force: true
+		});
+		renameSync(tempDir, targetDir);
+		const exe = defaultElectronExe();
+		if (!isNonEmptyFile(exe)) throw new Error(`bundled Electron extracted, but ${ELECTRON_REL} is missing`);
+		return exe;
+	} catch (error$1) {
+		rmSync(tempDir, {
+			recursive: true,
+			force: true
+		});
+		throw error$1;
+	}
+}
 async function ensureElectronDownload(options = {}) {
 	const version$1 = options.version || process.env.DSH_PET_ELECTRON_VERSION || "43.3.0";
 	const mirror = options.mirror || process.env.DSH_PET_ELECTRON_MIRROR || "https://npmmirror.com/mirrors/electron/";
@@ -1444,7 +1503,44 @@ async function ensureElectronDownload(options = {}) {
 		});
 	};
 	const startedAt = Date.now();
+	const bundled = options.bundledZip === null ? void 0 : options.bundledZip ? {
+		packageName: "injected",
+		version: void 0,
+		zip: options.bundledZip
+	} : bundledElectronInfo();
+	const useBundled = bundled && (!bundled.version || bundled.version === version$1) ? bundled : void 0;
+	if (bundled && !useBundled) log$1(`bundled Electron ${bundled.version} skipped: requested ${version$1}`);
+	if (useBundled) {
+		info(`Bundled Electron ${useBundled.version ?? ""} found: ${useBundled.zip}`, "发现内置 Electron，正在解压");
+		try {
+			const ready = await extractBundledElectron(useBundled.zip, targetDir);
+			const seconds = ((Date.now() - startedAt) / 1e3).toFixed(1);
+			info(`bundled Electron ready in ${seconds}s: ${ready}`, `内置 Electron 就绪（${seconds}s），正在启动桌宠`, true);
+			return ready;
+		} catch (error$1) {
+			const reason = error$1 instanceof Error ? error$1.message : String(error$1);
+			warn(`bundled Electron extract failed: ${reason}`);
+			options.onLog?.({
+				text: "内置 Electron 解压失败，尝试在线下载",
+				level: "warn",
+				done: false
+			});
+			if (options.bundledOnly) {
+				fail(`bundled Electron unavailable: ${reason}`, `内置 Electron 不可用：${reason}`);
+				return void 0;
+			}
+		}
+	} else if (options.bundledOnly) {
+		fail("bundled Electron unavailable", "没有可用的内置 Electron");
+		return void 0;
+	}
 	if (existsSync(exe)) info(`Electron cache is empty or not a regular file: ${exe}`, "Electron 缓存无效，准备重新下载");
+	else if (isDirectory(targetDir)) try {
+		rmSync(targetDir, {
+			recursive: true,
+			force: true
+		});
+	} catch {}
 	info(`Electron not found, downloading v${version$1} (${PLAT}-${process.arch}) ...`, `正在下载 Electron ${version$1}`);
 	try {
 		mkdirSync(targetDir, { recursive: true });
@@ -19270,7 +19366,9 @@ function apply(ctx) {
 			return;
 		}
 		log$1.warn(`[dsh-pet] 未找到 Electron 可执行文件：DSH_HOME=${dshHomeDir()}，查找路径=${defaultElectronExe()}，DSH_PET_ELECTRON_PATH=${process.env.DSH_PET_ELECTRON_PATH ?? "(未设置)"}`);
-		log$1.warn(`[dsh-pet] 开始下载 Electron 到 ${defaultElectronExe()} ...`);
+		const bundled = bundledElectronZip();
+		if (bundled) log$1.info(`[dsh-pet] 使用内置 Electron（${bundled}），首次启动解压到 ${defaultElectronExe()} ...`);
+		else log$1.warn(`[dsh-pet] 开始下载 Electron 到 ${defaultElectronExe()} ...`);
 		electronEnsure = ensureElectronDownload({
 			onLog: ({ text: text$3, level, done }) => reportDownload(text$3, level === "warn" ? "error" : done ? "success" : "working", done),
 			logger: log$1
@@ -19744,7 +19842,11 @@ function apply(ctx) {
 					reason: "server-not-ready"
 				}
 			};
-			const electronPath = resolveElectronPath() ?? (inProcessHost ? process.execPath : void 0);
+			let electronPath = resolveElectronPath() ?? (inProcessHost ? process.execPath : void 0);
+			if (!electronPath && bundledElectronZip()) electronPath = await ensureElectronDownload({
+				logger: log$1,
+				bundledOnly: true
+			});
 			if (!electronPath) return {
 				kind: "json",
 				status: 200,

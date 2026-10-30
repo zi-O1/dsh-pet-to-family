@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { appendFileSync, chmodSync, closeSync, constants, createReadStream, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, closeSync, constants, createReadStream, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, normalize, resolve, sep } from "node:path";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { appendFile, copyFile, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
@@ -1343,6 +1343,14 @@ function isNonEmptyFile(path) {
 		return false;
 	}
 }
+/** 只删真正的目录：同名普通文件是用户/环境设置的障碍，删除它反而掩盖了权限/路径错误。 */
+function isDirectory(path) {
+	try {
+		return statSync(path).isDirectory();
+	} catch {
+		return false;
+	}
+}
 function resolveElectronPath(candidates = []) {
 	const seen = new Set();
 	const list = [];
@@ -1379,6 +1387,57 @@ function electronLandingDir() {
 function defaultElectronExe() {
 	return join(electronLandingDir(), ELECTRON_REL);
 }
+const BUNDLED_ELECTRON_PREFIX = "dsh-pet-electron";
+function bundledElectronPackageName(platform = process.platform, arch = process.arch) {
+	return `${BUNDLED_ELECTRON_PREFIX}-${platform}-${arch}`;
+}
+function bundledElectronInfo() {
+	try {
+		const packageName = bundledElectronPackageName();
+		const packageJsonPath = require.resolve(`${packageName}/package.json`);
+		const zip = join(dirname(packageJsonPath), "electron.zip");
+		if (!isNonEmptyFile(zip)) return void 0;
+		let version;
+		try {
+			const parsed = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+			if (typeof parsed.version === "string") version = parsed.version;
+		} catch {}
+		return {
+			packageName,
+			version,
+			zip
+		};
+	} catch {
+		return void 0;
+	}
+}
+function bundledElectronZip() {
+	return bundledElectronInfo()?.zip;
+}
+/** 把内置 zip 解压到临时目录，校验可执行文件后再原子替换落地目录。 */
+async function extractBundledElectron(zipPath, targetDir) {
+	const tempDir = `${targetDir}.bundled-${process.pid}-${Date.now()}`;
+	try {
+		mkdirSync(tempDir, { recursive: true });
+		const { default: extract } = await import("@electron-internal/extract-zip");
+		await extract(zipPath, { dir: tempDir });
+		if (!isNonEmptyFile(join(tempDir, ELECTRON_REL))) throw new Error(`bundled Electron zip has no ${ELECTRON_REL}`);
+		if (isDirectory(targetDir)) rmSync(targetDir, {
+			recursive: true,
+			force: true
+		});
+		renameSync(tempDir, targetDir);
+		const exe = defaultElectronExe();
+		if (!isNonEmptyFile(exe)) throw new Error(`bundled Electron extracted, but ${ELECTRON_REL} is missing`);
+		return exe;
+	} catch (error) {
+		rmSync(tempDir, {
+			recursive: true,
+			force: true
+		});
+		throw error;
+	}
+}
 async function ensureElectronDownload(options = {}) {
 	const version = options.version || process.env.DSH_PET_ELECTRON_VERSION || "43.3.0";
 	const mirror = options.mirror || process.env.DSH_PET_ELECTRON_MIRROR || "https://npmmirror.com/mirrors/electron/";
@@ -1406,7 +1465,44 @@ async function ensureElectronDownload(options = {}) {
 		});
 	};
 	const startedAt = Date.now();
+	const bundled = options.bundledZip === null ? void 0 : options.bundledZip ? {
+		packageName: "injected",
+		version: void 0,
+		zip: options.bundledZip
+	} : bundledElectronInfo();
+	const useBundled = bundled && (!bundled.version || bundled.version === version) ? bundled : void 0;
+	if (bundled && !useBundled) log(`bundled Electron ${bundled.version} skipped: requested ${version}`);
+	if (useBundled) {
+		info(`Bundled Electron ${useBundled.version ?? ""} found: ${useBundled.zip}`, "发现内置 Electron，正在解压");
+		try {
+			const ready = await extractBundledElectron(useBundled.zip, targetDir);
+			const seconds = ((Date.now() - startedAt) / 1e3).toFixed(1);
+			info(`bundled Electron ready in ${seconds}s: ${ready}`, `内置 Electron 就绪（${seconds}s），正在启动桌宠`, true);
+			return ready;
+		} catch (error) {
+			const reason = error instanceof Error ? error.message : String(error);
+			warn(`bundled Electron extract failed: ${reason}`);
+			options.onLog?.({
+				text: "内置 Electron 解压失败，尝试在线下载",
+				level: "warn",
+				done: false
+			});
+			if (options.bundledOnly) {
+				fail$1(`bundled Electron unavailable: ${reason}`, `内置 Electron 不可用：${reason}`);
+				return void 0;
+			}
+		}
+	} else if (options.bundledOnly) {
+		fail$1("bundled Electron unavailable", "没有可用的内置 Electron");
+		return void 0;
+	}
 	if (existsSync(exe)) info(`Electron cache is empty or not a regular file: ${exe}`, "Electron 缓存无效，准备重新下载");
+	else if (isDirectory(targetDir)) try {
+		rmSync(targetDir, {
+			recursive: true,
+			force: true
+		});
+	} catch {}
 	info(`Electron not found, downloading v${version} (${PLAT}-${process.arch}) ...`, `正在下载 Electron ${version}`);
 	try {
 		mkdirSync(targetDir, { recursive: true });
@@ -8376,7 +8472,9 @@ function apply(ctx) {
 			return;
 		}
 		log.warn(`[dsh-pet] 未找到 Electron 可执行文件：DSH_HOME=${dshHomeDir()}，查找路径=${defaultElectronExe()}，DSH_PET_ELECTRON_PATH=${process.env.DSH_PET_ELECTRON_PATH ?? "(未设置)"}`);
-		log.warn(`[dsh-pet] 开始下载 Electron 到 ${defaultElectronExe()} ...`);
+		const bundled = bundledElectronZip();
+		if (bundled) log.info(`[dsh-pet] 使用内置 Electron（${bundled}），首次启动解压到 ${defaultElectronExe()} ...`);
+		else log.warn(`[dsh-pet] 开始下载 Electron 到 ${defaultElectronExe()} ...`);
 		electronEnsure = ensureElectronDownload({
 			onLog: ({ text: text$3, level, done }) => reportDownload(text$3, level === "warn" ? "error" : done ? "success" : "working", done),
 			logger: log
@@ -8850,7 +8948,11 @@ function apply(ctx) {
 					reason: "server-not-ready"
 				}
 			};
-			const electronPath = resolveElectronPath() ?? (inProcessHost ? process.execPath : void 0);
+			let electronPath = resolveElectronPath() ?? (inProcessHost ? process.execPath : void 0);
+			if (!electronPath && bundledElectronZip()) electronPath = await ensureElectronDownload({
+				logger: log,
+				bundledOnly: true
+			});
 			if (!electronPath) return {
 				kind: "json",
 				status: 200,
@@ -11628,6 +11730,8 @@ function runCheck(logger) {
 	const home = dshHomeDir();
 	const paths = configPathsFor(packageRoot, home);
 	const electron = resolveElectronPath();
+	const bundled = bundledElectronInfo();
+	const electronLine = electron ?? (bundled ? `内置包已安装（${bundled.packageName}@${bundled.version ?? "unknown"}），首次启动解压到 ${electronLandingDir()}` : `未发现（首次运行会下载到 ${electronLandingDir()}）`);
 	const lines = [
 		`Node            ${process.version}（${process.platform}-${process.arch}）`,
 		`插件            dsh-pet-to-family@${packageVersion(packageRoot)}  ${packageRoot}`,
@@ -11635,7 +11739,7 @@ function runCheck(logger) {
 		`用户配置        ${paths.userFile}${existsSync(paths.userFile) ? "" : "（不存在 → 用包内默认）"}`,
 		`文件宠物目录    ${paths.petDir}${existsSync(paths.petDir) ? "" : "（不存在）"}`,
 		`内置默认配置    ${paths.defaultFile}${existsSync(paths.defaultFile) ? "" : "  ✗ 缺失"}`,
-		`Electron        ${electron ?? `未发现（首次运行会下载到 ${electronLandingDir()}）`}`,
+		`Electron        ${electronLine}`,
 		`图形显示环境    ${hasGraphicalDisplay() ? "有" : "无（桌面小窗会跳过；远程桌面/Xvfb 可设 DSH_PET_DESKTOP_FORCE=1）"}`
 	];
 	const fail$1 = (message) => {
