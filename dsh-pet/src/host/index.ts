@@ -1368,6 +1368,25 @@ export function apply(ctx: any): void {
           `[dsh-pet] 无桌面宠物（display 均为 web/none）且无需保留托盘（tray=${trayOn}），已跳过桌面 Helper 启动`,
         );
       }
+      // 即使当前只在浏览器显示，也把内置 Electron 预先解压好：用户切到桌面时立即可用，
+      // 不必再等一次 350MB 解压，也不会因为“点了显示位置才解压”而误以为桌面模式坏了。
+      // 只解压可选包自带的 zip，绝不在这里联网下载；DSH_PET_PREEXTRACT=0 可关闭。
+      if (
+        !inProcessHost &&
+        hasGraphicalDisplay() &&
+        process.env.DSH_PET_PREEXTRACT !== '0' &&
+        bundledElectronZip() &&
+        !resolveElectronPath()
+      ) {
+        log.info('[dsh-pet] 预解压内置 Electron（当前无桌面宠物，仅准备运行时）...');
+        electronEnsure = ensureElectronDownload({ bundledOnly: true, logger: log })
+          .then((path) => {
+            if (path) launchHelper(path);
+          })
+          .finally(() => {
+            electronEnsure = undefined;
+          });
+      }
       return;
     }
     // 无图形显示环境（Linux 服务器 / 容器）：直接放弃，不探测、不下载、不拉起。

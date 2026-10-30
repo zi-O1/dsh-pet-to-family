@@ -32,13 +32,13 @@ AI 生成动画的配方     源视频 → 透明动画的管线    运行在 DS
 
 ### 🪟 桌面应用（Electron 版）
 
-直接在应用内「插件管理」页的安装框里填 `dsh-pet-to-family`（当前 npm 正式版 `0.7.0`），不用开终端；需要在终端里操作插件时，用桌面应用自带的那份 CLI。
+直接在应用内「插件管理」页的安装框里填 `dsh-pet-to-family`（当前 npm 正式版 `0.7.1`），不用开终端；需要在终端里操作插件时，用桌面应用自带的那份 CLI。
 
 也可以直接填 GitHub 仓库地址 `https://github.com/zi-O1/dsh-pet-to-family`（仓库根的兼容包指向 `dsh-pet/` 里已入库的构建产物，安装时不需要再构建）；如果安装器只认子目录，用 `https://github.com/zi-O1/dsh-pet-to-family#path:/dsh-pet`。安装源选 **npm 官方源**（`https://registry.npmjs.org/`）。
 
 > 已安装旧包 `dsh-pet` 的 profile，请先在插件管理里卸载旧包，再安装 `dsh-pet-to-family`；用户数据仍在 `$DSH_HOME/dsh-pet/`，不会被清空。
 >
-> 当前 npm 正式版：`0.7.0`（`latest`），包含内置 Electron 平台包、默认仅桌面、版本与更新、原生微信 / QQ 接入、多机器人和 DSH session 模式。
+> 当前 npm 正式版：`0.7.1`（`latest`），包含内置 Electron 平台包、默认仅桌面、版本与更新、原生微信 / QQ 接入、多机器人和 DSH session 模式。
 >
 > 维护者发新版本：`cd dsh-pet && npm publish --access public`（`publishConfig` 已固定为 npm 官方源）。
 
@@ -90,7 +90,7 @@ dsh plugin --profile web add file:D:/path/to/dsh-pet-to-family/dsh-pet
 新安装的默认配置是 `display: "desktop"`（只在桌面显示，浏览器里默认不出现），并保留 `confineToScreen: false`（可以跨屏活动）。已有用户配置不会被强制迁移：之前写过 `display: "both"` 的仍然是两边都显示。
 
 1. **npm 安装时带上当前平台的 Electron。** 主包通过可选依赖 `dsh-pet-electron-<platform>-<arch>` 发布官方 Electron 运行时；npm / pnpm 只会安装与当前系统、架构匹配的那一份（压缩后约 120MB），不需要再去 GitHub 或镜像站下载。
-2. **首次启动只解压，不联网。** 插件把包内 `electron.zip` 解压到 `~/.dsh/electron`（约 350MB，之后复用），然后拉起桌面 Helper。桌面上会出现透明置顶小窗，浏览器里默认没有宠物。
+2. **首次启动只解压，不联网。** 插件把包内 `electron.zip` 解压到 `~/.dsh/electron`（约 350MB，之后复用），然后拉起桌面 Helper。桌面上会出现透明置顶小窗，浏览器里默认没有宠物。即使当前宠物只在浏览器显示，也会在后台预解压内置运行时（`DSH_PET_PREEXTRACT=0` 可关闭），之后切到桌面即时生效。
 3. **平台没有内置包时才回退在线下载。** 例如可选依赖被安装器跳过、或系统/架构暂未覆盖时，才会走原来的 npmmirror 下载；`DSH_PET_ELECTRON_PATH`、`DSH_PET_ELECTRON_MIRROR`、`DSH_PET_ELECTRON_VERSION` 仍然可用。
 4. **想让浏览器也显示。** 两条路都行，改完即时生效：
    - **设置页**：选中该宠物 →「显示位置」下拉框 → 仅浏览器 / 仅桌面 / 两者都显示 / 都不显示；
@@ -109,7 +109,7 @@ dsh plugin --profile web add file:D:/path/to/dsh-pet-to-family/dsh-pet
 - 更新不会先卸载当前插件，所以设置页不会在更新中途消失；当前进程仍跑旧代码，重启后才加载新版本。
 
 > **为什么另一台电脑 npm 上已经是新版，装出来却是 0.5.0？**
-> DSH 插件管理器沿用 pnpm 的供应链保护 `minimumReleaseAge`（默认 24 小时）：发布时间不足 24 小时的版本不会被自动选中，于是会落到上一个满足年龄的旧版。三条路解决：① 等 24 小时后再装；② 在插件页卸载后安装精确版本 `dsh-pet-to-family@0.7.0`；③ 用本插件的「版本与更新」按钮，它会显式绕过这个等待。
+> DSH 插件管理器沿用 pnpm 的供应链保护 `minimumReleaseAge`（默认 24 小时）：发布时间不足 24 小时的版本不会被自动选中，于是会落到上一个满足年龄的旧版。三条路解决：① 等 24 小时后再装；② 在插件页卸载后安装精确版本 `dsh-pet-to-family@0.7.1`；③ 用本插件的「版本与更新」按钮，它会显式绕过这个等待。
 
 ## 插件功能
 
@@ -211,7 +211,7 @@ npm run standalone   # 仓库里；已提交的 lib 可直接跑，改过源码�
 
 ### 原生微信 / QQ（推荐，不依赖 dsh-im）
 
-> 本节属于 **0.5.0**；如果插件管理里显示 0.4.1 或更旧，说明还是旧包，请在插件管理里升级到 0.7.0。
+> 本节属于 **0.5.0**；如果插件管理里显示 0.4.1 或更旧，说明还是旧包，请在插件管理里升级到 0.7.1。
 
 插件现在自带微信 iLink 与 QQ 官方机器人连接，不需要安装或启用 dsh-im。入口仍在「桌宠设置 → 消息接入（微信 / QQ）」。
 
@@ -452,7 +452,7 @@ if (data.ok && data.reply) {
 
 | 现象 | 原因 / 处理 |
 | --- | --- |
-| 设置页没有「消息接入」 | 装的是旧版（0.4.1 及以前）。升级到 0.7.0，完全重启 DSH |
+| 设置页没有「消息接入」 | 装的是旧版（0.4.1 及以前）。升级到 0.7.1，完全重启 DSH |
 | HTTP 401 `unauthorized` | token 没带、带错，或设置里重新生成后桥接器还在用旧 token |
 | HTTP 403 `not-whitelisted` | `platform + senderId` 与白名单不完全一致；注意 id 不是昵称 |
 | HTTP 403 `group-not-allowed` | 群聊消息带了 `isGroup: true`，但设置页没开「允许群聊触发」 |

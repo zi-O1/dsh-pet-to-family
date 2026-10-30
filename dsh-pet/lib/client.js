@@ -4778,7 +4778,7 @@ function makePetConfigSection(rt) {
 				whisperEnabled: tpl.whisperEnabled,
 				workStatusEnabled: tpl.workStatusEnabled,
 				fixedEnabled: tpl.fixedEnabled,
-				display: tpl.display,
+				display: "desktop",
 				position: { ...tpl.position }
 			}]);
 			setSelId(id);

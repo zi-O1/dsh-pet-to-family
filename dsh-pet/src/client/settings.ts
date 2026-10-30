@@ -2487,7 +2487,8 @@ export function makePetConfigSection(rt: {
           whisperEnabled: tpl.whisperEnabled,
           workStatusEnabled: tpl.workStatusEnabled,
           fixedEnabled: tpl.fixedEnabled,
-          display: tpl.display,
+          // 新宠物默认只在桌面显示（与包内默认配置一致）；现有宠物已显式保存的 display 不受影响。
+          display: 'desktop',
           position: { ...tpl.position },
         },
       ]);

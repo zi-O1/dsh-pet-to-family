@@ -8733,6 +8733,17 @@ function apply(ctx) {
 				noDesktopSkipped = true;
 				log.info(`[dsh-pet] 无桌面宠物（display 均为 web/none）且无需保留托盘（tray=${trayOn}），已跳过桌面 Helper 启动`);
 			}
+			if (!inProcessHost && hasGraphicalDisplay() && process.env.DSH_PET_PREEXTRACT !== "0" && bundledElectronZip() && !resolveElectronPath()) {
+				log.info("[dsh-pet] 预解压内置 Electron（当前无桌面宠物，仅准备运行时）...");
+				electronEnsure = ensureElectronDownload({
+					bundledOnly: true,
+					logger: log
+				}).then((path) => {
+					if (path) launchHelper(path);
+				}).finally(() => {
+					electronEnsure = void 0;
+				});
+			}
 			return;
 		}
 		if (!hasGraphicalDisplay()) {
