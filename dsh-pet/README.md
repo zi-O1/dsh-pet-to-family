@@ -15,6 +15,7 @@
 - **通用 Webhook**：其他平台可用本机 HTTP 入口接入，token 鉴权、白名单、去重与限流默认开启
 - **下载即用的桌面运行时**：按平台拆分的 Electron 可选依赖，npm 只安装当前系统那一份；首次启动解压包内 zip，不再依赖运行时联网下载
 - **默认仅桌面**：新安装 `display: "desktop"`，浏览器里默认不出现；已有配置不强制迁移
+- **版本与更新**：设置页检查 npm 最新版，一键用当前 profile 的 pnpm 升级（显式绕过 `minimumReleaseAge`），重启生效
 
 ## 微信 / QQ 原生接入（0.5.0）
 
@@ -35,7 +36,7 @@
 
 参数、字段、默认值和操作说明见本仓库根目录的 **[README（人格灵魂、长期记忆与关系事件）](https://github.com/zi-O1/dsh-pet-to-family#-人格灵魂长期记忆与关系事件)**、**[消息接入（微信 / QQ 与通用 Webhook）](https://github.com/zi-O1/dsh-pet-to-family#-消息接入通用-webhook)** 与 **[CONFIG.md](https://github.com/zi-O1/dsh-pet-to-family/blob/main/CONFIG.md)**。
 
-安装：npm 包名 `dsh-pet-to-family`（当前 npm 正式版 `0.6.0`，包含内置 Electron 平台包、默认仅桌面、原生微信 / QQ 接入、多机器人和 DSH session 模式；安装源选官方源 `https://registry.npmjs.org/`）；GitHub 地址 `https://github.com/zi-O1/dsh-pet-to-family`（根兼容包）或 `https://github.com/zi-O1/dsh-pet-to-family#path:/dsh-pet`（插件子目录）。
+安装：npm 包名 `dsh-pet-to-family`（当前 npm 正式版 `0.7.0`，包含内置 Electron 平台包、默认仅桌面、原生微信 / QQ 接入、多机器人和 DSH session 模式；安装源选官方源 `https://registry.npmjs.org/`）；GitHub 地址 `https://github.com/zi-O1/dsh-pet-to-family`（根兼容包）或 `https://github.com/zi-O1/dsh-pet-to-family#path:/dsh-pet`（插件子目录）。
 
 本仓库：**<https://github.com/zi-O1/dsh-pet-to-family>**
 

@@ -45,6 +45,7 @@ import {
 import { decideAnim } from './anim';
 import { LockStore } from './lock';
 import { createFileLogger, isFileLogger, setDefaultLogger } from './log-file';
+import { createUpdateController } from './update';
 import { MENU_WAIT_MAX_MS, MenuRegistry } from './menu';
 import { decidePosition, decideThrow, positionLeafData } from './motion-cue';
 import { parsePlaybackPath, parseWaitQuery, PlaybackStore } from './playback';
@@ -299,6 +300,14 @@ export function apply(ctx: any): void {
   /** 独立模式的碎碎念授权策略（可选能力）：DSH 宿主里是 undefined → 回落到只看 pet.whisperEnabled。 */
   const standaloneAiPolicy = (): StandaloneWhisperPolicy | undefined =>
     optionalService('standaloneAi') as StandaloneWhisperPolicy | undefined;
+
+  /** 设置页「版本与更新」：查 npm latest，并复用 DSH pluginManager 的 pnpm 把本包升级。
+   *  standalone / 无 pluginManager 时只读检查仍可用；更新后端缺失会由 canApply=false 表达。 */
+  const updateController = createUpdateController({
+    packageRoot: PACKAGE_ROOT,
+    manager: () => optionalService('pluginManager'),
+    logger: { info: (message) => log.info(message), warn: (message) => log.warn(message) },
+  });
 
   // 用户主配置（可编辑层）与文件宠物目录；配置读取/合并统一走 readAllConfig（./config）。
   // 主配置是 JSONC（main-config.jsonc）——与包内默认 config.jsonc 同名同格式：
@@ -1728,6 +1737,19 @@ export function apply(ctx: any): void {
           profile: profileNameFrom(PACKAGE_ROOT) ?? '',
         },
       };
+    }
+
+    // 版本与更新：GET 查询 npm latest（设置页打开/轮询），POST 启动一次后台更新。
+    // POST 立即返回，设置页轮询 GET 看 running/done/error；更新进程不阻塞 HTTP，也不先卸载当前插件。
+    if (rest === 'update') {
+      if (method === 'GET') {
+        return { kind: 'json', status: 200, obj: { ok: true, ...(await updateController.check(false)) } };
+      }
+      if (method === 'POST') {
+        const started = await updateController.start();
+        return { kind: 'json', status: 200, obj: { ...started, status: updateController.status() } };
+      }
+      return { kind: 'json', status: 405, obj: { error: 'method not allowed' } };
     }
 
     // 第三方右键菜单：POST /menu/item 注册（该 owner 整体覆盖），DELETE 清除，GET /menu/events

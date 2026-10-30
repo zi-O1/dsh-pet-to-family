@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: dsh-pet-to-family HTTP API
-  version: 0.6.0
+  version: 0.7.0
   summary: DSH 桌宠插件的宿主 HTTP 接口
   description: |
     dsh-pet 的宿主（host）半侧通过 DSH 的 `webServer` 服务注册**一条前缀路由** `/dsh-pet-7340`，
@@ -2371,6 +2371,83 @@ paths:
                     description: |
                       DSH profile 名，用于拼接卸载命令
                       `dsh plugin --profile <名> remove dsh-pet-to-family`。反推不出时为空串。
+
+  /dsh-pet-7340/update:
+    get:
+      tags: [Config]
+      operationId: getUpdateStatus
+      summary: 查询插件最新版本与更新状态
+      description: |
+        设置页「版本与更新」的数据源：读取包内当前版本，并向 npm 官方源 / npmmirror / 腾讯云
+        依次查询 `dsh-pet-to-family@latest`。`state` 为 `running` 时表示后台更新进程尚未结束；
+        设置页会继续轮询本端点。
+      responses:
+        "200":
+          description: 当前状态
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, current, latest, hasUpdate, canApply, backend, state]
+                properties:
+                  ok:
+                    type: boolean
+                  current:
+                    type: string
+                  latest:
+                    type: [string, "null"]
+                  hasUpdate:
+                    type: boolean
+                  registry:
+                    type: string
+                  error:
+                    type: string
+                  canApply:
+                    type: boolean
+                  backend:
+                    type: string
+                    enum: [plugin-manager, pnpm, none]
+                  state:
+                    type: string
+                    enum: [idle, running, done, error]
+                  target:
+                    type: string
+                  installed:
+                    type: string
+                  message:
+                    type: string
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+    post:
+      tags: [Config]
+      operationId: startUpdate
+      summary: 启动一次插件自更新
+      description: |
+        立即返回并在后台用当前 profile 的 pnpm 执行
+        `add dsh-pet-to-family@<latest> --save-exact`；显式绕过 pnpm 的 minimumReleaseAge
+        （否则刚发布的版本会被暂缓成旧版）。更新完成后需要完全重启 DSH 才会加载新代码。
+      responses:
+        "200":
+          description: 已启动或拒绝原因
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+                  reason:
+                    type: string
+                  version:
+                    type: string
+                  message:
+                    type: string
+                  status:
+                    type: object
+                    additionalProperties: true
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
 
   /dsh-pet-7340/models:
     get:

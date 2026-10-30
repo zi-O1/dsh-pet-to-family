@@ -7984,6 +7984,22 @@ const zh = {
 	retry: "重试",
 	invalid: "请检查输入：大小需为正数，边距可为任意数字。",
 	busy: "保存中…",
+	updateTitle: "版本与更新",
+	updateHint: "检查 npm 上的最新版；更新后需要完全退出并重新打开 DSH。若另一台电脑装到旧版，通常是 pnpm 的 minimumReleaseAge（默认 24 小时）在暂缓新发布。",
+	updateCurrent: "当前版本",
+	updateLatest: "最新版本",
+	updateCheck: "检查更新",
+	updateChecking: "检查中…",
+	updateApply: "更新到最新版",
+	updateApplying: "更新中…",
+	updateLatestDone: "已是最新版本",
+	updateAvailable: "发现新版本 {version}",
+	updateDone: "已更新到 {version}。请完全退出并重新打开 DSH 生效。",
+	updateError: "检查更新失败：{message}",
+	updateApplyError: "更新失败：{message}",
+	updateManual: "当前环境不支持自动更新。请在终端运行：{cmd}",
+	updateNote: "更新会显式请求最新版并绕过 pnpm 的 minimumReleaseAge。当前进程仍在旧代码上运行，必须完全重启 DSH 才会加载新版本。",
+	updateSource: "来源：{registry}",
 	extraPetsHint: "另 {n} 只额外宠物由 pet/ 目录文件定义（<名>-config.json + <名>-animation/ + <名>-memes/），它们不在此列表——改文件后浏览器刷新页面、桌面端右键「重载配置」即可生效。",
 	notifyToggle: "系统通知",
 	notifyToggleHint: "对话完成 / 生成失败 / 权限申请 / 用户选择，在窗口失焦时弹出系统级通知（桌面右下角）。",
@@ -8316,6 +8332,22 @@ const en = {
 	retry: "Retry",
 	invalid: "Check your input: size must be positive; margins can be any number.",
 	busy: "Saving…",
+	updateTitle: "Version & updates",
+	updateHint: "Check the latest version on npm. After updating you must fully quit and reopen DSH. If another computer installed an older version, pnpm minimumReleaseAge (24h by default) is usually holding the new release back.",
+	updateCurrent: "Current",
+	updateLatest: "Latest",
+	updateCheck: "Check for updates",
+	updateChecking: "Checking…",
+	updateApply: "Update to latest",
+	updateApplying: "Updating…",
+	updateLatestDone: "Already up to date",
+	updateAvailable: "Version {version} is available",
+	updateDone: "Updated to {version}. Fully quit and reopen DSH to load it.",
+	updateError: "Update check failed: {message}",
+	updateApplyError: "Update failed: {message}",
+	updateManual: "Automatic update is unavailable here. Run this in a terminal: {cmd}",
+	updateNote: "Updating explicitly requests the latest version and bypasses pnpm minimumReleaseAge. The running process still uses the old code; fully restart DSH to load the new version.",
+	updateSource: "Source: {registry}",
 	extraPetsHint: "{n} extra pet(s) are file-defined in the pet/ directory (<name>-config.json + <name>-animation/ + <name>-memes/). They are not in this list — after editing the files, refresh the page (browser) or right-click a desktop pet → \"Reload config\".",
 	notifyToggle: "System notifications",
 	notifyToggleHint: "OS-level toasts (bottom-right of the desktop) for conversation completion, failures, permission requests, and questions — only while this window is unfocused.",
@@ -8917,6 +8949,23 @@ function makePetConfigSection(rt) {
 		const [paths, setPaths] = useState(null);
 		useEffect(() => {
 			fetch("/dsh-pet-7340/config/meta").then((r$2) => r$2.ok ? r$2.json() : null).then((p$4) => setPaths(p$4)).catch(() => console.warn("[dsh-pet] 读取配置文件路径失败"));
+		}, []);
+		const [updateStatus, setUpdateStatus] = useState(null);
+		const [updateBusy, setUpdateBusy] = useState(false);
+		const [updateMsg, setUpdateMsg] = useState({
+			kind: "",
+			text: ""
+		});
+		const updateTimerRef = useRef(null);
+		useEffect(() => {
+			let alive = true;
+			fetch("/dsh-pet-7340/update").then((r$2) => r$2.ok ? r$2.json() : null).then((s) => {
+				if (alive && s) setUpdateStatus(s);
+			}).catch(() => void 0);
+			return () => {
+				alive = false;
+				if (updateTimerRef.current) clearTimeout(updateTimerRef.current);
+			};
 		}, []);
 		const [notifyEnabled$1, setNotifyEnabled] = useState(true);
 		const [clickSound, setClickSound] = useState(false);
@@ -9715,6 +9764,110 @@ function makePetConfigSection(rt) {
 				return false;
 			} finally {
 				setBusy(false);
+			}
+		};
+		/** 更新按钮在无 pnpm 后端时给出的手抄命令（不猜 profile 路径，只给最小可执行版本）。 */
+		const updateManualCommand = (version) => `pnpm add dsh-pet-to-family@${version} --save-exact --config.minimumReleaseAge=0`;
+		/** 查 npm latest；进入设置页已自动查过一次，这里给用户手动重查。 */
+		const checkUpdate = async () => {
+			setUpdateBusy(true);
+			setUpdateMsg({
+				kind: "",
+				text: ""
+			});
+			try {
+				const res = await fetch("/dsh-pet-7340/update");
+				if (!res.ok) throw new Error(`HTTP ${res.status}`);
+				const status = await res.json();
+				setUpdateStatus(status);
+				if (status.error) setUpdateMsg({
+					kind: "err",
+					text: t$3("updateError").replace("{message}", status.error)
+				});
+				else if (status.hasUpdate) setUpdateMsg({
+					kind: "",
+					text: t$3("updateAvailable").replace("{version}", status.latest ?? "")
+				});
+				else setUpdateMsg({
+					kind: "ok",
+					text: t$3("updateLatestDone")
+				});
+			} catch (e) {
+				setUpdateMsg({
+					kind: "err",
+					text: t$3("updateError").replace("{message}", e instanceof Error ? e.message : String(e))
+				});
+			} finally {
+				setUpdateBusy(false);
+			}
+		};
+		/** POST 启动后台更新；随后轮询 GET，直到 running 结束。 */
+		const applyUpdate = async () => {
+			const latest = updateStatus?.latest;
+			if (!latest || updateBusy) return;
+			if (updateTimerRef.current) clearTimeout(updateTimerRef.current);
+			setUpdateBusy(true);
+			setUpdateMsg({
+				kind: "",
+				text: t$3("updateApplying")
+			});
+			try {
+				const res = await fetch("/dsh-pet-7340/update", { method: "POST" });
+				const body = await res.json();
+				if (body.status) setUpdateStatus(body.status);
+				if (!res.ok || !body.ok) if (body.reason === "busy") {} else {
+					setUpdateBusy(false);
+					if (body.reason === "already-latest") {
+						setUpdateMsg({
+							kind: "ok",
+							text: t$3("updateLatestDone")
+						});
+						return;
+					}
+					const unsupported = body.reason === "unsupported";
+					setUpdateMsg({
+						kind: unsupported ? "" : "err",
+						text: unsupported ? t$3("updateManual").replace("{cmd}", updateManualCommand(latest)) : t$3("updateApplyError").replace("{message}", body.message ?? body.reason ?? `HTTP ${res.status}`)
+					});
+					return;
+				}
+				const poll = async () => {
+					try {
+						const r$2 = await fetch("/dsh-pet-7340/update");
+						const status = await r$2.json();
+						setUpdateStatus(status);
+						if (status.state === "running") {
+							updateTimerRef.current = setTimeout(() => void poll(), 1500);
+							return;
+						}
+						setUpdateBusy(false);
+						if (status.state === "done") setUpdateMsg({
+							kind: "ok",
+							text: t$3("updateDone").replace("{version}", status.installed ?? status.target ?? latest)
+						});
+						else if (status.state === "error") setUpdateMsg({
+							kind: "err",
+							text: t$3("updateApplyError").replace("{message}", status.message ?? "")
+						});
+						else setUpdateMsg({
+							kind: "",
+							text: ""
+						});
+					} catch (e) {
+						setUpdateBusy(false);
+						setUpdateMsg({
+							kind: "err",
+							text: t$3("updateApplyError").replace("{message}", e instanceof Error ? e.message : String(e))
+						});
+					}
+				};
+				updateTimerRef.current = setTimeout(() => void poll(), 500);
+			} catch (e) {
+				setUpdateBusy(false);
+				setUpdateMsg({
+					kind: "err",
+					text: t$3("updateApplyError").replace("{message}", e instanceof Error ? e.message : String(e))
+				});
 			}
 		};
 		/** 打开灵魂卡 JSON 弹窗：用当前草稿（没改过就是实例卡）作为初值。 */
@@ -11040,6 +11193,53 @@ function makePetConfigSection(rt) {
 								petCollision: v$3
 							})), true)]
 						})], "g " + physics.gravity),
+						accItem("update", t$3("updateTitle"), t$3("updateHint"), [
+							h$1("div", {
+								className: "dsh-pet-cfg__grid2",
+								children: [field(t$3("updateCurrent"), h$1("div", {
+									className: "dsh-pet-cfg__path",
+									children: updateStatus?.current ?? "—"
+								})), field(t$3("updateLatest"), h$1("div", {
+									className: "dsh-pet-cfg__path",
+									children: updateStatus?.state === "done" ? updateStatus.installed ?? updateStatus.latest ?? "—" : updateStatus?.latest ?? "—"
+								}))]
+							}),
+							updateStatus?.registry ? h$1("div", {
+								className: "dsh-pet-cfg__note",
+								children: t$3("updateSource").replace("{registry}", updateStatus.registry)
+							}) : null,
+							h$1("div", {
+								className: "dsh-pet-cfg__actions",
+								children: [
+									h$1("button", {
+										type: "button",
+										className: "dsh-pet-cfg__btn",
+										disabled: updateBusy || updateStatus?.state === "running",
+										onClick: () => void checkUpdate(),
+										children: updateStatus?.state === "running" ? t$3("updateApplying") : updateBusy ? t$3("updateChecking") : t$3("updateCheck")
+									}),
+									updateStatus?.hasUpdate && updateStatus.state !== "done" ? h$1("button", {
+										type: "button",
+										className: "dsh-pet-cfg__btn is-primary",
+										disabled: updateBusy || updateStatus.state === "running" || !updateStatus.canApply,
+										onClick: () => void applyUpdate(),
+										children: updateStatus.state === "running" ? t$3("updateApplying") : t$3("updateApply")
+									}) : null,
+									updateMsg.text ? h$1("span", {
+										className: "dsh-pet-cfg__msg" + (updateMsg.kind === "err" ? " is-err" : ""),
+										children: updateMsg.text
+									}) : null
+								]
+							}),
+							updateStatus && !updateStatus.canApply && updateStatus.latest ? h$1("div", {
+								className: "dsh-pet-cfg__note",
+								children: t$3("updateManual").replace("{cmd}", updateManualCommand(updateStatus.latest))
+							}) : null,
+							h$1("p", {
+								className: "dsh-pet-cfg__note",
+								children: t$3("updateNote")
+							})
+						], updateStatus ? updateStatus.current + (updateStatus.hasUpdate && updateStatus.state !== "done" ? " → " + (updateStatus.latest ?? "") : "") : "—"),
 						paths ? accItem("config", t$3("configMeta"), t$3("configMetaHint"), [
 							h$1("div", {
 								className: "dsh-pet-cfg__path",
@@ -11357,6 +11557,7 @@ const SETTINGS_SECTIONS = [
 	"model",
 	"bridge",
 	"physics",
+	"update",
 	"config",
 	"storage",
 	"move"

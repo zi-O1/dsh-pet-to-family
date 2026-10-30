@@ -16284,6 +16284,271 @@ var LockStore = class {
 };
 
 //#endregion
+//#region src/host/update.ts
+/** 官方与国内镜像；按顺序尝试，第一个有 latest 的胜出。 */
+const REGISTRIES = [
+	"https://registry.npmjs.org/",
+	"https://registry.npmmirror.com/",
+	"https://mirrors.cloud.tencent.com/npm/"
+];
+/** 单次 registry 查询的超时（ms）。 */
+const CHECK_TIMEOUT_MS = 8e3;
+/** 更新进程最长运行时间（ms）；超时后先 SIGTERM，再 SIGKILL。 */
+const UPDATE_TIMEOUT_MS = 10 * 60 * 1e3;
+/** 保留给用户看的 pnpm 输出尾部长度。 */
+const OUTPUT_TAIL = 2e3;
+function compareVersions(a, b) {
+	const parse$6 = (value) => {
+		const core = value.trim().replace(/^v/, "").split(/[+-]/, 1)[0] ?? "";
+		return core.split(".").map((part) => {
+			const n = Number.parseInt(part, 10);
+			return Number.isFinite(n) && n >= 0 ? n : 0;
+		});
+	};
+	const left = parse$6(a);
+	const right = parse$6(b);
+	const length = Math.max(left.length, right.length);
+	for (let i = 0; i < length; i += 1) {
+		const diff = (left[i] ?? 0) - (right[i] ?? 0);
+		if (diff !== 0) return diff;
+	}
+	return 0;
+}
+function readPackageVersion(path$4) {
+	try {
+		const parsed = JSON.parse(readFileSync(path$4, "utf8"));
+		return typeof parsed.version === "string" && parsed.version ? parsed.version : void 0;
+	} catch {
+		return void 0;
+	}
+}
+function findProfileRoot(start) {
+	let current = resolve(start);
+	for (;;) {
+		if (existsSync(join(current, "pnpm-workspace.yaml")) || existsSync(join(current, "pnpm-lock.yaml"))) return current;
+		const parent = dirname(current);
+		if (parent === current) return void 0;
+		current = parent;
+	}
+}
+function resolveUpdateBackend(manager, packageRoot$2, platform = process.platform) {
+	const pm = manager && typeof manager === "object" ? manager : void 0;
+	const profileDir = typeof pm?.profile?.dir === "string" && pm.profile.dir || findProfileRoot(packageRoot$2) || void 0;
+	if (!profileDir) return void 0;
+	const configured = pm?.profile?.packageManager;
+	const command = typeof configured?.command === "string" ? configured.command : "";
+	if (command) return {
+		profileDir,
+		command,
+		args: Array.isArray(configured?.args) ? configured.args.map(String) : [],
+		env: configured?.env && typeof configured.env === "object" ? configured.env : {},
+		kind: "plugin-manager"
+	};
+	const pnpmCommand = typeof pm?.pnpmCommand === "string" ? pm.pnpmCommand : "";
+	return {
+		profileDir,
+		command: pnpmCommand || (platform === "win32" ? "pnpm.cmd" : "pnpm"),
+		args: [],
+		env: {},
+		kind: pnpmCommand ? "plugin-manager" : "pnpm"
+	};
+}
+function stripAnsi(text$3) {
+	return text$3.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "");
+}
+async function fetchLatestVersion(fetchImpl = fetch) {
+	const errors = [];
+	for (const registry$2 of REGISTRIES) {
+		const controller = new AbortController();
+		const timer = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
+		timer.unref?.();
+		try {
+			const response = await fetchImpl(`${registry$2}dsh-pet-to-family/latest`, {
+				headers: { accept: "application/json" },
+				signal: controller.signal
+			});
+			if (!response.ok) {
+				errors.push(`${registry$2} HTTP ${response.status}`);
+				continue;
+			}
+			const body = await response.json();
+			if (typeof body.version === "string" && /^\d+\.\d+\.\d+(?:[-+].*)?$/.test(body.version)) return {
+				version: body.version,
+				registry: registry$2
+			};
+			errors.push(`${registry$2} 返回了非法版本号`);
+		} catch (error$1) {
+			errors.push(`${registry$2} ${error$1 instanceof Error ? error$1.message : String(error$1)}`);
+		} finally {
+			clearTimeout(timer);
+		}
+	}
+	throw new Error(errors.join("；") || "没有可用的 npm registry");
+}
+function createUpdateController(options) {
+	const current = readPackageVersion(join(options.packageRoot, "package.json")) ?? "0.0.0";
+	let latest = null;
+	let registry$2;
+	let checkError;
+	let checkedAt = 0;
+	let state$1 = "idle";
+	let target;
+	let installed;
+	let message;
+	let child;
+	let timer;
+	let output = "";
+	let settled = true;
+	const backend = () => resolveUpdateBackend(options.manager(), options.packageRoot);
+	const status$1 = () => {
+		const backendValue = backend();
+		return {
+			current,
+			latest,
+			hasUpdate: latest !== null && compareVersions(latest, current) > 0,
+			registry: registry$2,
+			error: checkError,
+			canApply: backendValue !== void 0,
+			backend: backendValue?.kind ?? "none",
+			state: state$1,
+			target,
+			installed,
+			message
+		};
+	};
+	const check = async (force = false) => {
+		if (state$1 === "running") return status$1();
+		if (!force && latest !== null && Date.now() - checkedAt < 6e4) return status$1();
+		try {
+			const found = await fetchLatestVersion(options.fetchImpl);
+			latest = found.version;
+			registry$2 = found.registry;
+			checkError = void 0;
+			checkedAt = Date.now();
+		} catch (error$1) {
+			checkError = error$1 instanceof Error ? error$1.message : String(error$1);
+			latest = null;
+		}
+		return status$1();
+	};
+	const finish = (nextState, text$3) => {
+		if (settled) return;
+		settled = true;
+		if (timer) clearTimeout(timer);
+		timer = void 0;
+		child = void 0;
+		state$1 = nextState;
+		message = text$3;
+	};
+	const start = async () => {
+		if (state$1 === "running") return {
+			ok: false,
+			reason: "busy",
+			message: "更新正在进行中"
+		};
+		const backendValue = backend();
+		if (!backendValue) return {
+			ok: false,
+			reason: "unsupported",
+			message: "当前环境没有可用的 pnpm"
+		};
+		if (latest === null) await check();
+		if (latest === null) return {
+			ok: false,
+			reason: "check-failed",
+			message: checkError ?? "检查最新版本失败"
+		};
+		if (compareVersions(latest, current) <= 0) return {
+			ok: false,
+			reason: "already-latest",
+			version: current
+		};
+		const requested = latest;
+		target = requested;
+		installed = void 0;
+		state$1 = "running";
+		message = void 0;
+		output = "";
+		settled = false;
+		const args = [
+			...backendValue.args,
+			"add",
+			`dsh-pet-to-family@${requested}`,
+			"--save-exact",
+			"--config.minimumReleaseAge=0",
+			"--config.minimumReleaseAgeStrict=false"
+		];
+		try {
+			child = spawn(backendValue.command, args, {
+				cwd: backendValue.profileDir,
+				env: {
+					...process.env,
+					...backendValue.env,
+					NO_COLOR: "1",
+					CI: "1"
+				},
+				stdio: [
+					"ignore",
+					"pipe",
+					"pipe"
+				],
+				windowsHide: true,
+				shell: /\.(?:cmd|bat)$/i.test(backendValue.command)
+			});
+		} catch (error$1) {
+			finish("error", error$1 instanceof Error ? error$1.message : String(error$1));
+			return {
+				ok: false,
+				reason: "spawn-failed",
+				message
+			};
+		}
+		const append = (chunk) => {
+			output = `${output}${String(chunk)}`.slice(-OUTPUT_TAIL);
+		};
+		child.stdout?.on("data", append);
+		child.stderr?.on("data", append);
+		timer = setTimeout(() => {
+			output = `${output}\n更新超时（${UPDATE_TIMEOUT_MS / 1e3}s），已终止 pnpm`;
+			child?.kill("SIGTERM");
+			setTimeout(() => child?.kill("SIGKILL"), 5e3).unref?.();
+		}, UPDATE_TIMEOUT_MS);
+		timer.unref?.();
+		child.once("error", (error$1) => {
+			finish("error", error$1 instanceof Error ? error$1.message : String(error$1));
+			options.logger?.warn?.(`[dsh-pet] update failed: ${message ?? ""}`);
+		});
+		child.once("exit", (code, signal) => {
+			if (settled) return;
+			if (code === 0) {
+				const installedPath = join(backendValue.profileDir, "node_modules", "dsh-pet-to-family", "package.json");
+				const actual = readPackageVersion(installedPath);
+				if (actual && compareVersions(actual, requested) >= 0) {
+					installed = actual;
+					finish("done");
+					options.logger?.info?.(`[dsh-pet] updated to ${actual}; restart DSH to load it`);
+					return;
+				}
+				finish("error", `pnpm 退出码为 0，但实际版本是 ${actual ?? "未知"}（期望 ${requested}）。请完全重启 DSH 后重试，或在终端执行 npm view dsh-pet-to-family version 检查。`);
+				return;
+			}
+			const detail = stripAnsi(output).trim();
+			finish("error", `pnpm 退出码 ${String(code)}${signal ? `（${signal}）` : ""}${detail ? `：${detail}` : ""}`);
+			options.logger?.warn?.(`[dsh-pet] update failed: ${message ?? ""}`);
+		});
+		return {
+			ok: true,
+			version: requested
+		};
+	};
+	return {
+		check,
+		start,
+		status: status$1
+	};
+}
+
+//#endregion
 //#region src/host/menu.ts
 /**
 * 第三方右键菜单注册表（进程内存态，DSH 重启即清空，不落盘）。
@@ -18328,6 +18593,7 @@ const SETTINGS_SECTIONS = [
 	"model",
 	"bridge",
 	"physics",
+	"update",
 	"config",
 	"storage",
 	"move"
@@ -18494,6 +18760,16 @@ function apply(ctx) {
 	};
 	/** 独立模式的碎碎念授权策略（可选能力）：DSH 宿主里是 undefined → 回落到只看 pet.whisperEnabled。 */
 	const standaloneAiPolicy = () => optionalService("standaloneAi");
+	/** 设置页「版本与更新」：查 npm latest，并复用 DSH pluginManager 的 pnpm 把本包升级。
+	*  standalone / 无 pluginManager 时只读检查仍可用；更新后端缺失会由 canApply=false 表达。 */
+	const updateController = createUpdateController({
+		packageRoot: PACKAGE_ROOT,
+		manager: () => optionalService("pluginManager"),
+		logger: {
+			info: (message) => log$1.info(message),
+			warn: (message) => log$1.warn(message)
+		}
+	});
 	const userConfigPath = join(userRoot, "main-config.jsonc");
 	const legacyUserConfigPath = join(userRoot, "main-config.json");
 	const petConfigDir = join(userRoot, "pet");
@@ -19665,6 +19941,32 @@ function apply(ctx) {
 				profile: profileNameFrom(PACKAGE_ROOT) ?? ""
 			}
 		};
+		if (rest === "update") {
+			if (method === "GET") return {
+				kind: "json",
+				status: 200,
+				obj: {
+					ok: true,
+					...await updateController.check(false)
+				}
+			};
+			if (method === "POST") {
+				const started = await updateController.start();
+				return {
+					kind: "json",
+					status: 200,
+					obj: {
+						...started,
+						status: updateController.status()
+					}
+				};
+			}
+			return {
+				kind: "json",
+				status: 405,
+				obj: { error: "method not allowed" }
+			};
+		}
 		if (rest === "menu/item") {
 			if (method === "DELETE") {
 				const result$1 = menuRegistry.clear(url.searchParams.get("owner") ?? "");

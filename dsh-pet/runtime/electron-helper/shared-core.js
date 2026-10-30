@@ -1025,6 +1025,7 @@ const SETTINGS_SECTIONS = [
 	"model",
 	"bridge",
 	"physics",
+	"update",
 	"config",
 	"storage",
 	"move"
@@ -1091,6 +1092,11 @@ const settingsMenuBranch = () => ({
 			label: "物理（拖拽抛掷手感）",
 			action: "settings",
 			section: "physics"
+		},
+		{
+			label: "版本与更新",
+			action: "settings",
+			section: "update"
 		},
 		{
 			label: "高级配置（文件）",

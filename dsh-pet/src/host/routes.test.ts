@@ -196,6 +196,39 @@ describe('/models 路由 —— 设置页「AI 模型」下拉框的数据源', 
   });
 });
 
+describe('/update 路由 —— 设置页「版本与更新」', () => {
+  test('GET 查询 npm latest 并返回当前/最新/是否有更新', async (t) => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ version: '9.9.9' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })) as typeof fetch;
+    t.after(() => {
+      globalThis.fetch = realFetch;
+    });
+    const r = await call('/dsh-pet-7340/update');
+    assert.equal(r.status, 200);
+    const body = JSON.parse(r.body) as {
+      ok: boolean;
+      latest: string | null;
+      hasUpdate: boolean;
+      backend: string;
+      current: string;
+    };
+    assert.equal(body.ok, true);
+    assert.equal(body.latest, '9.9.9');
+    assert.equal(body.hasUpdate, true);
+    assert.equal(body.backend, 'pnpm');
+    assert.equal(typeof body.current, 'string');
+  });
+
+  test('非 GET/POST → 405', async () => {
+    const r = await call('/dsh-pet-7340/update', 'PUT');
+    assert.equal(r.status, 405);
+  });
+});
+
 describe('/state + /balance —— 轮询统一状态与余额动作端点', () => {
   test('GET /state 返回 { sections, pets }（初始叶子 counter=0 / data=null）', async () => {
     const r = await call('/dsh-pet-7340/state');

@@ -32,13 +32,13 @@ AI 生成动画的配方     源视频 → 透明动画的管线    运行在 DS
 
 ### 🪟 桌面应用（Electron 版）
 
-直接在应用内「插件管理」页的安装框里填 `dsh-pet-to-family`（当前 npm 正式版 `0.6.0`），不用开终端；需要在终端里操作插件时，用桌面应用自带的那份 CLI。
+直接在应用内「插件管理」页的安装框里填 `dsh-pet-to-family`（当前 npm 正式版 `0.7.0`），不用开终端；需要在终端里操作插件时，用桌面应用自带的那份 CLI。
 
 也可以直接填 GitHub 仓库地址 `https://github.com/zi-O1/dsh-pet-to-family`（仓库根的兼容包指向 `dsh-pet/` 里已入库的构建产物，安装时不需要再构建）；如果安装器只认子目录，用 `https://github.com/zi-O1/dsh-pet-to-family#path:/dsh-pet`。安装源选 **npm 官方源**（`https://registry.npmjs.org/`）。
 
 > 已安装旧包 `dsh-pet` 的 profile，请先在插件管理里卸载旧包，再安装 `dsh-pet-to-family`；用户数据仍在 `$DSH_HOME/dsh-pet/`，不会被清空。
 >
-> 当前 npm 正式版：`0.6.0`（`latest`），包含内置 Electron 平台包、默认仅桌面、原生微信 / QQ 接入、多机器人和 DSH session 模式。
+> 当前 npm 正式版：`0.7.0`（`latest`），包含内置 Electron 平台包、默认仅桌面、版本与更新、原生微信 / QQ 接入、多机器人和 DSH session 模式。
 >
 > 维护者发新版本：`cd dsh-pet && npm publish --access public`（`publishConfig` 已固定为 npm 官方源）。
 
@@ -100,6 +100,17 @@ dsh plugin --profile web add file:D:/path/to/dsh-pet-to-family/dsh-pet
 
 > 桌面运行时缺失或解压失败**只影响桌面模式**：控制台会给出提示；此时可以设 `DSH_PET_ELECTRON_PATH` 指向现成可执行文件，或手动运行 `cd dsh-pet && npm run ensure:electron`。主包本身不携带 Electron 二进制，平台包由 `npm run electron:packages` 生成并单独发布。
 
+### 更新到最新版
+
+右键宠物 →「桌宠设置」→「版本与更新」：
+
+- 打开设置页时自动查询 npm 最新版（官方源 → npmmirror → 腾讯云，依次回退）。
+- 有新版时点「更新到最新版」。它复用当前 profile 的 pnpm 执行 `add dsh-pet-to-family@<latest> --save-exact --config.minimumReleaseAge=0`，完成后提示**完全退出并重新打开 DSH**。
+- 更新不会先卸载当前插件，所以设置页不会在更新中途消失；当前进程仍跑旧代码，重启后才加载新版本。
+
+> **为什么另一台电脑 npm 上已经是新版，装出来却是 0.5.0？**
+> DSH 插件管理器沿用 pnpm 的供应链保护 `minimumReleaseAge`（默认 24 小时）：发布时间不足 24 小时的版本不会被自动选中，于是会落到上一个满足年龄的旧版。三条路解决：① 等 24 小时后再装；② 在插件页卸载后安装精确版本 `dsh-pet-to-family@0.7.0`；③ 用本插件的「版本与更新」按钮，它会显式绕过这个等待。
+
 ## 插件功能
 
 - **纯粹的桌宠**：不做天气、监控等无关功能，不碰 DSH 内核；可选能力只有下面这些（余额 / 碎碎念 / 对话 / 工作状态 / 系统通知 / 人格灵魂与长期记忆）
@@ -117,6 +128,7 @@ dsh plugin --profile web add file:D:/path/to/dsh-pet-to-family/dsh-pet
 - **人格灵魂与长期连续性**：灵魂卡定义“它是谁”，动态状态记录情绪/关系，反思层把成功对话整理成长期记忆与关系事件；纪念日会在当天主动提醒（详见下方「人格灵魂、长期记忆与关系事件」）
 - **微信 / QQ 原生接入**：插件自己连接微信 iLink（扫码）与 QQ 官方机器人（AppID + AppSecret），白名单联系人发消息时由桌宠回复，不依赖 dsh-im；另有通用 Webhook 接其他平台（详见下方「消息接入」）
 - **一键搬家**：设置页「打包搬家啦」把配置、聊天记忆、灵魂状态、关系事件和 pet 配置打成 `.dshpet`；新电脑「我住进来喽」导入恢复
+- **版本与更新**：设置页检查 npm 最新版，一键用当前 profile 的 pnpm 升级到最新版（显式绕过 `minimumReleaseAge`），并提示重启生效
 - **工作状态联动**：监听 DSH 会话事件，切「思考 / 工作 / 整理 / 等待 / 成功 / 出错」档位动画 + 常驻气泡；目标多轮任务只在真正收尾轮庆祝
 - **系统通知**：窗口失焦时弹系统 toast（对话完成 / 生成失败 / 输出截断 / 权限申请 / 用户选择）
 - **桌面模式（可选）**：每只宠物开一个独立透明置顶局部小窗，与浏览器严格同行为、共用同一份素材与纯逻辑（见下节）
@@ -199,7 +211,7 @@ npm run standalone   # 仓库里；已提交的 lib 可直接跑，改过源码�
 
 ### 原生微信 / QQ（推荐，不依赖 dsh-im）
 
-> 本节属于 **0.5.0**；如果插件管理里显示 0.4.1 或更旧，说明还是旧包，请在插件管理里升级到 0.6.0。
+> 本节属于 **0.5.0**；如果插件管理里显示 0.4.1 或更旧，说明还是旧包，请在插件管理里升级到 0.7.0。
 
 插件现在自带微信 iLink 与 QQ 官方机器人连接，不需要安装或启用 dsh-im。入口仍在「桌宠设置 → 消息接入（微信 / QQ）」。
 
@@ -440,7 +452,7 @@ if (data.ok && data.reply) {
 
 | 现象 | 原因 / 处理 |
 | --- | --- |
-| 设置页没有「消息接入」 | 装的是旧版（0.4.1 及以前）。升级到 0.6.0，完全重启 DSH |
+| 设置页没有「消息接入」 | 装的是旧版（0.4.1 及以前）。升级到 0.7.0，完全重启 DSH |
 | HTTP 401 `unauthorized` | token 没带、带错，或设置里重新生成后桥接器还在用旧 token |
 | HTTP 403 `not-whitelisted` | `platform + senderId` 与白名单不完全一致；注意 id 不是昵称 |
 | HTTP 403 `group-not-allowed` | 群聊消息带了 `isGroup: true`，但设置页没开「允许群聊触发」 |
